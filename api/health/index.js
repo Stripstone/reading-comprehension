@@ -13,6 +13,6 @@ export default async function handler(req, res) {
     ok: true,
     provider: "Groq",
     hasGroqKey: Boolean(process.env.GROQ_API_KEY),
-    model: "llama-3.1-70b-versatile"
+    model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
   });
 }

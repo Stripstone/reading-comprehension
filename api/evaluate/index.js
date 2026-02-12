@@ -8,7 +8,7 @@ import {
 import { json, withCors, readJsonBody } from "../_lib/http.js";
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-const MODEL = "llama-3.1-70b-versatile"; // free + very strong
+const MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile"; // replacement model per Groq deprecations
 
 export default async function handler(req, res) {
   const allowed = [
@@ -61,7 +61,6 @@ export default async function handler(req, res) {
     const parsed = parseMultiCriteriaOutput(modelText);
     let feedback = formatAs4Lines(parsed);
 
-    // retry once if formatting drifted
     if (!isValid4LineFeedback(feedback)) {
       const retry = await fetch(GROQ_URL, {
         method: "POST",
