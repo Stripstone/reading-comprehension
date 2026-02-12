@@ -1437,7 +1437,7 @@
           </div>
 
           <div class="action-buttons">
-            <button class="top-btn" onclick="scrollToTop()">▲ Top</button>
+            <button class="top-btn" onclick="goToNext(${i})">▶ Next</button>
             <button class="ai-btn" data-page="${i}" style="display: none;">▼ AI&nbsp;&nbsp;</button>
           </div>
         </div>
@@ -1670,11 +1670,68 @@
     }
   }
 
+  // ===================================
+  // ▶ NEXT NAVIGATION (keyboard + button)
+  // ===================================
+
   function scrollToTop() {
     const firstPage = document.querySelector('.page');
     if (firstPage) {
       firstPage.scrollIntoView({ behavior: 'instant', block: 'start' });
     }
+  }
+
+  // Go to the next available consolidation textarea (after current pageIndex).
+  // If none remain, blur focus and go to top.
+  function goToNext(pageIndex) {
+    const pagesEls = Array.from(document.querySelectorAll('.page'));
+    if (!pagesEls.length) return;
+
+    // Prefer the next editable, non-sandstone textarea
+    for (let j = pageIndex + 1; j < pagesEls.length; j++) {
+      if (pageData[j]?.isSandstone) continue;
+
+      const ta = pagesEls[j].querySelector('textarea');
+      if (!ta) continue;
+      if (ta.readOnly || ta.disabled) continue;
+
+      pagesEls[j].scrollIntoView({ behavior: 'instant', block: 'start', inline: 'nearest' });
+      ta.focus({ preventScroll: true });
+      return;
+    }
+
+    // No remaining boxes: unfocus and go to top
+    if (document.activeElement && typeof document.activeElement.blur === 'function') {
+      document.activeElement.blur();
+    }
+    scrollToTop();
+  }
+
+  // Keyboard shortcuts:
+  // - Enter (Return) => Next (Shift+Enter keeps newline)
+  // - Escape => unfocus textarea
+  // Works on iPad keyboard and desktop.
+  document.addEventListener('keydown', (e) => {
+    const active = document.activeElement;
+    const isTextarea = active && active.tagName === 'TEXTAREA';
+
+    if (e.key === 'Escape' && isTextarea) {
+      active.blur();
+      return;
+    }
+
+    if (e.key === 'Enter' && isTextarea && !e.shiftKey) {
+      const pageEl = active.closest('.page');
+      if (!pageEl) return;
+
+      const idx = Array.from(document.querySelectorAll('.page')).indexOf(pageEl);
+      if (idx >= 0) {
+        e.preventDefault();
+        goToNext(idx);
+      }
+    }
+  });
+
   }
 
   async function evaluatePageWithAI(pageIndex) {
