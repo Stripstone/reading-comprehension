@@ -322,10 +322,11 @@
 
     function applySelectionToBulkInput(text) {
       bulkInput.value = String(text || "").trim();
-      addPages();
+      // Use unified loader so Book/Text behavior stays consistent with the UI
+      if (typeof loadPages === "function") loadPages();
+      else addPages();
     }
-
-    // Events
+// Events
     sourceSel.addEventListener("change", setSourceUI);
     setSourceUI();
 
@@ -402,10 +403,7 @@
 
 function addPages() {
     const input = document.getElementById("bulkInput").value.trim();
-    goalTime = parseInt(document.getElementById("goalTimeInput").value);
-    goalCharCount = parseInt(document.getElementById("goalCharInput").value);
     if (!input) return;
-
     input.split(/\n---\n|\n## Page\s+\d+/i).forEach(c => {
       const cleaned = c.split("\n").map(l => l.trim()).filter(l => l && !/^[#â€”]/.test(l));
       if (cleaned.length) {
@@ -424,6 +422,45 @@ function addPages() {
     document.getElementById("bulkInput").value = "";
     render();
     checkSubmitButton();
+  }
+
+
+  // Update Goal only: adjust time/character targets without importing pages
+  function updateGoal() {
+    const timeEl = document.getElementById("goalTimeInput");
+    const charEl = document.getElementById("goalCharInput");
+    const newTime = parseInt(timeEl?.value || "", 10);
+    const newChars = parseInt(charEl?.value || "", 10);
+
+    if (Number.isFinite(newTime)) goalTime = newTime;
+    if (Number.isFinite(newChars)) goalCharCount = newChars;
+
+    // Update existing UI labels without re-rendering / resetting textareas
+    document.querySelectorAll(".page").forEach((page, i) => {
+      const timerDiv = page.querySelector(".timer");
+      const cc = page.querySelector(".char-counter");
+      if (timerDiv) timerDiv.textContent = `Timer: ${timers[i] ?? 0} / ${goalTime}`;
+      if (cc) cc.innerHTML = `Characters: <span class="char-count">${pageData[i]?.charCount ?? 0}</span> / ${goalCharCount}`;
+    });
+  }
+
+  // Load Pages: supports both Book and Text sources
+  function loadPages() {
+    // Always apply current goal settings first
+    updateGoal();
+
+    const sourceSel = document.getElementById("importSource");
+    const source = sourceSel ? sourceSel.value : "text";
+
+    if (source === "book") {
+      // Existing book selection button slices into bulkInput and imports.
+      const loadBtn = document.getElementById("loadBookSelection");
+      if (loadBtn) loadBtn.click();
+      return;
+    }
+
+    // Text mode: import from bulk input
+    addPages();
   }
 
   function render() {
@@ -680,7 +717,7 @@ function addPages() {
   function checkCompassUnlock() {
     // Unlock compasses when ALL pages have at least 1 character
     // AND user is not currently focused on any textarea
-    const allHaveText = pageData.every(p => p.charCount > 0);
+    const allHaveText = pageData.every(p => (p.isSandstone || p.charCount > 0));
     const noTextareaFocused = document.activeElement.tagName !== 'TEXTAREA';
     
     if (allHaveText && noTextareaFocused) {
