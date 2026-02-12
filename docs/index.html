@@ -1,172 +1,124 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Reading Comprehension</title>
-  <!-- 
+<meta charset="utf-8"/>
+<title>Reading Comprehension</title>
+<!-- 
     ðŸŽµ BACKGROUND MUSIC SETUP:
     1. Save your audio file in the SAME FOLDER as this HTML file
     2. Replace "your-song-file.mp3" with your actual filename
     3. Supported formats: .mp3, .ogg, .wav
     4. Click the speaker icon (top-right corner) to play/pause
   -->
-  <link rel="stylesheet" href="css/theme.css">
-  <link rel="stylesheet" href="css/components.css">
+<link href="css/theme.css" rel="stylesheet"/>
+<link href="css/components.css" rel="stylesheet"/>
 </head>
 <body>
-
 <!-- Canvas for fire embers -->
 <canvas id="fireCanvas"></canvas>
-
 <!-- 🔊 Sound Effects -->
-<audio id="sandSound" loop>
-  <source src="assets/sand.mp3" type="audio/mpeg">
+<audio id="sandSound" loop="">
+<source src="assets/sand.mp3" type="audio/mpeg"/>
 </audio>
-
 <audio id="stoneSound">
-  <source src="assets/sandstone.mp3" type="audio/mpeg">
+<source src="assets/sandstone.mp3" type="audio/mpeg"/>
 </audio>
-
 <audio id="rewardSound">
-  <source src="assets/reward.mp3" type="audio/mpeg">
+<source src="assets/reward.mp3" type="audio/mpeg"/>
 </audio>
-
 <audio id="compassSound">
-  <source src="assets/compass.mp3" type="audio/mpeg">
+<source src="assets/compass.mp3" type="audio/mpeg"/>
 </audio>
-
 <audio id="pageTurnSound">
-  <source src="assets/page_turn.mp3" type="audio/mpeg">
+<source src="assets/page_turn.mp3" type="audio/mpeg"/>
 </audio>
-
 <audio id="evaluateSound">
-  <source src="assets/evaluate.mp3" type="audio/mpeg">
+<source src="assets/evaluate.mp3" type="audio/mpeg"/>
 </audio>
-
 <!-- Background Music -->
-<audio id="bgMusic" loop>
-  <source src="assets/song.mp3" type="audio/mpeg">
-  <!-- Alternative formats: -->
-  <!-- <source src="your-song-file.ogg" type="audio/ogg"> -->
-  <!-- <source src="your-song-file.wav" type="audio/wav"> -->
+<audio id="bgMusic" loop="">
+<source src="assets/song.mp3" type="audio/mpeg"/>
+<!-- Alternative formats: -->
+<!-- <source src="your-song-file.ogg" type="audio/ogg"> -->
+<!-- <source src="your-song-file.wav" type="audio/wav"> -->
 </audio>
-
 <!-- Music Toggle Button (fixed top-right) -->
-<button id="musicToggle" class="music-button" onclick="toggleMusic()" title="Toggle background music">
-  <span id="musicIcon">🔇</span>
+<button class="music-button" id="musicToggle" onclick="toggleMusic()" title="Toggle background music">
+<span id="musicIcon">🔇</span>
 </button>
-
 <div class="container">
-  <h1>Reading Comprehension</h1>
-
-  <div class="top-controls">
-    <div class="import-row" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin-bottom:12px; position:relative; z-index:1;">
-      <div class="input-group" style="min-width: 160px;">
-        <label class="input-label">Source</label>
-        <select id="importSource" style="padding: 10px 14px; font-size: 15px; font-family: 'Karla', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;">
-          
-          <option value="book" selected>Book</option>
-          <option value="text">Text</option>
-        </select>
-      </div>
-
-      <div id="bookControls" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
-        <div class="input-group" style="min-width: 220px;">
-          <label class="input-label">Book</label>
-          <select id="bookSelect" style="padding: 10px 14px; font-size: 15px; font-family: 'Karla', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;">
-            <option value="">Loading…</option>
-          </select>
-        </div>
-<div id="chapterControls" class="input-group" style="min-width: 280px;">
-          <label class="input-label">Chapter</label>
-          <select id="chapterSelect" style="padding: 10px 14px; font-size: 15px; font-family: 'Karla', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;">
-            <option value="">Select a book first</option>
-          </select>
-        </div>
-
-      <div id="pageControls" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
-        <div class="input-group" style="min-width: 240px;">
-          <label class="input-label">Pages</label>
-          <select id="pageStart" style="padding: 10px 14px; font-size: 15px; font-family: \'Karla\', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;">
-            <option value="">Loading…</option>
-          </select>
-        </div>
-        <div class="input-group" style="min-width: 240px;">
-          <label class="input-label">to</label>
-          <select id="pageEnd" style="padding: 10px 14px; font-size: 15px; font-family: \'Karla\', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;">
-            <option value="">Loading…</option>
-          </select>
-        </div>
-      </div>
+<h1>Reading Comprehension</h1>
+<div class="top-controls">
+<div class="import-row" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin-bottom:12px; position:relative; z-index:1;">
+<div class="input-group" style="min-width: 160px;">
+<label class="input-label">Source</label>
+<select id="importSource" style="padding: 10px 14px; font-size: 15px; font-family: 'Karla', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;"><option selected="selected" value="book">Book</option><option value="text">Text</option></select>
 </div>
+<div id="bookControls" style="flex-wrap:wrap; gap:12px; align-items:flex-end; display:flex;">
+<div class="input-group" style="min-width: 220px;">
+<label class="input-label">Book</label>
+<select id="bookSelect" style="padding: 10px 14px; font-size: 15px; font-family: 'Karla', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;">
+<option value="">Loading…</option>
+</select>
+</div><div class="input-group" id="chapterControls" style="min-width: 280px;"><label class="input-label">Chapter</label><select id="chapterSelect" style="padding: 10px 14px; font-size: 15px; font-family: 'Karla', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;"><option value="">Select a book first</option></select></div><div class="input-group" style="min-width: 280px;"><label class="input-label">Pages</label><select id="pageStartSelect" style="padding: 10px 14px; font-size: 15px; font-family: 'Karla', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;"><option value="">Select a book first</option></select></div><div class="input-group" style="min-width: 280px;"><label class="input-label">To</label><select id="pageEndSelect" style="padding: 10px 14px; font-size: 15px; font-family: 'Karla', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;"><option value="">Select a book first</option></select></div>
 
-        <button id="loadBookSelection" type="button">Load Selection</button>
-      </div>
-    </div>
 
-    <div id="textControls" style="display:none; width:100%;">
-      <textarea id="bulkInput" placeholder="Paste your full .md or text here..." style="height: 80px;"></textarea>
 
-      <p class="descriptor">
+<button id="loadBookSelection" type="button">Load Selection</button>
+</div>
+</div>
+<div id="textControls" style="display:none;"><textarea id="bulkInput" placeholder="Paste your full .md or text here..." style="height: 80px;"></textarea><p class="descriptor">
       Paste all pages at once. Pages will be split automatically using <code>---</code> or <code>## Page X</code>. Lines starting with <code>#</code> or <code>—</code> are excluded.
-    </p>
-    </div>
+    </p></div>
 
-    <div class="goal-time-row">
-      <div class="input-group">
-        <label class="input-label">Time (sec)</label>
-        <input type="number" id="goalTimeInput" min="5">
-      </div>
-      <div class="input-group">
-        <label class="input-label">Characters</label>
-        <input type="number" id="goalCharInput" min="10">
-      </div>
-      <button onclick="addPages()">Update Goal & Add Pages</button>
-    </div>
-  </div>
-
-  <div id="pages"></div>
-
-  <div class="controls">
-    <button onclick="clearSession()">Clear All Pages</button>
-    <button class="submit-btn" id="submitBtn" onclick="submitEvaluation()" disabled>Submit for Evaluation</button>
-  </div>
-
-  <!-- Verdict Section -->
-  <div class="verdict-section" id="verdictSection">
-    <div class="seal">ðŸ›ï¸</div>
-    <div class="tier-name" id="tierName">Masterful</div>
-    
-    <div class="score-breakdown">
-      <div class="score-item">
-        <div class="score-label">Completion</div>
-        <div class="score-value" id="completionScore">70</div>
-      </div>
-      <div class="score-item">
-        <div class="score-label">Depth</div>
-        <div class="score-value" id="depthScore">20</div>
-      </div>
-      <div class="score-item">
-        <div class="score-label">Reflection</div>
-        <div class="score-value" id="reflectionScore">10</div>
-      </div>
-    </div>
-
-    <div class="total-score">
-      <div class="score-label">Total Score</div>
-      <div class="score-value" id="totalScore">100</div>
-    </div>
-  </div>
-
-  <div class="controls">
-    <button onclick="clearSession()">Clear All Pages</button>
-  </div>
+<div class="goal-time-row">
+<div class="input-group">
+<label class="input-label">Time (sec)</label>
+<input id="goalTimeInput" min="5" type="number"/>
 </div>
-
+<div class="input-group">
+<label class="input-label">Characters</label>
+<input id="goalCharInput" min="10" type="number"/>
+</div>
+<button onclick="addPages()">Update Goal &amp; Add Pages</button>
+</div>
+</div>
+<div id="pages"></div>
+<div class="controls">
+<button onclick="clearSession()">Clear All Pages</button>
+<button class="submit-btn" disabled="" id="submitBtn" onclick="submitEvaluation()">Submit for Evaluation</button>
+</div>
+<!-- Verdict Section -->
+<div class="verdict-section" id="verdictSection">
+<div class="seal">ðŸ›ï¸</div>
+<div class="tier-name" id="tierName">Masterful</div>
+<div class="score-breakdown">
+<div class="score-item">
+<div class="score-label">Completion</div>
+<div class="score-value" id="completionScore">70</div>
+</div>
+<div class="score-item">
+<div class="score-label">Depth</div>
+<div class="score-value" id="depthScore">20</div>
+</div>
+<div class="score-item">
+<div class="score-label">Reflection</div>
+<div class="score-value" id="reflectionScore">10</div>
+</div>
+</div>
+<div class="total-score">
+<div class="score-label">Total Score</div>
+<div class="score-value" id="totalScore">100</div>
+</div>
+</div>
+<div class="controls">
+<button onclick="clearSession()">Clear All Pages</button>
+</div>
+</div>
 <script src="js/audio.js"></script>
 <script src="js/embers.js"></script>
 <script src="js/config.js"></script>
 <script src="js/app.js"></script>
-
 </body>
 </html>

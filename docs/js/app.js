@@ -103,301 +103,455 @@
     return chapters;
   }
 
-  async function initBookImporter() {
+
+    async function initBookImporter() {
     const sourceSel = document.getElementById("importSource");
     const bookControls = document.getElementById("bookControls");
     const textControls = document.getElementById("textControls");
     const bookSelect = document.getElementById("bookSelect");
     const chapterControls = document.getElementById("chapterControls");
     const chapterSelect = document.getElementById("chapterSelect");
-    const pageControls = document.getElementById("pageControls");
-    const pageStart = document.getElementById("pageStart");
-    const pageEnd = document.getElementById("pageEnd");
+    const pageStartSelect = document.getElementById("pageStartSelect");
+    const pageEndSelect = document.getElementById("pageEndSelect");
     const loadBtn = document.getElementById("loadBookSelection");
     const bulkInput = document.getElementById("bulkInput");
 
-    if (!sourceSel || !bookControls || !bookSelect || !chapterControls || !chapterSelect || !pageControls || !pageStart || !pageEnd || !loadBtn || !bulkInput) {
-      console.warn("Book importer: missing required elements");
-      return;
-    }
+    if (!sourceSel || !bookControls || !textControls || !bookSelect || !chapterControls || !chapterSelect || !pageStartSelect || !pageEndSelect || !loadBtn || !bulkInput) return;
 
-    let manifest = [];
-    let currentBookRaw = "";
-    let hasExplicitChapters = false;
-
-    // When chapters exist, we keep chapter pages in memory
-    let chapterList = []; // {title, raw}
-    let currentPages = []; // [{title, text}]
-    let currentChapterIndex = null;
-
+    // ---- UI helpers ----
     function setSourceUI() {
-      const isBook = sourceSel.value === "book";
-      bookControls.style.display = isBook ? "flex" : "none";
-      if (textControls) textControls.style.display = isBook ? "none" : "block";
-    }
-
-    function countExplicitH1(text) {
-      const lines = String(text || "").split(/\r?\n/);
-      let count = 0;
-      for (const line of lines) if (/^\s{0,3}#\s+/.test(line)) count++;
-      return count;
-    }
-
-    function parsePagesWithTitles(raw) {
-      const text = String(raw || "");
-      const lines = text.split(/\r?\n/);
-
-      const pages = [];
-      let cur = null;
-
-      function push() {
-        if (!cur) return;
-        const cleaned = cur.lines
-          .map(l => l.trim())
-          .filter(l => l && !/^\s{0,3}#{1,6}\s+/.test(l) && !/^\s*[—-]{2,}\s*$/.test(l));
-
-        const body = cleaned.join(" ").trim();
-        if (body) pages.push({ title: cur.title, text: body });
+      const src = sourceSel.value;
+      if (src === "book") {
+        bookControls.style.display = "flex";
+        textControls.style.display = "none";
+      } else {
+        bookControls.style.display = "none";
+        textControls.style.display = "block";
       }
+    }
+
+    function setSelectOptions(sel, options, placeholder) {
+      sel.innerHTML = "";
+      const ph = document.createElement("option");
+      ph.value = "";
+      ph.textContent = placeholder || "Select…";
+      sel.appendChild(ph);
+      for (const opt of options) {
+        const o = document.createElement("option");
+        o.value = String(opt.value);
+        o.textContent = String(opt.label);
+        sel.appendChild(o);
+      }
+    }
+
+    function setDisabled(sel, isDisabled) {
+      sel.disabled = !!isDisabled;
+    }
+
+    // ---- Parsing ----
+    // We keep content-cleaning consistent with existing addPages(): remove blank lines and header-ish lines.
+    function cleanContentLines(lines) {
+      return (lines || [])
+        .map(l => String(l || "").trim())
+        .filter(l => l && l !== "---" && !/^[#—]/.test(l));
+    }
+
+    function parseBookMarkdown(raw) {
+      const lines = String(raw || "").replace(/\r\n/g, "\n").split("\n");
+
+      const chapters = [];
+      let currentChapter = null;
+      let currentPage = null;
+
+      function pushPage() {
+        if (currentChapter && currentPage) {
+          const cleaned = cleanContentLines(currentPage.lines);
+          currentChapter.pages.push({
+            title: currentPage.title || `Page ${currentChapter.pages.length + 1}`,
+            text: cleaned.join(" ")
+          });
+        }
+        currentPage = null;
+      }
+
+      function pushChapter() {
+        if (currentChapter) {
+          pushPage();
+          // drop empty pages
+          currentChapter.pages = currentChapter.pages.filter(p => p.text && p.text.trim().length);
+          chapters.push(currentChapter);
+        }
+        currentChapter = null;
+      }
+
+      const h1Re = /^#\s+(.+)\s*$/;
+      const h2Re = /^##\s+(.+)\s*$/;
 
       for (const line of lines) {
-        const h2 = line.match(/^\s{0,3}##\s+(.*)\s*$/);
-        if (h2) {
-          push();
-          const title = (h2[1] || "").trim() || `Page ${pages.length + 1}`;
-          cur = { title, lines: [] };
+        const h1 = line.match(h1Re);
+        if (h1) {
+          pushChapter();
+          currentChapter = { title: h1[1].trim(), pages: [] };
+          currentPage = null;
           continue;
         }
-        if (!cur) cur = { title: "Page 1", lines: [] };
-        cur.lines.push(line);
-      }
-      push();
-
-      // Fallback: if no H2 pages were detected, try --- separators
-      if (pages.length <= 1) {
-        const blocks = String(raw || "").trim().split(/\n---\n/g);
-        if (blocks.length > 1) {
-          const out = [];
-          blocks.forEach((blk, i) => {
-            const cleaned = blk.split(/\r?\n/)
-              .map(l => l.trim())
-              .filter(l => l && !/^\s{0,3}#{1,6}\s+/.test(l) && !/^\s*[—-]{2,}\s*$/.test(l));
-            const body = cleaned.join(" ").trim();
-            if (body) out.push({ title: `Page ${out.length + 1}`, text: body });
-          });
-          return out.length ? out : pages;
+        const h2 = line.match(h2Re);
+        if (h2) {
+          if (!currentChapter) currentChapter = { title: "Introduction", pages: [] };
+          pushPage();
+          currentPage = { title: h2[1].trim(), lines: [] };
+          continue;
         }
+
+        // If we have no explicit pages but see separators, treat as page boundaries (fallback behavior)
+        if (line.trim() === "---") {
+          if (!currentChapter) currentChapter = { title: "Introduction", pages: [] };
+          if (!currentPage) currentPage = { title: `Page ${currentChapter.pages.length + 1}`, lines: [] };
+          pushPage();
+          continue;
+        }
+
+        if (!currentChapter) currentChapter = { title: "Introduction", pages: [] };
+        if (!currentPage) currentPage = { title: `Page ${currentChapter.pages.length + 1}`, lines: [] };
+        currentPage.lines.push(line);
       }
 
-      return pages;
-    }
+      pushChapter();
 
-    function setSelectOptions(selectEl, options, placeholder) {
-      selectEl.innerHTML = "";
-      if (placeholder) {
-        const opt = document.createElement("option");
-        opt.value = "";
-        opt.textContent = placeholder;
-        selectEl.appendChild(opt);
-      }
-      options.forEach((o) => {
-        const opt = document.createElement("option");
-        opt.value = String(o.value);
-        opt.textContent = o.label;
-        selectEl.appendChild(opt);
-      });
-    }
+      // Determine if chapters are "real" (more than one H1) — otherwise treat as no-chapter doc.
+      const hasMultipleChapters = chapters.length > 1;
 
-    function populatePagesSelect(pages) {
-      currentPages = pages || [];
-      if (!currentPages.length) {
-        setSelectOptions(pageStart, [], "No pages detected");
-        setSelectOptions(pageEnd, [], "No pages detected");
-        return;
+      if (!hasMultipleChapters) {
+        // Flatten into single pseudo-chapter and hide chapter UI.
+        const allPages = (chapters[0]?.pages || []);
+        return { hasChapters: false, chapters: [{ title: "", pages: allPages }] };
       }
 
-      const opts = currentPages.map((p, idx) => ({
-        value: idx,
-        label: `${idx + 1}. ${p.title || `Page ${idx + 1}`}`
-      }));
-
-      setSelectOptions(pageStart, opts, "Start page…");
-      setSelectOptions(pageEnd, opts, "End page…");
-
-      // Default to full range
-      pageStart.value = "0";
-      pageEnd.value = String(currentPages.length - 1);
+      return { hasChapters: true, chapters };
     }
 
-    function getCurrentChapterRaw() {
-      if (hasExplicitChapters && Number.isFinite(currentChapterIndex) && chapterList[currentChapterIndex]) {
-        return chapterList[currentChapterIndex].raw;
-      }
-      return currentBookRaw;
-    }
-
-    function refreshChapterAndPagesUI() {
-      // Chapters present?
-      if (!hasExplicitChapters) {
-        chapterControls.style.display = "none";
-        currentChapterIndex = null;
-        const pages = parsePagesWithTitles(currentBookRaw);
-        populatePagesSelect(pages);
-        return;
-      }
-
-      chapterControls.style.display = "flex";
-      const chapOpts = chapterList.map((ch, idx) => ({ value: idx, label: ch.title || `Chapter ${idx + 1}` }));
-      setSelectOptions(chapterSelect, chapOpts, "Select a chapter…");
-      chapterSelect.value = "0";
-      currentChapterIndex = 0;
-
-      const pages = parsePagesWithTitles(getCurrentChapterRaw());
-      populatePagesSelect(pages);
-    }
+    // ---- Manifest + state ----
+    let manifest = [];
+    let currentBook = null; // {hasChapters, chapters}
+    let selectedChapterIndex = 0;
 
     async function loadManifest() {
-      const candidates = [
-        "assets/books/index.json",
-        "index.json"
-      ];
-
+      const paths = ["assets/books/index.json", "index.json"];
       let lastErr = null;
-      for (const path of candidates) {
+
+      for (const p of paths) {
         try {
-          const res = await fetch(path, { cache: "no-cache" });
-          if (!res.ok) throw new Error(`manifest fetch failed (${res.status}) at ${path}`);
+          const res = await fetch(p, { cache: "no-cache" });
+          if (!res.ok) throw new Error(`manifest fetch failed: ${p} (${res.status})`);
           const data = await res.json();
-          manifest = (Array.isArray(data) ? data : []).map((b) => {
+          const arr = Array.isArray(data) ? data : [];
+          manifest = arr.map((b) => {
             const id = b.id || b.name || "";
-            const p = b.path || (id ? `assets/books/${id}.md` : "");
+            const path = b.path || (id ? `assets/books/${id}.md` : "");
             const title = b.title || titleFromBookId(id) || id || "Untitled";
-            return { id, title, path: p };
+            return { id, title, path };
           }).filter(b => b.id && b.path);
 
+          setSelectOptions(
+            bookSelect,
+            manifest.map(b => ({ value: b.id, label: b.title })),
+            manifest.length ? "Select a book" : "No books found"
+          );
           return;
         } catch (e) {
           lastErr = e;
         }
       }
-      throw lastErr || new Error("manifest fetch failed");
+
+      console.error(lastErr);
+      bookSelect.innerHTML = `<option value="">Failed to load manifest</option>`;
+    }
+
+    async function loadBookById(bookId) {
+      const entry = manifest.find(b => b.id === bookId);
+      if (!entry) return;
+
+      chapterSelect.innerHTML = `<option value="">Loading…</option>`;
+      pageStartSelect.innerHTML = `<option value="">Loading…</option>`;
+      pageEndSelect.innerHTML = `<option value="">Loading…</option>`;
+      setDisabled(chapterSelect, true);
+      setDisabled(pageStartSelect, true);
+      setDisabled(pageEndSelect, true);
+
+      try {
+        const res = await fetch(entry.path, { cache: "no-cache" });
+        if (!res.ok) throw new Error(`book fetch failed: ${entry.path} (${res.status})`);
+        const raw = await res.text();
+        currentBook = parseBookMarkdown(raw);
+
+        // Chapters UI
+        if (currentBook.hasChapters) {
+          chapterControls.style.display = "flex";
+          setSelectOptions(
+            chapterSelect,
+            currentBook.chapters.map((c, idx) => ({ value: idx, label: c.title || `Chapter ${idx + 1}` })),
+            "Select chapter"
+          );
+          setDisabled(chapterSelect, false);
+          selectedChapterIndex = 0;
+          chapterSelect.value = "0";
+        } else {
+          chapterControls.style.display = "none";
+          chapterSelect.innerHTML = `<option value="0">All</option>`;
+          selectedChapterIndex = 0;
+        }
+
+        populatePagesForChapter(selectedChapterIndex);
+      } catch (e) {
+        console.error(e);
+        chapterSelect.innerHTML = `<option value="">Failed to load book</option>`;
+        pageStartSelect.innerHTML = `<option value="">Failed to load book</option>`;
+        pageEndSelect.innerHTML = `<option value="">Failed to load book</option>`;
+      }
+    }
+
+    function getCurrentPages() {
+      const chap = currentBook?.chapters?.[selectedChapterIndex] || currentBook?.chapters?.[0];
+      return chap?.pages || [];
+    }
+
+    function populatePagesForChapter(chapterIdx) {
+      selectedChapterIndex = Number(chapterIdx) || 0;
+      const pagesForChapter = getCurrentPages();
+
+      const options = pagesForChapter.map((p, idx) => ({
+        value: idx,
+        label: `${idx + 1}. ${p.title || `Page ${idx + 1}`}`
+      }));
+
+      const placeholder = options.length ? "Select page" : "No pages found";
+      setSelectOptions(pageStartSelect, options, placeholder);
+      setSelectOptions(pageEndSelect, options, placeholder);
+
+      const disabled = !options.length;
+      setDisabled(pageStartSelect, disabled);
+      setDisabled(pageEndSelect, disabled);
+
+      if (options.length) {
+        pageStartSelect.value = "0";
+        pageEndSelect.value = String(options.length - 1);
+      }
+    }
+
+    function clampRange(startIdx, endIdx, max) {
+      let s = Math.max(0, Math.min(startIdx, max));
+      let e = Math.max(0, Math.min(endIdx, max));
+      if (e < s) e = s;
+      return [s, e];
+    }
+
+    function addPagesFromArray(texts) {
+      const t = (texts || []).map(x => String(x || "").trim()).filter(Boolean);
+      if (!t.length) return;
+
+      goalTime = parseInt(document.getElementById("goalTimeInput").value);
+      goalCharCount = parseInt(document.getElementById("goalCharInput").value);
+
+      for (const pageText of t) {
+        pages.push(pageText);
+        pageData.push({
+          text: pageText,
+          consolidation: "",
+          charCount: 0,
+          completedOnTime: true,
+          isSandstone: false,
+          rating: 0
+        });
+      }
+      render();
+      checkSubmitButton();
+    }
+
+    // ---- Wiring ----
+    sourceSel.addEventListener("change", setSourceUI);
+
+    bookSelect.addEventListener("change", async () => {
+      const id = bookSelect.value;
+      if (!id) return;
+      await loadBookById(id);
+    });
+
+    chapterSelect.addEventListener("change", () => {
+      populatePagesForChapter(chapterSelect.value);
+    });
+
+    // Keep end >= start for convenience
+    pageStartSelect.addEventListener("change", () => {
+      if (Number(pageEndSelect.value) < Number(pageStartSelect.value)) {
+        pageEndSelect.value = pageStartSelect.value;
+      }
+    });
+
+    loadBtn.addEventListener("click", () => {
+      if (!currentBook) return;
+
+      const pagesForChapter = getCurrentPages();
+      if (!pagesForChapter.length) return;
+
+      const max = pagesForChapter.length - 1;
+      const [s, e] = clampRange(Number(pageStartSelect.value), Number(pageEndSelect.value), max);
+      const selected = pagesForChapter.slice(s, e + 1).map(p => p.text).filter(Boolean);
+
+      addPagesFromArray(selected);
+    });
+
+    // Init defaults
+    sourceSel.value = "book";
+    setSourceUI();
+    await loadManifest();
+  }    }
+
+    async function loadManifest() {
+      try {
+        const res = await fetch("assets/books/index.json", { cache: "no-cache" });
+        if (!res.ok) throw new Error("manifest fetch failed");
+        const data = await res.json();
+        manifest = (Array.isArray(data) ? data : []).map((b) => {
+          const id = b.id || b.name || "";
+          const path = b.path || (id ? `assets/books/${id}.md` : "");
+          const title = b.title || titleFromBookId(id) || id || "Untitled";
+          return { id, title, path };
+        }).filter(b => b.id && b.path);
+
+        bookSelect.innerHTML = "";
+        if (manifest.length === 0) {
+          const opt = document.createElement("option");
+          opt.value = "";
+          opt.textContent = "No books found";
+          bookSelect.appendChild(opt);
+          return;
+        }
+
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = "Select a book…";
+        bookSelect.appendChild(placeholder);
+
+        manifest.forEach((b) => {
+          const opt = document.createElement("option");
+          opt.value = b.id;
+          opt.textContent = b.title;
+          bookSelect.appendChild(opt);
+        });
+      } catch (e) {
+        bookSelect.innerHTML = "";
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "Failed to load manifest";
+        bookSelect.appendChild(opt);
+        console.error("Book manifest load error:", e);
+      }
     }
 
     async function loadBook(id) {
       currentBookRaw = "";
-      chapterList = [];
-      hasExplicitChapters = false;
-      currentChapterIndex = null;
-
-      setSelectOptions(chapterSelect, [], "Loading…");
-      setSelectOptions(pageStart, [], "Loading…");
-      setSelectOptions(pageEnd, [], "Loading…");
+      currentBookPages = [];
+      currentBookChapters = [];
+      chapterSelect.innerHTML = "<option value=''>Loading…</option>";
 
       const entry = manifest.find(b => b.id === id);
       if (!entry) {
-        setSelectOptions(chapterSelect, [], "Select a book first");
-        setSelectOptions(pageStart, [], "Select a book first");
-        setSelectOptions(pageEnd, [], "Select a book first");
+        chapterSelect.innerHTML = "<option value=''>Select a book first</option>";
         return;
       }
 
       try {
         const res = await fetch(entry.path, { cache: "no-cache" });
-        if (!res.ok) throw new Error(`book fetch failed (${res.status}) at ${entry.path}`);
+        if (!res.ok) throw new Error("book fetch failed");
         currentBookRaw = await res.text();
 
-        hasExplicitChapters = countExplicitH1(currentBookRaw) > 0;
-        if (hasExplicitChapters) {
-          chapterList = parseChaptersFromMarkdown(currentBookRaw);
-        }
+        currentBookPages = splitIntoPages(currentBookRaw);
+        currentBookChapters = parseChaptersFromMarkdown(currentBookRaw);
 
-        refreshChapterAndPagesUI();
+        const max = Math.max(1, currentBookPages.length || 1);
+        rangeStart.max = String(max);
+        rangeEnd.max = String(max);
+        rangeStart.value = "1";
+        rangeEnd.value = String(max);
+
+        chapterSelect.innerHTML = "";
+        if (currentBookChapters.length === 0) {
+          const opt = document.createElement("option");
+          opt.value = "";
+          opt.textContent = "No chapters detected";
+          chapterSelect.appendChild(opt);
+        } else {
+          const opt0 = document.createElement("option");
+          opt0.value = "";
+          opt0.textContent = "Select a chapter…";
+          chapterSelect.appendChild(opt0);
+
+          currentBookChapters.forEach((ch, idx) => {
+            const opt = document.createElement("option");
+            opt.value = String(idx);
+            opt.textContent = ch.title || `Chapter ${idx + 1}`;
+            chapterSelect.appendChild(opt);
+          });
+        }
       } catch (e) {
-        setSelectOptions(chapterSelect, [], "Failed to load book");
-        setSelectOptions(pageStart, [], "Failed to load book");
-        setSelectOptions(pageEnd, [], "Failed to load book");
+        chapterSelect.innerHTML = "<option value=''>Failed to load book</option>";
         console.error("Book load error:", e);
       }
     }
 
-    function applySelectionToBulkInput(text) {
-      bulkInput.value = String(text || "").trim();
+    function applySelectionToBulkInput(payload) {
+      let text = "";
+      if (Array.isArray(payload)) {
+        text = payload.join("\n---\n");
+      } else {
+        text = String(payload || "").trim();
+      }
+      bulkInput.value = text;
       addPages();
     }
 
     // Events
-    sourceSel.addEventListener("change", setSourceUI);
-    setSourceUI();
+    sourceSel.addEventListener("change", () => {
+      const isBook = sourceSel.value === "book";
+      bookControls.style.display = isBook ? "flex" : "none";
+    });
+
+    modeSel.addEventListener("change", setModeUI);
+    setModeUI();
 
     bookSelect.addEventListener("change", async () => {
       const id = bookSelect.value;
-      if (!id) return;
+      if (!id) {
+        chapterSelect.innerHTML = "<option value=''>Select a book first</option>";
+        return;
+      }
       await loadBook(id);
-    });
-
-    chapterSelect.addEventListener("change", () => {
-      const idx = parseInt(chapterSelect.value || "", 10);
-      if (!Number.isFinite(idx)) return;
-      currentChapterIndex = idx;
-      const pages = parsePagesWithTitles(getCurrentChapterRaw());
-      populatePagesSelect(pages);
-    });
-
-    // Keep end >= start
-    pageStart.addEventListener("change", () => {
-      const s = parseInt(pageStart.value || "0", 10);
-      const e = parseInt(pageEnd.value || "0", 10);
-      if (Number.isFinite(s) && Number.isFinite(e) && e < s) pageEnd.value = String(s);
-    });
-    pageEnd.addEventListener("change", () => {
-      const s = parseInt(pageStart.value || "0", 10);
-      const e = parseInt(pageEnd.value || "0", 10);
-      if (Number.isFinite(s) && Number.isFinite(e) && e < s) pageStart.value = String(e);
     });
 
     loadBtn.addEventListener("click", () => {
       if (!currentBookRaw) return;
-      if (!currentPages.length) return;
 
-      const s = Math.max(0, parseInt(pageStart.value || "0", 10));
-      const e = Math.max(s, parseInt(pageEnd.value || String(s), 10));
+      const mode = modeSel.value;
+      if (mode === "pages") {
+        const start = Math.max(1, parseInt(rangeStart.value || "1", 10));
+        const end = Math.max(start, parseInt(rangeEnd.value || String(start), 10));
+        const max = currentBookPages.length || 0;
+        if (max === 0) return;
 
-      const slice = currentPages.slice(s, e + 1).map(p => p.text).filter(Boolean);
-      applySelectionToBulkInput(slice.join("\n---\n"));
-    });
-
-    try {
-      await loadManifest();
-      // Populate book select
-      bookSelect.innerHTML = "";
-      if (manifest.length === 0) {
-        const opt = document.createElement("option");
-        opt.value = "";
-        opt.textContent = "No books found";
-        bookSelect.appendChild(opt);
+        const s = Math.min(start, max) - 1;
+        const e = Math.min(end, max);
+        applySelectionToBulkInput(currentBookPages.slice(s, e));
         return;
       }
-      const placeholder = document.createElement("option");
-      placeholder.value = "";
-      placeholder.textContent = "Select a book…";
-      bookSelect.appendChild(placeholder);
 
-      manifest.forEach((b) => {
-        const opt = document.createElement("option");
-        opt.value = b.id;
-        opt.textContent = b.title;
-        bookSelect.appendChild(opt);
-      });
-    } catch (e) {
-      bookSelect.innerHTML = "";
-      const opt = document.createElement("option");
-      opt.value = "";
-      opt.textContent = "Failed to load manifest";
-      bookSelect.appendChild(opt);
-      console.error("Book manifest load error:", e);
-    }
+      const idx = parseInt(chapterSelect.value || "", 10);
+      if (Number.isFinite(idx) && currentBookChapters[idx]) {
+        applySelectionToBulkInput(currentBookChapters[idx].raw);
+      }
+    });
+
+    await loadManifest();
   }
-
 
 
 function addPages() {
