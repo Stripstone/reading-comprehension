@@ -29,6 +29,19 @@
   const compassSound = document.getElementById("compassSound");
   const pageTurnSound = document.getElementById("pageTurnSound");
   const evaluateSound = document.getElementById("evaluateSound");
+
+	// SFX helper: avoid mobile autoplay promise rejections and honor the global mute toggle.
+	function playSfx(audioEl) {
+	  if (!audioEl) return;
+	  // audio.js defines this flag globally
+	  if (typeof allSoundsMuted !== "undefined" && allSoundsMuted) return;
+	  // Many mobile browsers will reject play() when the tab isn't visible/focused.
+	  if (document.hidden) return;
+	  try {
+	    const p = audioEl.play();
+	    if (p && typeof p.catch === "function") p.catch(() => {});
+	  } catch (_) {}
+	}
   
   // Set initial volumes
   sandSound.volume = SAND_VOLUME;
@@ -355,25 +368,23 @@
       if (Number.isFinite(s) && Number.isFinite(e) && e < s) pageStart.value = String(e);
     });
 
-    loadBtn.addEventListener("click", () => {
-      const src = (sourceSel.value || "book").toLowerCase();
-      // Single "Load Pages" button supports both Book and Text sources
-      if (src === "text") {
-        addPages();
-        return;
-      }
+	loadBtn.addEventListener("click", () => {
+	  // Single "Load Pages" button serves both sources.
+	  if (sourceSel.value === "text") {
+	    addPages();
+	    return;
+	  }
 
-      if (!currentBookRaw) return;
-      if (!currentPages.length) return;
+	  // Book mode
+	  if (!currentBookRaw) return;
+	  if (!currentPages.length) return;
 
-      const s = Math.max(0, parseInt(pageStart.value || "0", 10));
-      const e = Math.max(s, parseInt(pageEnd.value || String(s), 10));
+	  const s = Math.max(0, parseInt(pageStart.value || "0", 10));
+	  const e = Math.max(s, parseInt(pageEnd.value || String(s), 10));
 
-      const slice = currentPages.slice(s, e + 1).map(p => p.text).filter(Boolean);
-      applySelectionToBulkInput(slice.join("\n---\n"));
-      // Immediately import into pages (replaces the old "Update Goal & Add Pages" flow)
-      addPages();
-    });;
+	  const slice = currentPages.slice(s, e + 1).map(p => p.text).filter(Boolean);
+	  applySelectionToBulkInput(slice.join("\n---\n"));
+	});
 
     try {
       await loadManifest();
@@ -521,7 +532,7 @@ function addPages() {
           page.classList.add('page-active');
           if (!allSoundsMuted) {
             pageTurnSound.currentTime = 0;
-            pageTurnSound.play();
+			playSfx(pageTurnSound);
           }
         }
         startTimer(i, sand, timerDiv, wrapper, textarea);
@@ -623,7 +634,7 @@ function addPages() {
         if (!sandSoundStarted) {
           sandSound.currentTime = 0;
           if (!allSoundsMuted) {
-            sandSound.play();
+			playSfx(sandSound);
           }
           sandSoundStarted = true;
         }
@@ -642,7 +653,7 @@ function addPages() {
         sandSound.pause();
         if (!allSoundsMuted) {
           stoneSound.currentTime = 0;
-          stoneSound.play();
+			playSfx(stoneSound);
         }
 
         wrapper.classList.add("sandstone");
@@ -689,7 +700,8 @@ function addPages() {
   function checkCompassUnlock() {
     // Unlock compasses when ALL pages have at least 1 character
     // AND user is not currently focused on any textarea
-    const allHaveText = pageData.every(p => (p.isSandstone || p.charCount > 0));
+	    // Treat sandstoned pages as "done" even if the user left them blank.
+	    const allHaveText = pageData.every(p => p.isSandstone || p.charCount > 0);
     const noTextareaFocused = document.activeElement.tagName !== 'TEXTAREA';
     
     if (allHaveText && noTextareaFocused) {
@@ -719,7 +731,7 @@ function addPages() {
       // Play evaluation sound once when unlocking
       if (anyUnlocked && !allSoundsMuted) {
         evaluateSound.currentTime = 0;
-        evaluateSound.play();
+		playSfx(evaluateSound);
       }
     }
   }
@@ -930,7 +942,7 @@ function addPages() {
     // Play compass click sound
     if (!allSoundsMuted) {
       compassSound.currentTime = 0;
-      compassSound.play();
+		playSfx(compassSound);
     }
     
     // Mark this compass group as rated (stops animation)
@@ -1131,7 +1143,7 @@ function addPages() {
     // Play reward sound
     if (!allSoundsMuted) {
       rewardSound.currentTime = 0;
-      rewardSound.play();
+		playSfx(rewardSound);
     }
     
     // Optional: Trigger confetti for Masterful

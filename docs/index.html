@@ -84,7 +84,7 @@
           </select>
         </div>
 
-        <div id="pageControls" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
+	      <div id="pageControls" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
           <div class="input-group" style="min-width: 240px;">
             <label class="input-label">Pages</label>
             <select id="pageStart" style="padding: 10px 14px; font-size: 15px; font-family: 'Karla', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;">
@@ -99,6 +99,8 @@
             </select>
           </div>
         </div>
+
+	        <!-- Load button is positioned in the goal row to serve both Book + Text -->
       </div>
     </div>
     <div id="textControls" style="display:none; width:100%;">
@@ -109,30 +111,29 @@
     </p>
     </div>
 
-    <div class="goal-time-row">
-      <div class="input-group">
-        <label class="input-label">Time (sec)</label>
-        <input type="number" id="goalTimeInput" min="5">
-      </div>
-      <div class="input-group">
-        <label class="input-label">Characters</label>
-        <input type="number" id="goalCharInput" min="10">
-      </div>
-      <button id="loadBookSelection" type="button">Load Pages</button>
-      
-      <!-- NEW LOCATION -->
-      <button onclick="clearSession()" style="margin-left:auto;">
-        Clear All Pages
-      </button>
+	    <div class="goal-time-row">
+	      <div class="input-group">
+	        <label class="input-label">Time (sec)</label>
+	        <input type="number" id="goalTimeInput" min="5">
+	      </div>
+	      <div class="input-group">
+	        <label class="input-label">Characters</label>
+	        <input type="number" id="goalCharInput" min="10">
+	      </div>
 
-    </div>
+	      <!-- Replaces legacy "Update Goal & Add Pages" in the same position area -->
+	      <div style="margin-left:auto; display:flex; gap:10px; align-items:center;">
+	        <button id="loadBookSelection" type="button">Load Pages</button>
+	        <button type="button" onclick="clearSession()">Clear All Pages</button>
+	      </div>
+	    </div>
   </div>
 
   <div id="pages"></div>
 
-  <div class="controls">
-    <button class="submit-btn" id="submitBtn" onclick="submitEvaluation()" disabled>Submit for Evaluation</button>
-  </div>
+	  <div class="controls">
+	    <button class="submit-btn" id="submitBtn" onclick="submitEvaluation()" disabled>Submit for Evaluation</button>
+	  </div>
 
   <!-- Verdict Section -->
   <div class="verdict-section" id="verdictSection">

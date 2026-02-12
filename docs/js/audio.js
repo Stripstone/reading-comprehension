@@ -15,10 +15,13 @@
       stoneSound.pause();
       rewardSound.pause();
       compassSound.pause();
+	    pageTurnSound.pause();
+	    evaluateSound.pause();
       musicIcon.textContent = '🔇';
     } else {
       // Unmute - background music plays, others play as triggered
-      music.play();
+	    const p = music.play();
+	    if (p && typeof p.catch === 'function') p.catch(() => {});
       musicIcon.textContent = '🔊';
     }
   }
