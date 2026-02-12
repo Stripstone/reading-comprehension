@@ -322,9 +322,7 @@
 
     function applySelectionToBulkInput(text) {
       bulkInput.value = String(text || "").trim();
-      // Use unified loader so Book/Text behavior stays consistent with the UI
-      if (typeof loadPages === "function") loadPages();
-      else addPages();
+      addPages();
     }
 // Events
     sourceSel.addEventListener("change", setSourceUI);
@@ -446,18 +444,12 @@ function addPages() {
 
   // Load Pages: supports both Book and Text sources
   function loadPages() {
-    // Always apply current goal settings first
-    updateGoal();
-
     const sourceSel = document.getElementById("importSource");
     const source = sourceSel ? sourceSel.value : "text";
 
-    if (source === "book") {
-      // Existing book selection button slices into bulkInput and imports.
-      const loadBtn = document.getElementById("loadBookSelection");
-      if (loadBtn) loadBtn.click();
-      return;
-    }
+    // In Book mode, the existing loadBookSelection click handler performs the slice/import.
+    // We do nothing here so the native click handler can run.
+    if (source === "book") return;
 
     // Text mode: import from bulk input
     addPages();
