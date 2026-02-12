@@ -75,6 +75,10 @@
     const text = String(raw || "");
     const lines = text.split(/\r?\n/);
 
+    // If there are no H1 headings at all, treat as "no chapters".
+    const hasAnyH1 = lines.some(l => /^\s{0,3}#\s+\S/.test(l));
+    if (!hasAnyH1) return [];
+
     const chapters = [];
     let current = null;
 
@@ -94,7 +98,7 @@
         continue;
       }
 
-      // Everything else belongs to the current chapter (or implicit intro)
+      // Everything else belongs to the current chapter (or intro before first H1)
       if (!current) current = { title: "Introduction", rawLines: [] };
       current.rawLines.push(line);
     }
@@ -103,36 +107,85 @@
     return chapters;
   }
 
+  function parsePagesFromMarkdown(raw) {
+    const text = String(raw || "");
+    const lines = text.split(/\r?\n/);
+
+    const pages = [];
+    let current = null;
+
+    function pushCurrent() {
+      if (!current) return;
+      const rawText = current.rawLines.join("\n").trim();
+      if (rawText) pages.push({ title: current.title, raw: rawText });
+    }
+
+    const pageHeadingRe = /^\s{0,3}##\s*Page\s+(\d+)(?:\s*[–-]\s*(.*))?\s*$/i;
+    let sawPageHeading = false;
+
+    for (const line of lines) {
+      const m = line.match(pageHeadingRe);
+      if (m) {
+        sawPageHeading = true;
+        pushCurrent();
+        const n = m[1];
+        const subtitle = (m[2] || "").trim();
+        const title = subtitle ? `Page ${n} — ${subtitle}` : `Page ${n}`;
+        current = { title, rawLines: [line] }; // keep heading; addPages() will strip it out
+        continue;
+      }
+
+      if (!current) {
+        // If there are no "## Page" headings, we'll fall back to --- splitting later.
+        current = { title: "Page 1", rawLines: [] };
+      }
+      current.rawLines.push(line);
+    }
+
+    pushCurrent();
+
+    if (sawPageHeading) return pages;
+
+    // Fallback: split by --- if no explicit page headings were found.
+    const chunks = text.trim().split(/\n---\n/).map(s => s.trim()).filter(Boolean);
+    if (chunks.length <= 1) {
+      // If there's only one chunk, still treat it as a single page.
+      return text.trim() ? [{ title: "Page 1", raw: text.trim() }] : [];
+    }
+    return chunks.map((c, idx) => ({ title: `Page ${idx + 1}`, raw: c }));
+  }
+
 
   async function initBookImporter() {
     const sourceSel = document.getElementById("importSource");
     const bookControls = document.getElementById("bookControls");
     const bookSelect = document.getElementById("bookSelect");
-    const modeSel = document.getElementById("bookMode");
     const chapterControls = document.getElementById("chapterControls");
     const chapterSelect = document.getElementById("chapterSelect");
-    const rangeControls = document.getElementById("rangeControls");
-    const rangeStart = document.getElementById("rangeStart");
-    const rangeEnd = document.getElementById("rangeEnd");
+    const pageControls = document.getElementById("pageControls");
+    const pageSelect = document.getElementById("pageSelect");
     const loadBtn = document.getElementById("loadBookSelection");
     const bulkInput = document.getElementById("bulkInput");
+    const pasteControls = document.getElementById("pasteControls");
 
-    if (!sourceSel || !bookControls || !bookSelect || !modeSel || !chapterSelect || !rangeStart || !rangeEnd || !loadBtn || !bulkInput) return;
+    if (!sourceSel || !bookControls || !bookSelect || !chapterSelect || !pageSelect || !loadBtn || !bulkInput || !pasteControls) return;
 
     let manifest = [];
     let currentBookRaw = "";
-    let currentBookPages = [];
     let currentBookChapters = [];
+    let currentScopePages = []; // pages for current scope (book or selected chapter)
 
-    function setModeUI() {
-      const mode = modeSel.value;
-      if (mode === "pages") {
-        chapterControls.style.display = "none";
-        rangeControls.style.display = "flex";
-      } else {
-        chapterControls.style.display = "flex";
-        rangeControls.style.display = "none";
-      }
+    function setSourceUI() {
+      const isBook = sourceSel.value === "book";
+      bookControls.style.display = isBook ? "flex" : "none";
+      pasteControls.style.display = isBook ? "none" : "block";
+    }
+
+    function setChapterAndPagesUI() {
+      const hasChapters = Array.isArray(currentBookChapters) && currentBookChapters.length > 0;
+      // If book has no chapters, hide chapter selector and rely only on pages.
+      chapterControls.style.display = hasChapters ? "flex" : "none";
+      pageControls.style.display = "flex";
     }
 
     async function loadManifest() {
@@ -179,9 +232,10 @@
 
     async function loadBook(id) {
       currentBookRaw = "";
-      currentBookPages = [];
       currentBookChapters = [];
+      currentScopePages = [];
       chapterSelect.innerHTML = "<option value=''>Loading…</option>";
+      pageSelect.innerHTML = "<option value=''>Loading…</option>";
 
       const entry = manifest.find(b => b.id === id);
       if (!entry) {
@@ -193,23 +247,11 @@
         const res = await fetch(entry.path, { cache: "no-cache" });
         if (!res.ok) throw new Error("book fetch failed");
         currentBookRaw = await res.text();
-
-        currentBookPages = splitIntoPages(currentBookRaw);
         currentBookChapters = parseChaptersFromMarkdown(currentBookRaw);
 
-        const max = Math.max(1, currentBookPages.length || 1);
-        rangeStart.max = String(max);
-        rangeEnd.max = String(max);
-        rangeStart.value = "1";
-        rangeEnd.value = String(max);
-
+        // Chapter dropdown
         chapterSelect.innerHTML = "";
-        if (currentBookChapters.length === 0) {
-          const opt = document.createElement("option");
-          opt.value = "";
-          opt.textContent = "No chapters detected";
-          chapterSelect.appendChild(opt);
-        } else {
+        if (currentBookChapters.length > 0) {
           const opt0 = document.createElement("option");
           opt0.value = "";
           opt0.textContent = "Select a chapter…";
@@ -222,10 +264,42 @@
             chapterSelect.appendChild(opt);
           });
         }
+
+        // Default scope: entire book pages.
+        currentScopePages = parsePagesFromMarkdown(currentBookRaw);
+        populatePagesSelect({ labelAll: "All pages" });
+
+        setChapterAndPagesUI();
       } catch (e) {
         chapterSelect.innerHTML = "<option value=''>Failed to load book</option>";
+        pageSelect.innerHTML = "<option value=''>Failed to load book</option>";
         console.error("Book load error:", e);
       }
+    }
+
+    function populatePagesSelect({ labelAll }) {
+      pageSelect.innerHTML = "";
+
+      const allOpt = document.createElement("option");
+      allOpt.value = "";
+      allOpt.textContent = labelAll || "All pages";
+      pageSelect.appendChild(allOpt);
+
+      if (!Array.isArray(currentScopePages) || currentScopePages.length === 0) {
+        const opt = document.createElement("option");
+        opt.value = "__none__";
+        opt.textContent = "No pages detected";
+        opt.disabled = true;
+        pageSelect.appendChild(opt);
+        return;
+      }
+
+      currentScopePages.forEach((p, idx) => {
+        const opt = document.createElement("option");
+        opt.value = String(idx);
+        opt.textContent = p.title || `Page ${idx + 1}`;
+        pageSelect.appendChild(opt);
+      });
     }
 
     function applySelectionToBulkInput(payload) {
@@ -241,42 +315,56 @@
 
     // Events
     sourceSel.addEventListener("change", () => {
-      const isBook = sourceSel.value === "book";
-      bookControls.style.display = isBook ? "flex" : "none";
+      setSourceUI();
     });
 
-    modeSel.addEventListener("change", setModeUI);
-    setModeUI();
+    // Default: Book
+    if (!sourceSel.value) sourceSel.value = "book";
+    setSourceUI();
 
     bookSelect.addEventListener("change", async () => {
       const id = bookSelect.value;
       if (!id) {
         chapterSelect.innerHTML = "<option value=''>Select a book first</option>";
+        pageSelect.innerHTML = "<option value=''>Select a book first</option>";
         return;
       }
       await loadBook(id);
     });
 
-    loadBtn.addEventListener("click", () => {
+    chapterSelect.addEventListener("change", () => {
       if (!currentBookRaw) return;
-
-      const mode = modeSel.value;
-      if (mode === "pages") {
-        const start = Math.max(1, parseInt(rangeStart.value || "1", 10));
-        const end = Math.max(start, parseInt(rangeEnd.value || String(start), 10));
-        const max = currentBookPages.length || 0;
-        if (max === 0) return;
-
-        const s = Math.min(start, max) - 1;
-        const e = Math.min(end, max);
-        applySelectionToBulkInput(currentBookPages.slice(s, e));
-        return;
-      }
 
       const idx = parseInt(chapterSelect.value || "", 10);
       if (Number.isFinite(idx) && currentBookChapters[idx]) {
-        applySelectionToBulkInput(currentBookChapters[idx].raw);
+        currentScopePages = parsePagesFromMarkdown(currentBookChapters[idx].raw);
+        populatePagesSelect({ labelAll: "All pages in chapter" });
+        return;
       }
+
+      // No chapter selected -> whole book pages
+      currentScopePages = parsePagesFromMarkdown(currentBookRaw);
+      populatePagesSelect({ labelAll: "All pages" });
+    });
+
+    loadBtn.addEventListener("click", () => {
+      if (!currentBookRaw) return;
+
+      // Determine current scope: selected chapter (if exists), otherwise whole book.
+      let scopeRaw = currentBookRaw;
+      const chIdx = parseInt(chapterSelect.value || "", 10);
+      if (Number.isFinite(chIdx) && currentBookChapters[chIdx]) {
+        scopeRaw = currentBookChapters[chIdx].raw;
+      }
+
+      const pIdx = parseInt(pageSelect.value || "", 10);
+      if (Number.isFinite(pIdx) && currentScopePages[pIdx]) {
+        applySelectionToBulkInput(currentScopePages[pIdx].raw);
+        return;
+      }
+
+      // "All" selected
+      applySelectionToBulkInput(scopeRaw);
     });
 
     await loadManifest();
