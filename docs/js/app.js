@@ -104,307 +104,37 @@
   }
 
 
-    async function initBookImporter() {
+  async function initBookImporter() {
     const sourceSel = document.getElementById("importSource");
     const bookControls = document.getElementById("bookControls");
-    const textControls = document.getElementById("textControls");
     const bookSelect = document.getElementById("bookSelect");
+    const modeSel = document.getElementById("bookMode");
     const chapterControls = document.getElementById("chapterControls");
     const chapterSelect = document.getElementById("chapterSelect");
-    const pageStartSelect = document.getElementById("pageStartSelect");
-    const pageEndSelect = document.getElementById("pageEndSelect");
+    const rangeControls = document.getElementById("rangeControls");
+    const rangeStart = document.getElementById("rangeStart");
+    const rangeEnd = document.getElementById("rangeEnd");
     const loadBtn = document.getElementById("loadBookSelection");
     const bulkInput = document.getElementById("bulkInput");
+    const textControls = document.getElementById("textControls");
 
-    if (!sourceSel || !bookControls || !textControls || !bookSelect || !chapterControls || !chapterSelect || !pageStartSelect || !pageEndSelect || !loadBtn || !bulkInput) return;
+    if (!sourceSel || !bookControls || !bookSelect || !modeSel || !chapterSelect || !rangeStart || !rangeEnd || !loadBtn || !bulkInput || !textControls) return;
 
-    // ---- UI helpers ----
-    function setSourceUI() {
-      const src = sourceSel.value;
-      if (src === "book") {
-        bookControls.style.display = "flex";
-        textControls.style.display = "none";
-      } else {
-        bookControls.style.display = "none";
-        textControls.style.display = "block";
-      }
-    }
-
-    function setSelectOptions(sel, options, placeholder) {
-      sel.innerHTML = "";
-      const ph = document.createElement("option");
-      ph.value = "";
-      ph.textContent = placeholder || "Select…";
-      sel.appendChild(ph);
-      for (const opt of options) {
-        const o = document.createElement("option");
-        o.value = String(opt.value);
-        o.textContent = String(opt.label);
-        sel.appendChild(o);
-      }
-    }
-
-    function setDisabled(sel, isDisabled) {
-      sel.disabled = !!isDisabled;
-    }
-
-    // ---- Parsing ----
-    // We keep content-cleaning consistent with existing addPages(): remove blank lines and header-ish lines.
-    function cleanContentLines(lines) {
-      return (lines || [])
-        .map(l => String(l || "").trim())
-        .filter(l => l && l !== "---" && !/^[#—]/.test(l));
-    }
-
-    function parseBookMarkdown(raw) {
-      const lines = String(raw || "").replace(/\r\n/g, "\n").split("\n");
-
-      const chapters = [];
-      let currentChapter = null;
-      let currentPage = null;
-
-      function pushPage() {
-        if (currentChapter && currentPage) {
-          const cleaned = cleanContentLines(currentPage.lines);
-          currentChapter.pages.push({
-            title: currentPage.title || `Page ${currentChapter.pages.length + 1}`,
-            text: cleaned.join(" ")
-          });
-        }
-        currentPage = null;
-      }
-
-      function pushChapter() {
-        if (currentChapter) {
-          pushPage();
-          // drop empty pages
-          currentChapter.pages = currentChapter.pages.filter(p => p.text && p.text.trim().length);
-          chapters.push(currentChapter);
-        }
-        currentChapter = null;
-      }
-
-      const h1Re = /^#\s+(.+)\s*$/;
-      const h2Re = /^##\s+(.+)\s*$/;
-
-      for (const line of lines) {
-        const h1 = line.match(h1Re);
-        if (h1) {
-          pushChapter();
-          currentChapter = { title: h1[1].trim(), pages: [] };
-          currentPage = null;
-          continue;
-        }
-        const h2 = line.match(h2Re);
-        if (h2) {
-          if (!currentChapter) currentChapter = { title: "Introduction", pages: [] };
-          pushPage();
-          currentPage = { title: h2[1].trim(), lines: [] };
-          continue;
-        }
-
-        // If we have no explicit pages but see separators, treat as page boundaries (fallback behavior)
-        if (line.trim() === "---") {
-          if (!currentChapter) currentChapter = { title: "Introduction", pages: [] };
-          if (!currentPage) currentPage = { title: `Page ${currentChapter.pages.length + 1}`, lines: [] };
-          pushPage();
-          continue;
-        }
-
-        if (!currentChapter) currentChapter = { title: "Introduction", pages: [] };
-        if (!currentPage) currentPage = { title: `Page ${currentChapter.pages.length + 1}`, lines: [] };
-        currentPage.lines.push(line);
-      }
-
-      pushChapter();
-
-      // Determine if chapters are "real" (more than one H1) — otherwise treat as no-chapter doc.
-      const hasMultipleChapters = chapters.length > 1;
-
-      if (!hasMultipleChapters) {
-        // Flatten into single pseudo-chapter and hide chapter UI.
-        const allPages = (chapters[0]?.pages || []);
-        return { hasChapters: false, chapters: [{ title: "", pages: allPages }] };
-      }
-
-      return { hasChapters: true, chapters };
-    }
-
-    // ---- Manifest + state ----
     let manifest = [];
-    let currentBook = null; // {hasChapters, chapters}
-    let selectedChapterIndex = 0;
+    let currentBookRaw = "";
+    let currentBookPages = [];
+    let currentBookChapters = [];
 
-    async function loadManifest() {
-      const paths = ["assets/books/index.json", "index.json"];
-      let lastErr = null;
-
-      for (const p of paths) {
-        try {
-          const res = await fetch(p, { cache: "no-cache" });
-          if (!res.ok) throw new Error(`manifest fetch failed: ${p} (${res.status})`);
-          const data = await res.json();
-          const arr = Array.isArray(data) ? data : [];
-          manifest = arr.map((b) => {
-            const id = b.id || b.name || "";
-            const path = b.path || (id ? `assets/books/${id}.md` : "");
-            const title = b.title || titleFromBookId(id) || id || "Untitled";
-            return { id, title, path };
-          }).filter(b => b.id && b.path);
-
-          setSelectOptions(
-            bookSelect,
-            manifest.map(b => ({ value: b.id, label: b.title })),
-            manifest.length ? "Select a book" : "No books found"
-          );
-          return;
-        } catch (e) {
-          lastErr = e;
-        }
-      }
-
-      console.error(lastErr);
-      bookSelect.innerHTML = `<option value="">Failed to load manifest</option>`;
-    }
-
-    async function loadBookById(bookId) {
-      const entry = manifest.find(b => b.id === bookId);
-      if (!entry) return;
-
-      chapterSelect.innerHTML = `<option value="">Loading…</option>`;
-      pageStartSelect.innerHTML = `<option value="">Loading…</option>`;
-      pageEndSelect.innerHTML = `<option value="">Loading…</option>`;
-      setDisabled(chapterSelect, true);
-      setDisabled(pageStartSelect, true);
-      setDisabled(pageEndSelect, true);
-
-      try {
-        const res = await fetch(entry.path, { cache: "no-cache" });
-        if (!res.ok) throw new Error(`book fetch failed: ${entry.path} (${res.status})`);
-        const raw = await res.text();
-        currentBook = parseBookMarkdown(raw);
-
-        // Chapters UI
-        if (currentBook.hasChapters) {
-          chapterControls.style.display = "flex";
-          setSelectOptions(
-            chapterSelect,
-            currentBook.chapters.map((c, idx) => ({ value: idx, label: c.title || `Chapter ${idx + 1}` })),
-            "Select chapter"
-          );
-          setDisabled(chapterSelect, false);
-          selectedChapterIndex = 0;
-          chapterSelect.value = "0";
-        } else {
-          chapterControls.style.display = "none";
-          chapterSelect.innerHTML = `<option value="0">All</option>`;
-          selectedChapterIndex = 0;
-        }
-
-        populatePagesForChapter(selectedChapterIndex);
-      } catch (e) {
-        console.error(e);
-        chapterSelect.innerHTML = `<option value="">Failed to load book</option>`;
-        pageStartSelect.innerHTML = `<option value="">Failed to load book</option>`;
-        pageEndSelect.innerHTML = `<option value="">Failed to load book</option>`;
+    function setModeUI() {
+      const mode = modeSel.value;
+      if (mode === "pages") {
+        chapterControls.style.display = "none";
+        rangeControls.style.display = "flex";
+      } else {
+        chapterControls.style.display = "flex";
+        rangeControls.style.display = "none";
       }
     }
-
-    function getCurrentPages() {
-      const chap = currentBook?.chapters?.[selectedChapterIndex] || currentBook?.chapters?.[0];
-      return chap?.pages || [];
-    }
-
-    function populatePagesForChapter(chapterIdx) {
-      selectedChapterIndex = Number(chapterIdx) || 0;
-      const pagesForChapter = getCurrentPages();
-
-      const options = pagesForChapter.map((p, idx) => ({
-        value: idx,
-        label: `${idx + 1}. ${p.title || `Page ${idx + 1}`}`
-      }));
-
-      const placeholder = options.length ? "Select page" : "No pages found";
-      setSelectOptions(pageStartSelect, options, placeholder);
-      setSelectOptions(pageEndSelect, options, placeholder);
-
-      const disabled = !options.length;
-      setDisabled(pageStartSelect, disabled);
-      setDisabled(pageEndSelect, disabled);
-
-      if (options.length) {
-        pageStartSelect.value = "0";
-        pageEndSelect.value = String(options.length - 1);
-      }
-    }
-
-    function clampRange(startIdx, endIdx, max) {
-      let s = Math.max(0, Math.min(startIdx, max));
-      let e = Math.max(0, Math.min(endIdx, max));
-      if (e < s) e = s;
-      return [s, e];
-    }
-
-    function addPagesFromArray(texts) {
-      const t = (texts || []).map(x => String(x || "").trim()).filter(Boolean);
-      if (!t.length) return;
-
-      goalTime = parseInt(document.getElementById("goalTimeInput").value);
-      goalCharCount = parseInt(document.getElementById("goalCharInput").value);
-
-      for (const pageText of t) {
-        pages.push(pageText);
-        pageData.push({
-          text: pageText,
-          consolidation: "",
-          charCount: 0,
-          completedOnTime: true,
-          isSandstone: false,
-          rating: 0
-        });
-      }
-      render();
-      checkSubmitButton();
-    }
-
-    // ---- Wiring ----
-    sourceSel.addEventListener("change", setSourceUI);
-
-    bookSelect.addEventListener("change", async () => {
-      const id = bookSelect.value;
-      if (!id) return;
-      await loadBookById(id);
-    });
-
-    chapterSelect.addEventListener("change", () => {
-      populatePagesForChapter(chapterSelect.value);
-    });
-
-    // Keep end >= start for convenience
-    pageStartSelect.addEventListener("change", () => {
-      if (Number(pageEndSelect.value) < Number(pageStartSelect.value)) {
-        pageEndSelect.value = pageStartSelect.value;
-      }
-    });
-
-    loadBtn.addEventListener("click", () => {
-      if (!currentBook) return;
-
-      const pagesForChapter = getCurrentPages();
-      if (!pagesForChapter.length) return;
-
-      const max = pagesForChapter.length - 1;
-      const [s, e] = clampRange(Number(pageStartSelect.value), Number(pageEndSelect.value), max);
-      const selected = pagesForChapter.slice(s, e + 1).map(p => p.text).filter(Boolean);
-
-      addPagesFromArray(selected);
-    });
-
-    // Init defaults
-    sourceSel.value = "book";
-    setSourceUI();
-    await loadManifest();
-  }    }
 
     async function loadManifest() {
       try {
@@ -514,7 +244,15 @@
     sourceSel.addEventListener("change", () => {
       const isBook = sourceSel.value === "book";
       bookControls.style.display = isBook ? "flex" : "none";
+      textControls.style.display = isBook ? "none" : "block";
     });
+
+    // set initial visibility
+    (() => {
+      const isBook = sourceSel.value === "book";
+      bookControls.style.display = isBook ? "flex" : "none";
+      textControls.style.display = isBook ? "none" : "block";
+    })();
 
     modeSel.addEventListener("change", setModeUI);
     setModeUI();
