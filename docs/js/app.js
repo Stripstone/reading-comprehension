@@ -72,7 +72,6 @@
   }
 
   function parseChaptersFromMarkdown(raw) {
-    // Chapter detection by headings. Excludes "## Page X" headings.
     const text = String(raw || "");
     const lines = text.split(/\r?\n/);
 
@@ -80,31 +79,22 @@
     let current = null;
 
     function pushCurrent() {
-      if (current && current.rawLines.length) {
-        const rawText = current.rawLines.join("\n").trim();
-        if (rawText) chapters.push({ title: current.title, raw: rawText });
-      }
+      if (!current) return;
+      const rawText = current.rawLines.join("\n").trim();
+      if (rawText) chapters.push({ title: current.title, raw: rawText });
     }
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const h = line.match(/^\s{0,3}(#{1,3})\s+(.*)\s*$/);
-      if (h) {
-        const level = h[1].length;
-        const title = (h[2] || "").trim();
-
-        if (/^page\s+\d+$/i.test(title)) {
-          if (current) current.rawLines.push(line);
-          continue;
-        }
-
-        if (level <= 2) {
-          pushCurrent();
-          current = { title: title || `Chapter ${chapters.length + 1}`, rawLines: [] };
-          continue;
-        }
+    for (const line of lines) {
+      // H1 headings define chapters
+      const h1 = line.match(/^\s{0,3}#\s+(.*)\s*$/);
+      if (h1) {
+        pushCurrent();
+        const title = (h1[1] || "").trim() || `Chapter ${chapters.length + 1}`;
+        current = { title, rawLines: [] };
+        continue;
       }
 
+      // Everything else belongs to the current chapter (or implicit intro)
       if (!current) current = { title: "Introduction", rawLines: [] };
       current.rawLines.push(line);
     }
@@ -112,6 +102,7 @@
     pushCurrent();
     return chapters;
   }
+
 
   async function initBookImporter() {
     const sourceSel = document.getElementById("importSource");
