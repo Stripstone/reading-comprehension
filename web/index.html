@@ -1,0 +1,2070 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Reading Comprehension</title>
+  <!-- 
+    ðŸŽµ BACKGROUND MUSIC SETUP:
+    1. Save your audio file in the SAME FOLDER as this HTML file
+    2. Replace "your-song-file.mp3" with your actual filename
+    3. Supported formats: .mp3, .ogg, .wav
+    4. Click the speaker icon (top-right corner) to play/pause
+  -->
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=Karla:wght@400;500;600&display=swap');
+    
+    /* ========================================
+       ðŸŽ¨ TEXTURE & IMAGE CONFIGURATION
+       ======================================== 
+       
+       To use LOCAL files instead of URLs:
+       1. Save your texture images in the same folder as this HTML file
+       2. Replace the URLs below with your local filenames:
+          --paper-texture: url('my-paper-texture.jpg');
+          --card-texture: url('my-card-background.png');
+       3. Adjust opacity values to taste (0.0 = invisible, 1.0 = fully opaque)
+       
+       Recommended texture types:
+       - Paper textures: .jpg or .png
+       - Seamless patterns work best for backgrounds
+       - Transparent PNGs (.png) for overlay effects
+    */
+    :root {
+      /* Background Textures */
+      --paper-texture: url('https://wallpapers.com/images/hd/world-map-in-old-paper-tjbf6z87cm5gxsru.jpg');
+      --paper-texture-opacity: 0.95;
+      --paper-texture-brightness: 0.84;  /* 1.0 = normal, 0.7 = darker, 0.5 = much darker */
+      
+      /* Card Textures (optional - set to 'none' to disable) */
+      --card-texture: none;
+      --card-texture-opacity: 0.15;
+      
+      /* ðŸ”¥ FIRE EMBER SETTINGS */
+      --ember-quantity: 45;
+      --ember-size-min: 1;
+      --ember-size-max: 3;
+      --ember-speed-min: 0.3;
+      --ember-speed-max: 0.5;
+      --ember-life-min: 0.5;  /* fraction of screen height */
+      --ember-life-max: 1.0;  /* fraction of screen height */
+      --ember-fade-threshold: 25; /* when to turn to ash */
+      
+      /* ðŸœï¸ SAND ANIMATION SETTINGS */
+      --sand-drift-duration: 4s;  /* speed of grain movement */
+      
+      /* Color Scheme */
+      --primary-bg: #d8d6d1;
+      --secondary-bg: #dfddd8;
+      --card-bg: #f5f1e8;
+      --accent: #c17d4a;
+      --accent-h: #8B2500; 
+      --accent-hover: #a96939;
+      --text-primary: #2b2520;
+      --text-secondary: #6b5d54;
+      --border: #e8dfd4;
+      --shadow-sm: 0 2px 8px rgba(139, 111, 87, 0.08);
+      --shadow-md: 0 4px 16px rgba(139, 111, 87, 0.12);
+      --shadow-lg: 0 8px 32px rgba(139, 111, 87, 0.16);
+    }
+    /* ======================================== */
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Crimson Pro', serif;
+      font-weight: 600;
+      color: var(--text-primary);
+      min-height: 100vh;
+      padding: 60px 20px;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* Fixed gradient background layer */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(135deg, var(--primary-bg) 0%, var(--secondary-bg) 100%);
+      z-index: -2;
+    }
+
+    /* Scrollable paper texture overlay */
+    body::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image: var(--paper-texture);
+      background-size: auto;
+      background-position: center;
+      background-repeat: repeat;
+      opacity: var(--paper-texture-opacity);
+      filter: brightness(var(--paper-texture-brightness));
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    /* Canvas for fire embers - behind everything */
+    #fireCanvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+      animation: fadeIn 0.6s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    h1 {
+      font-family: 'Crimson Pro', serif;
+      font-size: 3rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 12px;
+      letter-spacing: -0.02em;
+      text-shadow: 0 2px 4px rgba(139, 111, 87, 0.08);
+    }
+
+    h1::after {
+      content: '';
+      display: block;
+      width: 60px;
+      height: 4px;
+      background: linear-gradient(90deg, var(--accent-h) 0%, transparent 100%);
+      margin-top: 16px;
+      border-radius: 2px;
+    }
+
+    .top-controls, .page {
+      background: var(--card-bg);
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      margin: 32px 0;
+      box-shadow: var(--shadow-md);
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .page {
+      border-left: 4px solid var(--accent);
+      animation: slideIn 0.4s ease-out backwards;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateX(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    .page.page-active {
+      border-left-width: 6px;
+      border-left-color: var(--accent);
+      box-shadow: 
+        var(--shadow-md),
+        -6px 0 12px -2px rgba(193, 125, 74, 0.4);
+    }
+
+    /* Optional card texture overlay */
+    .top-controls::before,
+    .page::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image: var(--card-texture);
+      background-size: cover;
+      opacity: var(--card-texture-opacity);
+      pointer-events: none;
+      border-radius: inherit;
+    }
+
+    .top-controls:hover {
+      box-shadow: var(--shadow-lg);
+    }
+
+    .page {
+      margin-bottom: 24px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 120px;
+      padding: 16px;
+      font-family: 'Karla', sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+      color: var(--text-primary);
+      background: var(--secondary-bg);
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      resize: vertical;
+      transition: all 0.3s ease;
+      outline: none;
+      position: relative;
+      z-index: 1;
+    }
+
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(193, 125, 74, 0.1);
+      background: #fff;
+    }
+
+    textarea::placeholder {
+      color: var(--text-secondary);
+      opacity: 0.6;
+    }
+
+    .descriptor {
+      margin-top: 12px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+      font-style: italic;
+      position: relative;
+      z-index: 1;
+    }
+
+    .descriptor code {
+      font-family: 'Courier New', monospace;
+      background: rgba(193, 125, 74, 0.1);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 13px;
+      color: var(--accent);
+    }
+
+    .goal-time-row {
+      display: inline-flex;
+      align-items: flex-end;
+      gap: 12px;
+      flex-wrap: wrap;
+      position: relative;
+      z-index: 1;
+    }
+
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .input-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-family: 'Karla', sans-serif;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    input[type=number] {
+      padding: 10px 14px;
+      font-size: 15px;
+      font-family: 'Karla', sans-serif;
+      font-weight: 500;
+      width: 80px;
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      background: var(--secondary-bg);
+      color: var(--text-primary);
+      transition: all 0.3s ease;
+      outline: none;
+    }
+
+    input[type=number]:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(193, 125, 74, 0.1);
+      background: #fff;
+    }
+
+    button {
+      padding: 12px 24px;
+      font-size: 15px;
+      font-family: 'Karla', sans-serif;
+      font-weight: 600;
+      color: #fff;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: var(--shadow-sm);
+      position: relative;
+      z-index: 1;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .page-header {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 12px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .page-text {
+      background: #ebe7de;
+      padding: 16px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      line-height: 1.6;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ===============================
+       ðŸœï¸ GRAINY MOVING SAND
+    ================================ */
+
+    .sand-wrapper {
+      position: relative;
+      margin-top: 8px;
+    }
+
+    .sand-wrapper textarea {
+      position: relative;
+      z-index: 2;
+      background: transparent;
+      resize: vertical;
+      min-height: 110px;
+    }
+
+    .sand-layer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 0%;
+      z-index: 1;
+      pointer-events: none;
+      border-radius: 6px;
+
+      background:
+        repeating-radial-gradient(
+          circle at 20% 30%,
+          rgba(255,255,255,0.18) 0px,
+          rgba(255,255,255,0.18) 1px,
+          transparent 2px,
+          transparent 4px
+        ),
+        linear-gradient(
+          to top,
+          rgba(194,178,128,0.65),
+          rgba(214,198,148,0.4)
+        );
+
+      background-size: 120px 120px, 100% 100%;
+      animation: sandDrift var(--sand-drift-duration) linear infinite;
+      transition: height 0.6s linear;
+    }
+
+    @keyframes sandDrift {
+      from { background-position: 0 0, 0 0; }
+      to   { background-position: 120px 120px, 0 0; }
+    }
+
+    /* ðŸª¨ Sandstone lock */
+    .sandstone .sand-layer {
+      height: 100% !important;
+      animation: none;
+
+      background:
+        repeating-linear-gradient(
+          45deg,
+          rgba(160,140,95,0.6),
+          rgba(160,140,95,0.6) 4px,
+          rgba(135,115,75,0.6) 8px
+        ),
+        linear-gradient(
+          to top,
+          rgba(170,150,105,0.8),
+          rgba(200,180,130,0.8)
+        );
+
+      filter: contrast(1.15) saturate(0.9);
+    }
+
+    .sandstone textarea {
+      pointer-events: none;
+      user-select: none;
+      cursor: not-allowed;
+      color: #2b2520;
+    }
+
+    /* =============================== */
+
+    .timer {
+      margin-top: 10px;
+      font-family: monospace;
+      color: var(--accent);
+      position: relative;
+      z-index: 1;
+    }
+
+    .controls {
+      text-align: center;
+      margin-top: 20px;
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .controls button {
+      min-width: 200px;
+    }
+
+    /* Submit Button */
+    .submit-btn {
+      background: linear-gradient(135deg, var(--accent-h) 0%, var(--accent) 100%);
+    }
+
+    .submit-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none !important;
+      box-shadow: var(--shadow-sm) !important;
+    }
+
+    /* â­ Star Rating System */
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-top: 10px;
+      gap: 20px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .counter-section {
+      flex: 0 0 auto;
+    }
+
+    .timer,
+    .char-counter {
+      font-family: monospace;
+      font-size: 14px;
+      color: var(--accent);
+      line-height: 1.6;
+    }
+
+    .char-counter .char-count {
+      font-weight: 600;
+    }
+
+    /* Evaluation Section */
+    .evaluation-section {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding-left: 10%;
+      padding-right: 25%;
+    }
+
+    .evaluation-label {
+      font-size: 13px;
+      color: var(--text-secondary);
+      font-family: 'Karla', sans-serif;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      transition: all 0.3s ease;
+    }
+
+    /* Action Buttons Section */
+    .action-buttons {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: flex-end;
+    }
+
+    .ai-btn, .top-btn {
+      background: none;
+      border: none;
+      font-family: 'Karla', sans-serif;
+      font-size: 12px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+      opacity: 0.7;
+    }
+
+    .ai-btn:hover, .top-btn:hover {
+      opacity: 1;
+      color: var(--accent);
+      background: rgba(193, 125, 74, 0.1);
+    }
+
+    .ai-btn.loading {
+      opacity: 0.5;
+      cursor: wait;
+    }
+
+    .ai-feedback {
+      width: 100%;
+      margin-top: 16px;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.4);
+      border-left: 4px solid var(--accent);
+      border-radius: 8px;
+      font-size: 15px;
+      line-height: 1.7;
+      position: relative;
+      z-index: 1;
+    }
+
+    .ai-feedback .ai-rating {
+      font-size: 24px;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    .ai-feedback .ai-score {
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .ai-feedback ul {
+      margin: 16px 0;
+      padding-left: 24px;
+    }
+
+    .ai-feedback li {
+      margin: 8px 0;
+    }
+
+    .ai-feedback .ai-analysis {
+      margin: 16px 0;
+      padding: 16px;
+      background: rgba(193, 125, 74, 0.05);
+      border-left: 3px solid var(--accent);
+      border-radius: 4px;
+      line-height: 1.7;
+      font-size: 15px;
+      color: var(--text-primary);
+    }
+
+    .ai-feedback .better-example {
+      margin-top: 16px;
+      padding: 16px;
+      background: rgba(193, 125, 74, 0.08);
+      border-radius: 6px;
+      font-style: italic;
+      font-size: 14px;
+    }
+
+    .ai-feedback .better-label {
+      font-weight: 700;
+      font-style: normal;
+      color: var(--accent);
+      margin-bottom: 8px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .use-rating-btn {
+      display: block;
+      margin: 20px auto 0;
+      padding: 10px 24px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-family: 'Karla', sans-serif;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 8px rgba(193, 125, 74, 0.3);
+    }
+
+    .use-rating-btn:hover {
+      background: var(--accent-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(193, 125, 74, 0.4);
+    }
+
+    /* Glow animation when evaluation is ready */
+    .evaluation-section.ready .evaluation-label {
+      animation: evaluationGlow 1.5s ease-in-out infinite;
+    }
+
+    @keyframes evaluationGlow {
+      0%, 100% { 
+        color: var(--accent);
+        text-shadow: 0 0 8px rgba(193, 125, 74, 0.6);
+        transform: scale(1);
+      }
+      50% { 
+        color: var(--accent);
+        text-shadow: 0 0 20px rgba(193, 125, 74, 1.0);
+        transform: scale(1.05);
+      }
+    }
+
+    .stars {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      z-index: 1;
+    }
+
+    .stars.locked {
+      opacity: 0.3;
+      pointer-events: none;
+    }
+
+    .stars.locked[style*="0.15"] {
+      /* Permanently blocked sandstone pages */
+      opacity: 0.15 !important;
+    }
+
+    .star {
+      font-size: 24px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      filter: grayscale(100%);
+      opacity: 0.6;
+    }
+
+    .star:hover {
+      transform: scale(1.2);
+      filter: grayscale(0%);
+      opacity: 1;
+    }
+
+    .star.filled {
+      filter: grayscale(0%);
+      opacity: 1;
+    }
+
+    /* Compass unlock animation - needle settling */
+    .stars:not(.locked):not(.rated) .star {
+      animation: compassSpin 1.5s ease-in-out;
+    }
+
+    @keyframes compassSpin {
+      0% { transform: rotate(0deg); }
+      25% { transform: rotate(15deg); }
+      50% { transform: rotate(-15deg); }
+      75% { transform: rotate(10deg); }
+      100% { transform: rotate(0deg); }
+    }
+
+    /* Verdict Reveal */
+    .verdict-section {
+      margin-top: 40px;
+      padding: 40px;
+      background: var(--card-bg);
+      border: 2px solid var(--accent);
+      border-radius: 12px;
+      text-align: center;
+      box-shadow: var(--shadow-lg);
+      display: none;
+      position: relative;
+      overflow: hidden;
+      animation: verdictFadeIn 1s ease-out;
+    }
+
+    @keyframes verdictFadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(30px) scale(0.95);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .verdict-section::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image: var(--card-texture);
+      background-size: cover;
+      opacity: var(--card-texture-opacity);
+      pointer-events: none;
+      border-radius: inherit;
+    }
+
+    .seal {
+      font-size: 5rem;
+      margin-bottom: 20px;
+      opacity: 0;
+      animation: sealReveal 1.2s ease-out 0.3s forwards;
+      position: relative;
+      z-index: 1;
+    }
+
+    @keyframes sealReveal {
+      from {
+        opacity: 0;
+        transform: scale(0.3) rotate(-180deg);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) rotate(0deg);
+      }
+    }
+
+    .tier-name {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: var(--accent-h);
+      margin-bottom: 8px;
+      text-shadow: 0 2px 8px rgba(139, 37, 0, 0.2);
+      position: relative;
+      z-index: 1;
+    }
+
+    .tier-subtitle {
+      font-size: 1.2rem;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+      font-weight: 600;
+      position: relative;
+      z-index: 1;
+    }
+
+    .score-breakdown {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-top: 32px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .score-item {
+      background: rgba(255, 255, 255, 0.5);
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    .score-label {
+      font-size: 13px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+      font-family: 'Karla', sans-serif;
+      font-weight: 600;
+    }
+
+    .score-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .score-desc {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+      font-family: 'Karla', sans-serif;
+    }
+
+    .explanation-section {
+      margin-top: 32px;
+      padding: 24px;
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 8px;
+      text-align: left;
+      position: relative;
+      z-index: 1;
+    }
+
+    .explanation-section p {
+      margin-bottom: 16px;
+      line-height: 1.6;
+      font-size: 15px;
+    }
+
+    .explanation-section p:last-child {
+      margin-bottom: 0;
+    }
+
+    .explanation-section strong {
+      color: var(--accent);
+    }
+
+    .next-tier-advice {
+      margin-top: 24px;
+      padding: 20px 24px;
+      background: linear-gradient(135deg, rgba(193, 125, 74, 0.15), rgba(139, 37, 0, 0.1));
+      border-left: 4px solid var(--accent);
+      border-radius: 8px;
+      text-align: left;
+      position: relative;
+      z-index: 1;
+    }
+
+    .advice-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+      font-family: 'Karla', sans-serif;
+    }
+
+    .next-tier-advice p {
+      margin: 0;
+      line-height: 1.6;
+      font-size: 15px;
+      color: var(--text-primary);
+    }
+
+    .session-stats {
+      margin-top: 24px;
+      padding: 20px;
+      background: rgba(0, 0, 0, 0.03);
+      border-radius: 8px;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .stat-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+      font-family: 'Karla', sans-serif;
+    }
+
+    .stat-label {
+      color: var(--text-secondary);
+    }
+
+    .stat-value {
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .total-score {
+      margin-top: 24px;
+      padding: 20px;
+      background: linear-gradient(135deg, rgba(193, 125, 74, 0.1), rgba(139, 37, 0, 0.1));
+      border-radius: 8px;
+      border: 2px solid var(--accent);
+      position: relative;
+      z-index: 1;
+    }
+
+    .total-score .score-label {
+      font-size: 15px;
+    }
+
+    .total-score .score-value {
+      font-size: 3rem;
+    }
+
+    /* ðŸŽŠ Optional Confetti Effect */
+    @keyframes confetti-fall {
+      to {
+        transform: translateY(100vh) rotate(360deg);
+        opacity: 0;
+      }
+    }
+
+    .confetti {
+      position: fixed;
+      width: 10px;
+      height: 10px;
+      background: var(--accent);
+      top: -10px;
+      z-index: 9999;
+      animation: confetti-fall 3s linear forwards;
+      pointer-events: none;
+    }
+
+    /* Music button (bottom-right fixed) */
+    .music-button {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
+      border: 3px solid var(--card-bg);
+      cursor: pointer;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      box-shadow: var(--shadow-lg);
+      transition: all 0.3s ease;
+    }
+
+    .music-button:hover {
+      transform: scale(1.1) rotate(5deg);
+      box-shadow: 0 8px 24px rgba(193, 125, 74, 0.3);
+    }
+
+    /* Mobile responsive */
+    @media (max-width: 768px) {
+      h1 {
+        font-size: 2.2rem;
+      }
+      
+      .top-controls, .page {
+        padding: 20px;
+      }
+      
+      .goal-time-row {
+        flex-direction: column;
+        align-items: stretch;
+        width: 100%;
+      }
+
+      .input-group {
+        width: 100%;
+      }
+      
+      input[type=number] {
+        width: 100%;
+      }
+      
+      button {
+        width: 100%;
+      }
+
+      .controls {
+        flex-direction: column;
+      }
+
+      .controls button {
+        width: 100%;
+        min-width: unset;
+      }
+
+      .music-button {
+        width: 48px;
+        height: 48px;
+        font-size: 20px;
+      }
+
+      .submit-section, .verdict-section {
+        padding: 24px 16px;
+      }
+
+      .seal {
+        font-size: 3.5rem;
+      }
+
+      .tier-name {
+        font-size: 2rem;
+      }
+
+      .score-breakdown {
+        grid-template-columns: 1fr;
+      }
+
+      .session-stats {
+        grid-template-columns: 1fr;
+      }
+
+      .explanation-section {
+        padding: 16px;
+      }
+
+      .next-tier-advice {
+        padding: 16px;
+      }
+
+      .total-score .score-value {
+        font-size: 2.5rem;
+      }
+
+      .stars {
+        gap: 6px;
+      }
+
+      .star {
+        font-size: 20px;
+      }
+
+      .info-row {
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .evaluation-section {
+        padding-left: 0;
+        padding-right: 0;
+        width: 100%;
+      }
+
+      .action-buttons {
+        flex-direction: row;
+        justify-content: space-between;
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Canvas for fire embers -->
+<canvas id="fireCanvas"></canvas>
+
+<!-- 🔊 Sound Effects -->
+<audio id="sandSound" loop>
+  <source src="sand.mp3" type="audio/mpeg">
+</audio>
+
+<audio id="stoneSound">
+  <source src="sandstone.mp3" type="audio/mpeg">
+</audio>
+
+<audio id="rewardSound">
+  <source src="reward.mp3" type="audio/mpeg">
+</audio>
+
+<audio id="compassSound">
+  <source src="compass.mp3" type="audio/mpeg">
+</audio>
+
+<audio id="pageTurnSound">
+  <source src="page_turn.mp3" type="audio/mpeg">
+</audio>
+
+<audio id="evaluateSound">
+  <source src="evaluate.mp3" type="audio/mpeg">
+</audio>
+
+<!-- Background Music -->
+<audio id="bgMusic" loop>
+  <source src="_song.mp3" type="audio/mpeg">
+  <!-- Alternative formats: -->
+  <!-- <source src="your-song-file.ogg" type="audio/ogg"> -->
+  <!-- <source src="your-song-file.wav" type="audio/wav"> -->
+</audio>
+
+<!-- Music Toggle Button (fixed top-right) -->
+<button id="musicToggle" class="music-button" onclick="toggleMusic()" title="Toggle background music">
+  <span id="musicIcon">🔇</span>
+</button>
+
+<div class="container">
+  <h1>Reading Comprehension</h1>
+
+  <div class="top-controls">
+    <textarea id="bulkInput" placeholder="Paste your full .md or text here..." style="height: 80px;"></textarea>
+
+    <p class="descriptor">
+      Paste all pages at once. Pages will be split automatically using <code>---</code> or <code>## Page X</code>. Lines starting with <code>#</code> or <code>â€”</code> are excluded.
+    </p>
+
+    <div class="goal-time-row">
+      <div class="input-group">
+        <label class="input-label">Time (sec)</label>
+        <input type="number" id="goalTimeInput" min="5">
+      </div>
+      <div class="input-group">
+        <label class="input-label">Characters</label>
+        <input type="number" id="goalCharInput" min="10">
+      </div>
+      <button onclick="addPages()">Update Goal & Add Pages</button>
+    </div>
+  </div>
+
+  <div id="pages"></div>
+
+  <div class="controls">
+    <button onclick="clearSession()">Clear All Pages</button>
+    <button class="submit-btn" id="submitBtn" onclick="submitEvaluation()" disabled>Submit for Evaluation</button>
+  </div>
+
+  <!-- Verdict Section -->
+  <div class="verdict-section" id="verdictSection">
+    <div class="seal">ðŸ›ï¸</div>
+    <div class="tier-name" id="tierName">Masterful</div>
+    
+    <div class="score-breakdown">
+      <div class="score-item">
+        <div class="score-label">Completion</div>
+        <div class="score-value" id="completionScore">70</div>
+      </div>
+      <div class="score-item">
+        <div class="score-label">Depth</div>
+        <div class="score-value" id="depthScore">20</div>
+      </div>
+      <div class="score-item">
+        <div class="score-label">Reflection</div>
+        <div class="score-value" id="reflectionScore">10</div>
+      </div>
+    </div>
+
+    <div class="total-score">
+      <div class="score-label">Total Score</div>
+      <div class="score-value" id="totalScore">100</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button onclick="clearSession()">Clear All Pages</button>
+  </div>
+</div>
+
+<script>
+  // ===================================
+  // ðŸŽµ MUSIC TOGGLE
+  // ===================================
+  const music = document.getElementById('bgMusic');
+  const musicIcon = document.getElementById('musicIcon');
+  let allSoundsMuted = true; // Start muted - user can enable with button
+  
+  function toggleMusic() {
+    allSoundsMuted = !allSoundsMuted;
+    
+    if (allSoundsMuted) {
+      // Mute all sounds
+      music.pause();
+      sandSound.pause();
+      stoneSound.pause();
+      rewardSound.pause();
+      compassSound.pause();
+      musicIcon.textContent = '🔇';
+    } else {
+      // Unmute - background music plays, others play as triggered
+      music.play();
+      musicIcon.textContent = '🔊';
+    }
+  }
+</script>
+
+<script>
+  // ===================================
+  // ðŸ”¥ FIRE EMBERS CANVAS ANIMATION
+  // ===================================
+  const rootStyles = getComputedStyle(document.documentElement);
+  const EMBER_QUANTITY = parseInt(rootStyles.getPropertyValue('--ember-quantity'));
+  const EMBER_SIZE_MIN = parseFloat(rootStyles.getPropertyValue('--ember-size-min'));
+  const EMBER_SIZE_MAX = parseFloat(rootStyles.getPropertyValue('--ember-size-max'));
+  const EMBER_SPEED_MIN = parseFloat(rootStyles.getPropertyValue('--ember-speed-min'));
+  const EMBER_SPEED_MAX = parseFloat(rootStyles.getPropertyValue('--ember-speed-max'));
+  const EMBER_LIFE_MIN = parseFloat(rootStyles.getPropertyValue('--ember-life-min'));
+  const EMBER_LIFE_MAX = parseFloat(rootStyles.getPropertyValue('--ember-life-max'));
+  const EMBER_FADE_THRESHOLD = parseInt(rootStyles.getPropertyValue('--ember-fade-threshold'));
+
+  var ww = window.innerWidth;
+  var wh = window.innerHeight;
+  var canvas = document.getElementById("fireCanvas");
+  canvas.width = ww;
+  canvas.height = wh;
+  var ctx = canvas.getContext('2d');
+
+  function between(min, max) {
+    return Math.random() * (max - min) + min;
+  }
+
+  var particles = [];
+  for (i = 0; i < EMBER_QUANTITY; i++) {
+    particles.push(new createP());
+  }
+
+  function createP() {
+    this.x = between(ww * 0.1, ww * 0.9);
+    this.y = between(wh * 0.9, wh * 1);
+    this.size = between(EMBER_SIZE_MIN, EMBER_SIZE_MAX);
+    this.vx = Math.random() * 1 - 0.5;
+    this.vy = -between(EMBER_SPEED_MIN, EMBER_SPEED_MAX);
+    this.g = -0.001 * Math.random() * 10;
+    this.life = between(wh * EMBER_LIFE_MIN, wh * EMBER_LIFE_MAX);
+
+    var one = '#FF2200';    // Bright scarlet
+    var two = '#FF6600';    // Bright orange
+    var three = '#FFA500';  // Golden orange
+    var array = [one, two, three];
+    this.color = array[Math.floor(Math.random() * 3)];
+
+    this.reset = function() {
+      this.x = between(ww * 0.1, ww * 0.9);
+      this.y = between(wh * 0.9, wh * 1);
+      this.size = between(EMBER_SIZE_MIN, EMBER_SIZE_MAX);
+      this.vx = Math.random() * 1 - 0.5;
+      this.vy = -between(EMBER_SPEED_MIN, EMBER_SPEED_MAX);
+      this.g = -0.001 * Math.random() * 10;
+      this.life = between(wh * EMBER_LIFE_MIN, wh * EMBER_LIFE_MAX);
+      var array = [one, two, three];
+      this.color = array[Math.floor(Math.random() * 3)];
+    }
+  }
+
+  var draw = function() {
+    ctx.clearRect(0, 0, ww, wh);
+
+    for (t = 0; t < particles.length; t++) {
+      var p = particles[t];
+
+      ctx.beginPath();
+      ctx.fillStyle = p.color;
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2, false);
+      ctx.fill();
+
+      p.x += p.vx;
+      p.y += p.vy += p.g;
+      p.life--;
+
+      if (p.life < EMBER_FADE_THRESHOLD) {
+        p.color = 'rgba(25, 25, 25, 0.3)';
+      }
+      if (p.life < 1) {
+        p.reset();
+      }
+    }
+  }
+
+  setInterval(draw, 16);
+
+  window.addEventListener('resize', function() {
+    ww = window.innerWidth;
+    wh = window.innerHeight;
+    canvas.width = ww;
+    canvas.height = wh;
+  });
+</script>
+
+<script>
+  // ===================================
+  // ðŸ“š READING COMPREHENSION APP
+  // ===================================
+  
+  // ===================================
+  // âš™ï¸ CONFIGURABLE SETTINGS
+  // ===================================
+  
+  // ðŸ“ Goals
+  const DEFAULT_TIME_GOAL = 160;           // seconds
+  const DEFAULT_CHAR_GOAL = 300;           // characters
+  const COMPRESSION_TOLERANCE = 0.1;      // Â±10% for sweet spot (makes 90-110%)
+  
+  // â±ï¸ Sand Animation
+  const SAND_START_PERCENTAGE = 0.3;  // Sand starts when 30% of time remains
+  
+  // 🔊 VOLUME CONTROLS (0.0 = mute, 1.0 = max)
+  const SAND_VOLUME = 0.1;
+  const STONE_VOLUME = 1.0;
+  const MUSIC_VOLUME = 0.4;
+  const REWARD_VOLUME = 1.0;
+  const COMPASS_VOLUME = 1.0;
+  const PAGE_TURN_VOLUME = 1.0;
+  const EVALUATE_VOLUME = 0.6;
+  
+  // ðŸ† Tier Thresholds
+  const TIER_MASTERFUL = 97;
+  const TIER_PROFICIENT = 90;
+  const TIER_COMPETENT = 75;
+  const TIER_DEVELOPING = 55;
+  
+  // ðŸ“Š Score Weights (total must = 100)
+  const WEIGHT_COMPREHENSION = 55;
+  const WEIGHT_DISCIPLINE = 25;
+  const WEIGHT_COMPRESSION = 20;
+  
+  // ===================================
+  // ðŸ“š APPLICATION STATE
+  // ===================================
+  
+  const TIERS = [
+    { min: TIER_MASTERFUL, name: 'Masterful', emoji: '🏛️' },
+    { min: TIER_PROFICIENT, name: 'Proficient', emoji: '📜' },
+    { min: TIER_COMPETENT, name: 'Competent', emoji: '📚' },
+    { min: TIER_DEVELOPING, name: 'Developing', emoji: '🌱' },
+    { min: 0, name: 'Fragmented', emoji: '🧩' }
+  ];
+  
+  let pages = [];
+  let pageData = []; // Stores: { text, consolidation, charCount, completedOnTime, isSandstone, rating }
+  let timers = [];
+  let intervals = [];
+  let goalTime = DEFAULT_TIME_GOAL;
+  let goalCharCount = DEFAULT_CHAR_GOAL;
+
+  const sandSound = document.getElementById("sandSound");
+  const stoneSound = document.getElementById("stoneSound");
+  const rewardSound = document.getElementById("rewardSound");
+  const compassSound = document.getElementById("compassSound");
+  const pageTurnSound = document.getElementById("pageTurnSound");
+  const evaluateSound = document.getElementById("evaluateSound");
+  
+  // Set initial volumes
+  sandSound.volume = SAND_VOLUME;
+  stoneSound.volume = STONE_VOLUME;
+  rewardSound.volume = REWARD_VOLUME;
+  compassSound.volume = COMPASS_VOLUME;
+  pageTurnSound.volume = PAGE_TURN_VOLUME;
+  evaluateSound.volume = EVALUATE_VOLUME;
+  music.volume = MUSIC_VOLUME;
+  
+  // Set initial input values from constants
+  document.getElementById("goalTimeInput").value = DEFAULT_TIME_GOAL;
+  document.getElementById("goalCharInput").value = DEFAULT_CHAR_GOAL;
+
+  function addPages() {
+    const input = document.getElementById("bulkInput").value.trim();
+    goalTime = parseInt(document.getElementById("goalTimeInput").value);
+    goalCharCount = parseInt(document.getElementById("goalCharInput").value);
+    if (!input) return;
+
+    input.split(/\n---\n|\n## Page\s+\d+/i).forEach(c => {
+      const cleaned = c.split("\n").map(l => l.trim()).filter(l => l && !/^[#â€”]/.test(l));
+      if (cleaned.length) {
+        pages.push(cleaned.join(" "));
+        pageData.push({
+          text: cleaned.join(" "),
+          consolidation: "",
+          charCount: 0,
+          completedOnTime: true, // Assume true until sandstoned
+          isSandstone: false,
+          rating: 0
+        });
+      }
+    });
+
+    document.getElementById("bulkInput").value = "";
+    render();
+    checkSubmitButton();
+  }
+
+  function render() {
+    const container = document.getElementById("pages");
+    container.innerHTML = "";
+
+    pages.forEach((text, i) => {
+      timers[i] ??= 0;
+
+      const page = document.createElement("div");
+      page.className = "page";
+
+      page.innerHTML = `
+        <div class="page-header">Page ${i + 1}</div>
+        <div class="page-text">${text}</div>
+        <div class="page-header">Consolidation</div>
+
+        <div class="sand-wrapper">
+          <textarea placeholder="What was this page really about?"></textarea>
+          <div class="sand-layer"></div>
+        </div>
+
+        <div class="info-row">
+          <div class="counter-section">
+            <div class="timer">Timer: ${timers[i]} / ${goalTime}</div>
+            <div class="char-counter">Characters: <span class="char-count">0</span> / ${goalCharCount}</div>
+          </div>
+
+          <div class="evaluation-section">
+            <div class="evaluation-label">Evaluation</div>
+            <div class="stars locked" data-page="${i}">
+              <span class="star" data-value="1">🧭</span>
+              <span class="star" data-value="2">🧭</span>
+              <span class="star" data-value="3">🧭</span>
+              <span class="star" data-value="4">🧭</span>
+              <span class="star" data-value="5">🧭</span>
+            </div>
+          </div>
+
+          <div class="action-buttons">
+            <button class="top-btn" onclick="scrollToTop()">▲ Top</button>
+            <button class="ai-btn" data-page="${i}" style="display: none;">▼ AI&nbsp;&nbsp;</button>
+          </div>
+        </div>
+        
+        <div class="ai-feedback" data-page="${i}" style="display: none;">
+          <!-- AI feedback will be inserted here -->
+        </div>
+        </div>
+      `;
+
+      const textarea = page.querySelector("textarea");
+      const sand = page.querySelector(".sand-layer");
+      const timerDiv = page.querySelector(".timer");
+      const wrapper = page.querySelector(".sand-wrapper");
+      const charCountSpan = page.querySelector(".char-count");
+      const starsDiv = page.querySelector(".evaluation-section .stars");
+
+      // Character tracking
+      textarea.value = pageData[i].consolidation || "";
+      charCountSpan.textContent = Math.min(pageData[i].charCount, goalCharCount);
+      
+      textarea.addEventListener("input", (e) => {
+        const count = e.target.value.length;
+        pageData[i].consolidation = e.target.value;
+        pageData[i].charCount = count;
+        charCountSpan.textContent = Math.min(count, goalCharCount);
+        
+        // Check if all pages have text to unlock compasses
+        checkCompassUnlock();
+      });
+
+      // Timer events
+      textarea.addEventListener("focus", () => {
+        // Scroll to show entire page card (passage + textarea) instead of centering on textarea
+        const pageCard = textarea.closest('.page');
+        pageCard.scrollIntoView({ 
+          behavior: 'instant',
+          block: 'start',
+          inline: 'nearest'
+        });
+        
+        // Page turn immersion: activate stripe if starting fresh
+        if (pageData[i].charCount === 0) {
+          page.classList.add('page-active');
+          if (!allSoundsMuted) {
+            pageTurnSound.currentTime = 0;
+            pageTurnSound.play();
+          }
+        }
+        startTimer(i, sand, timerDiv, wrapper, textarea);
+      });
+      
+      textarea.addEventListener("blur", () => {
+        // Deactivate page stripe when leaving
+        page.classList.remove('page-active');
+        stopTimer(i);
+        checkCompassUnlock(); // Check if compasses should unlock when user leaves textarea
+      });
+
+      // Compass click handlers
+      const stars = starsDiv.querySelectorAll(".star");
+      stars.forEach(star => {
+        star.addEventListener("click", () => {
+          if (starsDiv.classList.contains("locked")) return;
+          const value = parseInt(star.dataset.value);
+          setRating(i, value, stars);
+        });
+      });
+      
+      // AI button click handler
+      const aiBtn = page.querySelector(".ai-btn");
+      if (aiBtn) {
+        aiBtn.addEventListener("click", () => evaluatePageWithAI(i));
+      }
+      
+      // Restore previous rating if exists
+      if (pageData[i].rating > 0) {
+        const evalStars = starsDiv.querySelectorAll(".star");
+        evalStars.forEach((star, starIdx) => {
+          if (starIdx < pageData[i].rating) {
+            star.classList.add("filled");
+          }
+        });
+        // Stop animation since this page is already rated
+        starsDiv.classList.add('rated');
+      }
+      
+      // Restore sandstone state if applicable
+      if (pageData[i].isSandstone) {
+        wrapper.classList.add("sandstone");
+        textarea.readOnly = true;
+        const evalStars = page.querySelector(".evaluation-section .stars");
+        evalStars.classList.add("locked");
+        evalStars.style.opacity = "0.15";
+        sand.style.height = "100%";
+      } else if (timers[i] > 0) {
+        // Restore partial sand if timer was running
+        const sandStartTime = goalTime * (1 - SAND_START_PERCENTAGE);
+	const sandDuration = goalTime * SAND_START_PERCENTAGE;
+        if (timers[i] >= sandStartTime) {
+          const sandElapsed = timers[i] - sandStartTime;
+          const pct = Math.min(sandElapsed / sandDuration, 1);
+          sand.style.height = `${pct * 100}%`;
+        }
+      }
+
+      container.appendChild(page);
+    });
+    
+    // Check states after rendering
+    checkCompassUnlock();
+    checkSubmitButton();
+  }
+
+  function startTimer(i, sand, timerDiv, wrapper, textarea) {
+    if (intervals[i]) return;
+
+    let sandSoundStarted = false;
+
+    intervals[i] = setInterval(() => {
+      timers[i]++;
+      
+      // Sand starts when configured percentage of time remains
+      const sandStartTime = goalTime * (1 - SAND_START_PERCENTAGE);
+      const sandDuration = goalTime * SAND_START_PERCENTAGE;
+      
+      if (timers[i] >= sandStartTime) {
+        // Start sand sound when sand starts (if not muted)
+        if (!sandSoundStarted) {
+          sandSound.currentTime = 0;
+          if (!allSoundsMuted) {
+            sandSound.play();
+          }
+          sandSoundStarted = true;
+        }
+        
+        const sandElapsed = timers[i] - sandStartTime;
+        const pct = Math.min(sandElapsed / sandDuration, 1);
+        sand.style.height = `${pct * 100}%`;
+      }
+      
+      timerDiv.textContent = `Timer: ${timers[i]} / ${goalTime}`;
+
+      if (timers[i] >= goalTime) {
+        clearInterval(intervals[i]);
+        intervals[i] = null;
+
+        sandSound.pause();
+        if (!allSoundsMuted) {
+          stoneSound.currentTime = 0;
+          stoneSound.play();
+        }
+
+        wrapper.classList.add("sandstone");
+        textarea.readOnly = true;
+        textarea.blur();
+        
+        // Mark page as sandstoned and failed timing
+        pageData[i].isSandstone = true;
+        pageData[i].completedOnTime = false;
+        
+        // Block compasses on this page permanently
+        const starsDiv = wrapper.closest(".page").querySelector(".evaluation-section .stars");
+        starsDiv.classList.add("locked");
+        starsDiv.style.opacity = "0.15";
+        
+        checkSubmitButton();
+      }
+    }, 1000);
+  }
+
+  function stopTimer(i) {
+    clearInterval(intervals[i]);
+    intervals[i] = null;
+    sandSound.pause();
+  }
+
+  function clearSession() {
+    if (!confirm("Clear all pages, consolidations, and timers?")) return;
+    pages = [];
+    pageData = [];
+    timers = [];
+    intervals.forEach(i => clearInterval(i));
+    intervals = [];
+    sandSound.pause();
+    document.getElementById("pages").innerHTML = "";
+    document.getElementById("submitBtn").disabled = true;
+    document.getElementById("verdictSection").style.display = "none";
+  }
+
+  // ===================================
+  // 🧭 COMPASS & SUBMISSION LOGIC
+  // ===================================
+  
+  function checkCompassUnlock() {
+    // Unlock compasses when ALL pages have at least 1 character
+    // AND user is not currently focused on any textarea
+    const allHaveText = pageData.every(p => p.charCount > 0);
+    const noTextareaFocused = document.activeElement.tagName !== 'TEXTAREA';
+    
+    if (allHaveText && noTextareaFocused) {
+      let anyUnlocked = false;
+      
+      // Get all pages to find both evaluation sections and action buttons
+      const allPages = document.querySelectorAll(".page");
+      
+      allPages.forEach((page, i) => {
+        const starsDiv = page.querySelector(".stars");
+        const evalSection = page.querySelector(".evaluation-section");
+        const aiBtn = page.querySelector(".ai-btn");
+        
+        // Only unlock non-sandstone pages
+        if (!pageData[i].isSandstone && starsDiv) {
+          starsDiv.classList.remove("locked");
+          // Add 'ready' class to trigger label glow animation
+          if (!starsDiv.classList.contains('rated') && evalSection) {
+            evalSection.classList.add('ready');
+            anyUnlocked = true;
+          }
+          // Show AI button when compasses unlock
+          if (aiBtn) aiBtn.style.display = 'block';
+        }
+      });
+      
+      // Play evaluation sound once when unlocking
+      if (anyUnlocked && !allSoundsMuted) {
+        evaluateSound.currentTime = 0;
+        evaluateSound.play();
+      }
+    }
+  }
+
+  function scrollToTop() {
+    const firstPage = document.querySelector('.page');
+    if (firstPage) {
+      firstPage.scrollIntoView({ behavior: 'instant', block: 'start' });
+    }
+  }
+
+  async function evaluatePageWithAI(pageIndex) {
+    const aiBtn = document.querySelector(`.ai-btn[data-page="${pageIndex}"]`);
+    const feedbackDiv = document.querySelector(`.ai-feedback[data-page="${pageIndex}"]`);
+    if (!aiBtn || !feedbackDiv) return;
+
+    // Toggle if already open
+    if (feedbackDiv.style.display === 'block') {
+      feedbackDiv.style.display = 'none';
+      aiBtn.textContent = '▼ AI';
+      return;
+    }
+
+    aiBtn.textContent = '⏳ Loading...';
+    aiBtn.classList.add('loading');
+    feedbackDiv.style.display = 'block';
+    feedbackDiv.innerHTML = '<div style="text-align: center; opacity: 0.6;">Analyzing...</div>';
+
+    const page = pageData[pageIndex];
+    const pageElement = document.querySelectorAll('.page')[pageIndex];
+    const passageText = pageElement.querySelector('.page-text').textContent;
+    const userText = page?.consolidation || "";
+
+    try {
+      const response = await fetch("/api/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pageText: passageText,
+          userText: userText,
+          // Use server's default model (set via OLLAMA_MODEL env var if needed)
+          // model: "llama3.1",  // optional override
+          
+          // CRITICAL: Pass the user's character goal to enforce limits
+          betterCharLimit: goalCharCount,
+          bulletMaxChars: 110
+        })
+      });
+
+      if (!response.ok) {
+        const msg = await response.text();
+        throw new Error(msg);
+      }
+
+      const data = await response.json();
+      displayAIFeedback(pageIndex, data.feedback || "");
+
+      aiBtn.textContent = '▲ AI';
+      aiBtn.classList.remove('loading');
+    } catch (error) {
+      console.error('AI evaluation error:', error);
+      feedbackDiv.innerHTML =
+        '<div style="color: #8B2500;">Error getting AI feedback. Check console and verify Ollama is running.</div>';
+      aiBtn.textContent = '▼ AI';
+      aiBtn.classList.remove('loading');
+    }
+  }
+
+  function displayAIFeedback(pageIndex, feedback) {
+    const feedbackDiv = document.querySelector(`.ai-feedback[data-page="${pageIndex}"]`);
+    if (!feedbackDiv) return;
+
+    // Robust parsing:
+    // - Works with \n or \r\n
+    // - Tolerates extra lines (rare model drift)
+    // - Accepts quoted or unquoted "better consolidation" line
+    // - Accepts label variants: "Better consolidation:", "Example of Strong Consolidation:", "**Strong Consolidation:**"
+    const rawLines = String(feedback || "")
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      .filter(l => l.length > 0);
+
+    // 1) Rating (🧭🧭⚪⚪⚪ (2/5))
+    const ratingLine = rawLines.find(l => /[🧭⚪]+\s*\(\d\/5\)/.test(l)) || "";
+    const ratingMatch = ratingLine.match(/([🧭⚪]+)\s*\((\d)\/5\)/);
+    const rating = ratingMatch ? parseInt(ratingMatch[2], 10) : 0;
+
+    // 2) Analysis: first non-rating line after the rating line
+    let analysis = "";
+    const ratingIdx = rawLines.indexOf(ratingLine);
+    if (ratingIdx >= 0) {
+      analysis = rawLines.slice(ratingIdx + 1).find(l => !/better consolidation/i.test(l) && !/strong consolidation/i.test(l)) || "";
+    } else {
+      analysis = rawLines[1] || "";
+    }
+
+    // 3) Better consolidation: locate label, then take remaining lines
+    const labelIdx = rawLines.findIndex(l =>
+      /^better consolidation\s*:?\s*$/i.test(l) ||
+      /^example of strong consolidation\s*:?\s*$/i.test(l) ||
+      /^\*\*strong consolidation:\*\*\s*$/i.test(l) ||
+      /^strong consolidation\s*:?\s*$/i.test(l)
+    );
+
+    let betterExample = "";
+    if (labelIdx >= 0) {
+      const after = rawLines.slice(labelIdx + 1);
+      if (after.length) betterExample = after.join(" ");
+
+      // Strip optional surrounding quotes
+      betterExample = betterExample.replace(/^"+/, "").replace(/"+$/, "").trim();
+
+      // Strip the optional trailing "This consolidation..." sentence if included
+      betterExample = betterExample.replace(/\s*This consolidation\b.*$/i, "").trim();
+    } else if (rawLines.length >= 4) {
+      // Back-compat: exactly 4 lines
+      betterExample = rawLines[3].replace(/^"+/, "").replace(/"+$/, "").trim();
+    }
+
+    // Build HTML
+    let html = '';
+
+    if (ratingMatch) {
+      html += `<div class="ai-rating">${ratingMatch[1]} <span class="ai-score">(${rating}/5)</span></div>`;
+    }
+
+    if (analysis) {
+      html += `<div class="ai-analysis">${analysis}</div>`;
+    }
+
+    if (betterExample) {
+      html += `<div class="better-example">
+        <div class="better-label">Better consolidation:</div>
+        "${betterExample}"
+      </div>`;
+    }
+
+    html += `<button class="use-rating-btn" onclick="applyAIRating(${pageIndex}, ${rating})">Use This Rating (${rating}/5)</button>`;
+    feedbackDiv.innerHTML = html;
+  }
+
+
+  function applyAIRating(pageIndex, rating) {
+    const starsDiv = document.querySelector(`.stars[data-page="${pageIndex}"]`);
+    if (!starsDiv) return;
+    
+    const stars = starsDiv.querySelectorAll(".star");
+    setRating(pageIndex, rating, stars);
+    
+    // Scroll to next page if exists
+    const pages = document.querySelectorAll('.page');
+    if (pages[pageIndex + 1]) {
+      pages[pageIndex + 1].scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+
+  function setRating(pageIndex, value, stars) {
+    pageData[pageIndex].rating = value;
+    
+    // Play compass click sound
+    if (!allSoundsMuted) {
+      compassSound.currentTime = 0;
+      compassSound.play();
+    }
+    
+    // Mark this compass group as rated (stops animation)
+    const starsDiv = stars[0].closest('.stars');
+    starsDiv.classList.add('rated');
+    
+    // Stop label glow animation
+    const evalSection = starsDiv.closest('.evaluation-section');
+    evalSection.classList.remove('ready');
+    
+    // Fill stars up to the clicked value
+    stars.forEach((star, i) => {
+      if (i < value) {
+        star.classList.add("filled");
+      } else {
+        star.classList.remove("filled");
+      }
+    });
+    
+    checkSubmitButton();
+  }
+
+  function checkSubmitButton() {
+    // Enable submit when all non-sandstone pages have been rated
+    const nonSandstonePages = pageData.filter(p => !p.isSandstone);
+    
+    // If all pages are sandstone, enable immediately
+    if (nonSandstonePages.length === 0 && pageData.length > 0) {
+      document.getElementById("submitBtn").disabled = false;
+      return;
+    }
+    
+    // Otherwise check if all non-sandstone pages are rated
+    const allRated = nonSandstonePages.every(p => p.rating > 0);
+    document.getElementById("submitBtn").disabled = !allRated;
+  }
+
+  // ===================================
+  // ðŸ“Š EVALUATION & TIER SYSTEM
+  // ===================================
+  
+  function calculateScores() {
+    const totalPages = pageData.length;
+    if (totalPages === 0) return null;
+    
+    // 1. Comprehension Score (55 pts) - compass self-evaluation
+    const nonSandstonePages = pageData.filter(p => !p.isSandstone);
+    let comprehensionScore = 0;
+    if (nonSandstonePages.length > 0) {
+      const totalRating = nonSandstonePages.reduce((sum, p) => sum + p.rating, 0);
+      const avgRating = totalRating / nonSandstonePages.length;
+      comprehensionScore = (avgRating / 5) * WEIGHT_COMPREHENSION;
+    }
+    
+    // 2. Discipline Score (25 pts) - completed on time with gradient penalty for insufficient length
+    // Full credit if >= 90% of goal, proportional penalty if below
+    const minChars = Math.floor(goalCharCount * (1 - COMPRESSION_TOLERANCE));
+    let disciplineScore = 0;
+    
+    pageData.forEach(p => {
+      if (!p.completedOnTime) {
+        // Sandstoned: no points
+        disciplineScore += 0;
+      } else if (p.charCount >= minChars) {
+        // Met 90% threshold: full points
+        disciplineScore += WEIGHT_DISCIPLINE;
+      } else {
+        // Below threshold: proportional credit (0 to minChars range)
+        disciplineScore += (p.charCount / minChars) * WEIGHT_DISCIPLINE;
+      }
+    });
+    disciplineScore = disciplineScore / totalPages;
+    
+    // 3. Compression Score (20 pts) - character count sweet spot
+    let compressionScore = 0;
+    pageData.forEach(p => {
+      const chars = p.charCount;
+      const goal = goalCharCount;
+      const sweetSpotMin = Math.floor(goal * (1 - COMPRESSION_TOLERANCE));
+      const sweetSpotMax = Math.ceil(goal * (1 + COMPRESSION_TOLERANCE));
+      
+      if (chars < sweetSpotMin) {
+        // Under sweet spot: proportional penalty
+        compressionScore += (chars / goal) * WEIGHT_COMPRESSION;
+      } else if (chars <= sweetSpotMax) {
+        // In sweet spot: full points
+        compressionScore += WEIGHT_COMPRESSION;
+      } else {
+        // Over sweet spot: penalty
+        const overAmount = chars - sweetSpotMax;
+        const penalty = (overAmount / goal) * WEIGHT_COMPRESSION;
+        compressionScore += Math.max(0, WEIGHT_COMPRESSION - penalty);
+      }
+    });
+    compressionScore = compressionScore / totalPages;
+    
+    const totalScore = comprehensionScore + disciplineScore + compressionScore;
+    
+    return {
+      comprehension: Math.round(comprehensionScore * 10) / 10,
+      discipline: Math.round(disciplineScore * 10) / 10,
+      compression: Math.round(compressionScore * 10) / 10,
+      total: Math.round(totalScore * 10) / 10
+    };
+  }
+  
+  function getTier(score) {
+    for (let tier of TIERS) {
+      if (score >= tier.min) return tier;
+    }
+    return TIERS[TIERS.length - 1]; // Fallback to lowest tier
+  }
+  
+  function submitEvaluation() {
+    const btn = document.getElementById("submitBtn");
+    btn.disabled = true;
+    
+    // Calculate scores
+    const scores = calculateScores();
+    if (!scores) {
+      alert("No pages to evaluate!");
+      btn.disabled = false;
+      return;
+    }
+    
+    const tier = getTier(scores.total);
+    const advice = getNextTierAdvice(tier.name);
+    
+    // Calculate session stats
+    const totalPages = pageData.length;
+    const sandstoned = pageData.filter(p => p.isSandstone).length;
+    const avgRating = pageData.filter(p => !p.isSandstone).length > 0
+      ? pageData.filter(p => !p.isSandstone).reduce((sum, p) => sum + p.rating, 0) / pageData.filter(p => !p.isSandstone).length
+      : 0;
+    const avgChars = pageData.reduce((sum, p) => sum + p.charCount, 0) / totalPages;
+    
+    // Update verdict section
+    const verdictSection = document.getElementById("verdictSection");
+    verdictSection.innerHTML = `
+      <div class="seal">${tier.emoji}</div>
+      <div class="tier-name">${tier.name}</div>
+      <div class="tier-subtitle">Total Score: ${scores.total}</div>
+      
+      <div class="score-breakdown">
+        <div class="score-item">
+          <div class="score-label">Comprehension</div>
+          <div class="score-value">${scores.comprehension}</div>
+          <div class="score-desc">Self-evaluation</div>
+        </div>
+        <div class="score-item">
+          <div class="score-label">Discipline</div>
+          <div class="score-value">${scores.discipline}</div>
+          <div class="score-desc">On time + substance</div>
+        </div>
+        <div class="score-item">
+          <div class="score-label">Compression</div>
+          <div class="score-value">${scores.compression}</div>
+          <div class="score-desc">Concise writing</div>
+        </div>
+      </div>
+
+      <div class="explanation-section">
+        <p><strong>Comprehension (${scores.comprehension}/${WEIGHT_COMPREHENSION}):</strong> Your honest self-assessment of how well you understood the material's core ideas, accuracy, and engagement.</p>
+        
+        <p><strong>Discipline (${scores.discipline}/${WEIGHT_DISCIPLINE}):</strong> Completed before time runs out. Full credit at 90%+ of character goal (${Math.floor(goalCharCount * (1 - COMPRESSION_TOLERANCE))}+ chars). Below that, credit scales proportionally down to zero.</p>
+        
+        <p><strong>Compression (${scores.compression}/${WEIGHT_COMPRESSION}):</strong> Writing concise summaries that capture meaning without being too brief or verbose. Sweet spot: ${Math.floor(goalCharCount * (1 - COMPRESSION_TOLERANCE))}-${Math.ceil(goalCharCount * (1 + COMPRESSION_TOLERANCE))} characters (90-110% of goal).</p>
+      </div>
+
+      ${advice ? `<div class="next-tier-advice">
+        <div class="advice-label">Next Level</div>
+        <p>${advice}</p>
+      </div>` : ''}
+
+      <div class="session-stats">
+        <div class="stat-item">
+          <span class="stat-label">Pages completed:</span>
+          <span class="stat-value">${totalPages - sandstoned}/${totalPages}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Pages sandstoned:</span>
+          <span class="stat-value">${sandstoned}/${totalPages}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Avg compass rating:</span>
+          <span class="stat-value">${avgRating.toFixed(1)}/5</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Avg characters:</span>
+          <span class="stat-value">${Math.round(avgChars)}</span>
+        </div>
+      </div>
+    `;
+    
+    // Show verdict with animation
+    verdictSection.style.display = "block";
+    
+    // Play reward sound
+    if (!allSoundsMuted) {
+      rewardSound.currentTime = 0;
+      rewardSound.play();
+    }
+    
+    // Optional: Trigger confetti for Masterful
+    if (tier.name === 'Masterful') {
+      triggerConfetti();
+    }
+  }
+  
+  function getNextTierAdvice(currentTier) {
+    const advice = {
+      'Fragmented': 'Focus on writing substantial consolidations (90%+ of your character goal) before time runs out. Discipline means both beating the timer AND writing enough to capture the core idea.',
+      'Developing': 'Build consistencyâ€”finish every page on time and meet the character goal. Be honest in your self-evaluations to identify gaps.',
+      'Competent': 'Capture the main mechanisms and causal relationships in each passage, not just surface-level facts. This depth will raise your comprehension score.',
+      'Proficient': 'Perfect your compressionâ€”hit the sweet spot every timeâ€”and consistently rate yourself 5/5 when you have truly mastered the material.',
+      'Masterful': 'ðŸ† Outstanding work! You have mastered focused reading, honest self-assessment, and concise consolidation. Keep this discipline as you tackle harder material.'
+    };
+    return advice[currentTier] || '';
+  }
+  
+  function triggerConfetti() {
+    const colors = ['#c17d4a', '#8B2500', '#a96939', '#d4af37'];
+    for (let i = 0; i < 50; i++) {
+      setTimeout(() => {
+        const confetti = document.createElement('div');
+        confetti.className = 'confetti';
+        confetti.style.left = Math.random() * 100 + '%';
+        confetti.style.background = colors[Math.floor(Math.random() * colors.length)];
+        confetti.style.animationDuration = (Math.random() * 2 + 2) + 's';
+        document.body.appendChild(confetti);
+        
+        setTimeout(() => confetti.remove(), 3000);
+      }, i * 30);
+    }
+  }
+</script>
+
+</body>
+</html>
