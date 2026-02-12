@@ -64,6 +64,7 @@
       <div class="input-group" style="min-width: 160px;">
         <label class="input-label">Source</label>
         <select id="importSource" style="padding: 10px 14px; font-size: 15px; font-family: 'Karla', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;">
+          
           <option value="book" selected>Book</option>
           <option value="text">Text</option>
         </select>
@@ -76,31 +77,39 @@
             <option value="">Loading…</option>
           </select>
         </div>
-
-        <div id="chapterControls" class="input-group" style="min-width: 280px;">
+<div id="chapterControls" class="input-group" style="min-width: 280px;">
           <label class="input-label">Chapter</label>
           <select id="chapterSelect" style="padding: 10px 14px; font-size: 15px; font-family: 'Karla', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;">
             <option value="">Select a book first</option>
           </select>
         </div>
 
-        <div id="pageControls" class="input-group" style="min-width: 280px;">
+      <div id="pageControls" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
+        <div class="input-group" style="min-width: 240px;">
           <label class="input-label">Pages</label>
-          <select id="pageSelect" style="padding: 10px 14px; font-size: 15px; font-family: 'Karla', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;">
-            <option value="">Select a book first</option>
+          <select id="pageStart" style="padding: 10px 14px; font-size: 15px; font-family: \'Karla\', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;">
+            <option value="">Loading…</option>
           </select>
         </div>
+        <div class="input-group" style="min-width: 240px;">
+          <label class="input-label">to</label>
+          <select id="pageEnd" style="padding: 10px 14px; font-size: 15px; font-family: \'Karla\', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;">
+            <option value="">Loading…</option>
+          </select>
+        </div>
+      </div>
+</div>
 
         <button id="loadBookSelection" type="button">Load Selection</button>
       </div>
     </div>
 
-    <div id="pasteControls" style="display:none;">
+    <div id="textControls" style="display:none; width:100%;">
       <textarea id="bulkInput" placeholder="Paste your full .md or text here..." style="height: 80px;"></textarea>
 
       <p class="descriptor">
-        Paste all pages at once. Pages will be split automatically using <code>---</code> or <code>## Page X</code>. Lines starting with <code>#</code> or <code>—</code> are excluded.
-      </p>
+      Paste all pages at once. Pages will be split automatically using <code>---</code> or <code>## Page X</code>. Lines starting with <code>#</code> or <code>—</code> are excluded.
+    </p>
     </div>
 
     <div class="goal-time-row">
