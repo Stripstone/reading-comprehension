@@ -77,7 +77,6 @@
           </select>
         </div>
 
-
         <div id="chapterControls" class="input-group" style="min-width: 280px;">
           <label class="input-label">Chapter</label>
           <select id="chapterSelect" style="padding: 10px 14px; font-size: 15px; font-family: 'Karla', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;">
@@ -100,7 +99,6 @@
             </select>
           </div>
         </div>
-
       </div>
     </div>
     <div id="textControls" style="display:none; width:100%;">
@@ -111,9 +109,6 @@
     </p>
     </div>
 
-
-    <button id="loadBookSelection" type="button" onclick="loadPages()">Load Pages</button>
-
     <div class="goal-time-row">
       <div class="input-group">
         <label class="input-label">Time (sec)</label>
@@ -123,10 +118,10 @@
         <label class="input-label">Characters</label>
         <input type="number" id="goalCharInput" min="10">
       </div>
-      <button onclick="updateGoal()">Update Goal</button>
+      <button id="loadBookSelection" type="button">Load Pages</button>
       
       <!-- NEW LOCATION -->
-      <button onclick="clearSession()" style="margin-right:auto;">
+      <button onclick="clearSession()" style="margin-left:auto;">
         Clear All Pages
       </button>
 

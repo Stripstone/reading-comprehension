@@ -324,7 +324,8 @@
       bulkInput.value = String(text || "").trim();
       addPages();
     }
-// Events
+
+    // Events
     sourceSel.addEventListener("change", setSourceUI);
     setSourceUI();
 
@@ -355,6 +356,13 @@
     });
 
     loadBtn.addEventListener("click", () => {
+      const src = (sourceSel.value || "book").toLowerCase();
+      // Single "Load Pages" button supports both Book and Text sources
+      if (src === "text") {
+        addPages();
+        return;
+      }
+
       if (!currentBookRaw) return;
       if (!currentPages.length) return;
 
@@ -363,7 +371,9 @@
 
       const slice = currentPages.slice(s, e + 1).map(p => p.text).filter(Boolean);
       applySelectionToBulkInput(slice.join("\n---\n"));
-    });
+      // Immediately import into pages (replaces the old "Update Goal & Add Pages" flow)
+      addPages();
+    });;
 
     try {
       await loadManifest();
@@ -401,7 +411,10 @@
 
 function addPages() {
     const input = document.getElementById("bulkInput").value.trim();
+    goalTime = parseInt(document.getElementById("goalTimeInput").value);
+    goalCharCount = parseInt(document.getElementById("goalCharInput").value);
     if (!input) return;
+
     input.split(/\n---\n|\n## Page\s+\d+/i).forEach(c => {
       const cleaned = c.split("\n").map(l => l.trim()).filter(l => l && !/^[#â€”]/.test(l));
       if (cleaned.length) {
@@ -420,39 +433,6 @@ function addPages() {
     document.getElementById("bulkInput").value = "";
     render();
     checkSubmitButton();
-  }
-
-
-  // Update Goal only: adjust time/character targets without importing pages
-  function updateGoal() {
-    const timeEl = document.getElementById("goalTimeInput");
-    const charEl = document.getElementById("goalCharInput");
-    const newTime = parseInt(timeEl?.value || "", 10);
-    const newChars = parseInt(charEl?.value || "", 10);
-
-    if (Number.isFinite(newTime)) goalTime = newTime;
-    if (Number.isFinite(newChars)) goalCharCount = newChars;
-
-    // Update existing UI labels without re-rendering / resetting textareas
-    document.querySelectorAll(".page").forEach((page, i) => {
-      const timerDiv = page.querySelector(".timer");
-      const cc = page.querySelector(".char-counter");
-      if (timerDiv) timerDiv.textContent = `Timer: ${timers[i] ?? 0} / ${goalTime}`;
-      if (cc) cc.innerHTML = `Characters: <span class="char-count">${pageData[i]?.charCount ?? 0}</span> / ${goalCharCount}`;
-    });
-  }
-
-  // Load Pages: supports both Book and Text sources
-  function loadPages() {
-    const sourceSel = document.getElementById("importSource");
-    const source = sourceSel ? sourceSel.value : "text";
-
-    // In Book mode, the existing loadBookSelection click handler performs the slice/import.
-    // We do nothing here so the native click handler can run.
-    if (source === "book") return;
-
-    // Text mode: import from bulk input
-    addPages();
   }
 
   function render() {
