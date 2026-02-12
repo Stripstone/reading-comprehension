@@ -1700,7 +1700,7 @@
     const userText = page?.consolidation || "";
 
     try {
-      const response = await fetch("/api/evaluate", {
+      const response = await fetch("https://reading-comprehension-xi.vercel.app/api/evaluate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1728,7 +1728,7 @@
     } catch (error) {
       console.error('AI evaluation error:', error);
       feedbackDiv.innerHTML =
-        '<div style="color: #8B2500;">Error getting AI feedback. Check console and verify Ollama is running.</div>';
+        '<div style="color: #8B2500;">Error getting AI feedback. Check console and verify AI Host is running.</div>';
       aiBtn.textContent = '▼ AI';
       aiBtn.classList.remove('loading');
     }
