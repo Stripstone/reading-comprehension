@@ -653,7 +653,12 @@ function addPages() {
         sandSound.pause();
         if (!allSoundsMuted) {
           stoneSound.currentTime = 0;
-			playSfx(stoneSound);
+          try { stoneSound.load && stoneSound.load(); } catch (_) {}
+          // iPad Safari can drop immediate play() after pausing another sound; defer to next tick.
+          setTimeout(() => {
+            stoneSound.currentTime = 0;
+            playSfx(stoneSound);
+          }, 0);
         }
 
         wrapper.classList.add("sandstone");
