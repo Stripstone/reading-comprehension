@@ -17,10 +17,9 @@ export function compassEmojis(rating) {
 }
 
 export function parseMultiCriteriaOutput(rawText) {
-  // NOTE:
-  // - We parse the model's structured output for per-criterion scores + Overall Score.
-  // - We apply the +5 "structural fidelity" bonus deterministically in code (3a),
-  //   without altering any individual criterion scores.
+  // Parses the model's structured output for per-criterion scores + Overall Score.
+  // Applies the +5 "structural fidelity" bonus deterministically in code (3a),
+  // without altering any individual criterion scores.
   const cleaned = String(rawText || "")
     .replace(/\*\*/g, "")
     .replace(/^###\s+/gm, "")
@@ -42,7 +41,7 @@ export function parseMultiCriteriaOutput(rawText) {
   let inConsolidation = false;
 
   function parsePct(line, labelRegex) {
-    // Accept "Label: 87.5%" or "Label: 87%"
+    // Accept "Label: 87.5%" or "Label: 87%" (optional brackets)
     const m = String(line || "").match(new RegExp(`${labelRegex.source}\\s*:\\s*\\[?([\\d.]+)\\s*%?\\]?`, "i"));
     if (!m) return null;
     const v = Number.parseFloat(m[1]);
@@ -136,16 +135,14 @@ export function parseMultiCriteriaOutput(rawText) {
     return Number.isFinite(r) ? r : 60;
   })();
 
-  // 3a (code): deterministic +5 bonus when the model already scored high and shows strong structural fidelity.
-  // Conservative gates (subordinate to the model's own criterion scoring):
-  // - overall already high (>= 86)
-  // - Core Idea + Accuracy both high
-  // - no obvious "hard error" language / material inaccuracies
+  // 3a (code): deterministic +5 bonus when the model already scored high and indicates no material inaccuracies.
+  // These gates are conservative and subordinate to the model's own criterion scoring.
   let adjustedOverallScore = overallRounded;
 
   const hasNoMaterialInaccuracies = /no material inaccuracies/i.test(cleaned);
   const hasMaterialInaccuracies = /material inaccuracies/i.test(cleaned) && !hasNoMaterialInaccuracies;
 
+  // If the model explicitly says something is incorrect/wrong, don't apply the bonus.
   const hardErrorPattern = /\b(incorrect|inaccurate|wrong|misstates|false|contradict(?:s|ing)|fabricat(?:e|ed|ion)|hallucinat(?:e|ed|ion))\b/i;
   const hasHardErrorLanguage = hardErrorPattern.test(cleaned) && !hasNoMaterialInaccuracies;
 
@@ -153,14 +150,12 @@ export function parseMultiCriteriaOutput(rawText) {
     Number.isFinite(coreIdeaScore) &&
     Number.isFinite(accuracyScore);
 
-  const coreOK = canAssessFidelity && coreIdeaScore >= 88;
-  const accOK = canAssessFidelity && accuracyScore >= 85;
-
+  // Align with prompt 3a: overall already high (>=86) and strong structure/accuracy.
   const qualifies3a =
     overallRounded >= 86 &&
     canAssessFidelity &&
-    coreOK &&
-    accOK &&
+    coreIdeaScore >= 88 &&
+    accuracyScore >= 85 &&
     !hasMaterialInaccuracies &&
     !hasHardErrorLanguage;
 
@@ -172,7 +167,6 @@ export function parseMultiCriteriaOutput(rawText) {
   if (!consolidationText) consolidationText = "Unable to generate improved consolidation.";
 
   return {
-    // Keep the model's original overall (rounded) and expose adjusted score for rating.
     overallScore: overallRounded,
     adjustedOverallScore,
     coreIdeaScore,
@@ -184,10 +178,14 @@ export function parseMultiCriteriaOutput(rawText) {
   };
 }
 
+
 export function formatAs4Lines(parsed) {
-  const ratingScore = (parsed && Number.isFinite(parsed.adjustedOverallScore))
-    ? parsed.adjustedOverallScore
-    : parsed.overallScore;
+  // Use adjustedOverallScore (3a) for compass rating if present, otherwise fall back.
+  const ratingScore =
+    parsed && Number.isFinite(parsed.adjustedOverallScore)
+      ? parsed.adjustedOverallScore
+      : parsed.overallScore;
+
   const rating = scoreToCompassRating(ratingScore);
   const line1 = compassEmojis(rating);
   const line2 = String(parsed.notesText || "").trim();
@@ -195,8 +193,16 @@ export function formatAs4Lines(parsed) {
   const line4 = String(parsed.consolidationText || "").trim();
   return `${line1}\n${line2}\n${line3}\n${line4}`;
 }
+(parsed) {
+  const rating = scoreToCompassRating(parsed.overallScore);
+  const line1 = compassEmojis(rating);
+  const line2 = String(parsed.notesText || "").trim();
+  const line3 = "Better consolidation:";
+  const line4 = String(parsed.consolidationText || "").trim();
+  return `${line1}\n${line2}\n${line3}\n${line4}`;
+}
 
-export function isValid4LineFeedback(feedback) {(feedback) {
+export function isValid4LineFeedback(feedback) {
   const lines = String(feedback || "")
     .split(/\r?\n/)
     .map((l) => l.trim())
