@@ -1463,6 +1463,25 @@ function addPages() {
     const diagText = document.getElementById('diagText');
     const diagCopyBtn = document.getElementById('diagCopyBtn');
 
+    // Diagnostics button placement (🔧): keep it out of top-controls flow to avoid clipping.
+    if (diagBtn) {
+      diagBtn.textContent = '🔧';
+      diagBtn.title = diagBtn.title || 'Diagnostics';
+      diagBtn.style.position = 'fixed';
+      diagBtn.style.top = '16px';
+      diagBtn.style.right = '64px'; // near the music toggle; tweak if needed
+      diagBtn.style.zIndex = '9999';
+      diagBtn.style.background = 'none';
+      diagBtn.style.border = 'none';
+      diagBtn.style.padding = '0';
+      diagBtn.style.fontSize = '18px';
+      diagBtn.style.lineHeight = '1';
+      diagBtn.style.cursor = 'pointer';
+      diagBtn.style.opacity = '0.65';
+      diagBtn.addEventListener('mouseenter', () => { diagBtn.style.opacity = '1'; });
+      diagBtn.addEventListener('mouseleave', () => { diagBtn.style.opacity = '0.65'; });
+    }
+
     function hideAllPanels() {
       if (volumePanel) volumePanel.style.display = 'none';
       if (diagPanel) diagPanel.style.display = 'none';
