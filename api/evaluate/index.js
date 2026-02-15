@@ -26,8 +26,7 @@ export default async function handler(req, res) {
     const body = await readJsonBody(req);
     const pageText = String(body?.pageText ?? "").trim();
     const userText = String(body?.userText ?? "").trim();
-
-    const debugEnabled = Boolean(body?.debug);
+    const debug = String(body?.debug ?? "").trim() === "1" || body?.debug === true;
 
     if (!pageText || !userText) {
       return json(res, 400, { error: "Missing pageText/userText" });
@@ -59,6 +58,7 @@ export default async function handler(req, res) {
 
     const data = JSON.parse(rawText);
     const modelText = data?.choices?.[0]?.message?.content ?? "";
+
     let usedModelText = modelText;
     let retryOutput = "";
 
@@ -92,13 +92,14 @@ export default async function handler(req, res) {
       }
     }
 
+    // Debug info is returned only when explicitly requested, and never changes `feedback`.
     const out = { feedback };
-    if (debugEnabled) {
+    if (debug) {
       out.debug = {
         model: MODEL,
         raw_model_output: String(usedModelText || ""),
-        // If a retry occurred, include it so you can compare outputs.
-        retry_model_output: String(retryOutput || "")
+        first_model_output: String(modelText || ""),
+        retry_model_output: String(retryOutput || ""),
       };
     }
     return json(res, 200, out);

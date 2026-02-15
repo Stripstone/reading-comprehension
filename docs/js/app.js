@@ -904,18 +904,11 @@ function addPages() {
     const passageText = pageElement.querySelector('.page-text').textContent;
     const userText = page?.consolidation || "";
 
-    let debugEnabled = false;
-    try {
-      const params = new URLSearchParams(location.search);
-      debugEnabled = (params.get('debug') === '1');
-    } catch (_) {}
-
     const requestPayload = {
       pageText: passageText,
       userText: userText,
       betterCharLimit: goalCharCount,
-      bulletMaxChars: 110,
-      debug: debugEnabled
+      bulletMaxChars: 110
     };
 
     try {
@@ -945,6 +938,9 @@ function addPages() {
         status: response.status,
         request: requestPayload,
         responseText: rawText,
+        // If the API returned debug info, keep it out of the normal UI and only
+        // expose it via the diagnostics panel.
+        debug: data && data.debug ? data.debug : undefined,
         at: new Date().toISOString()
       };
       displayAIFeedback(pageIndex, data.feedback || "");
@@ -1452,16 +1448,38 @@ function addPages() {
   // ===================================
 
   (function initUtilityPanels() {
-    // Debug flag (URL ?debug=1) used to expose diagnostics without affecting normal UI.
-    let __rcDebugEnabled = false;
+    const musicToggleBtn = document.getElementById('musicToggle');
+    const toggleMusicBtn = document.getElementById('toggleMusicBtn');
+    const volumePanel = document.getElementById('volumePanel');
+    const volumeCloseBtn = document.getElementById('volumeCloseBtn');
+
+    // Diagnostics are debug-only and must not alter the normal UI layout.
+    // We build the button + panel dynamically (appended to <body>) so it cannot
+    // create empty boxes inside .top-controls.
+    let diagBtn = null;
+    let diagPanel = null;
+    let diagCloseBtn = null;
+    let diagText = null;
+    let diagCopyBtn = null;
+
+    // URL flag: ?debug=1
+    let debugEnabled = false;
     try {
-      const __p = new URLSearchParams(location.search);
-      __rcDebugEnabled = (__p.get('debug') === '1');
+      const params = new URLSearchParams(location.search);
+      debugEnabled = (params.get('debug') === '1');
     } catch (_) {}
 
-    // Hide any legacy debug UI controls (dropdowns/buttons) when using the wrench diagnostics.
-    // This prevents the old debug selector from persisting in the top controls.
-    if (__rcDebugEnabled) {
+    // If any legacy diag elements exist in the DOM (from older patches), hide them
+    // so they don't consume layout space.
+    ['diagBtn', 'diagPanel'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) {
+        try { el.style.display = 'none'; } catch (_) {}
+      }
+    });
+
+    // Hide any legacy "debug" dropdown/controls if present.
+    if (debugEnabled) {
       const legacySelectors = [
         '#debugControls', '#debugControl', '#debugPanelLegacy', '#debugSelect', '#debugMode',
         '#debugDropdown', '#debugToggle', '#debugMenu', '.debug-controls', '.debug-control',
@@ -1472,90 +1490,6 @@ function addPages() {
           try { el.style.display = 'none'; } catch (_) {}
         });
       });
-    }
-
-    const musicToggleBtn = document.getElementById('musicToggle');
-    const toggleMusicBtn = document.getElementById('toggleMusicBtn');
-    const volumePanel = document.getElementById('volumePanel');
-    const volumeCloseBtn = document.getElementById('volumeCloseBtn');
-
-    let diagBtn = document.getElementById('diagBtn');
-
-    // If the diagnostics button doesn't exist in the DOM (older index.html), create a minimal one.
-    // Only create it when debug is enabled, or when the keyboard shortcut is used.
-    let __diagBtn = diagBtn;
-    if (!__diagBtn && __rcDebugEnabled) {
-      try {
-        __diagBtn = document.createElement('button');
-        __diagBtn.id = 'diagBtn';
-        __diagBtn.type = 'button';
-        __diagBtn.setAttribute('aria-label', 'Diagnostics');
-        document.body.appendChild(__diagBtn);
-        diagBtn = __diagBtn;
-      } catch (_) {}
-    }
-    let diagPanel = document.getElementById('diagPanel');
-
-    // If the diagnostics panel is missing, create a minimal one (debug-only).
-    if (!diagPanel && __rcDebugEnabled) {
-      try {
-        diagPanel = document.createElement('div');
-        diagPanel.id = 'diagPanel';
-        diagPanel.style.display = 'none';
-        diagPanel.style.position = 'fixed';
-        diagPanel.style.top = '64px';
-        diagPanel.style.right = '16px';
-        diagPanel.style.width = 'min(520px, calc(100vw - 32px))';
-        diagPanel.style.maxHeight = 'min(70vh, 520px)';
-        diagPanel.style.zIndex = '9999';
-        diagPanel.style.padding = '10px';
-        diagPanel.style.borderRadius = '10px';
-        diagPanel.style.border = '1px solid var(--border)';
-        diagPanel.style.background = 'rgba(20, 16, 12, 0.92)';
-        diagPanel.style.backdropFilter = 'blur(6px)';
-        diagPanel.innerHTML = `
-          <div style="display:flex; gap:8px; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <div style="font-weight:600; opacity:0.9;">Diagnostics</div>
-            <button id="diagCloseBtn" type="button" style="background:none;border:none;color:inherit;cursor:pointer;opacity:0.8;">✕</button>
-          </div>
-          <textarea id="diagText" style="width:100%; height:360px; resize:vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size:12px; line-height:1.35; padding:8px; border-radius:8px; border:1px solid var(--border); background: rgba(255,255,255,0.06); color: inherit;"></textarea>
-          <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:8px;">
-            <button id="diagCopyBtn" type="button" style="padding:6px 10px; border-radius:8px; border:1px solid var(--border); background: rgba(255,255,255,0.06); color:inherit; cursor:pointer;">Copy</button>
-          </div>
-        `;
-        document.body.appendChild(diagPanel);
-      } catch (_) {}
-    }
-    let diagCloseBtn = document.getElementById('diagCloseBtn');
-    let diagText = document.getElementById('diagText');
-    let diagCopyBtn = document.getElementById('diagCopyBtn');
-
-    // Re-resolve diagnostics elements in case the panel was created dynamically above.
-    if (diagPanel && (!diagCloseBtn || !diagText || !diagCopyBtn)) {
-      try {
-        diagCloseBtn = document.getElementById('diagCloseBtn') || diagCloseBtn;
-        diagText = document.getElementById('diagText') || diagText;
-        diagCopyBtn = document.getElementById('diagCopyBtn') || diagCopyBtn;
-      } catch (_) {}
-    }
-
-    // Diagnostics button placement (🔧): keep it out of top-controls flow to avoid clipping.
-    if (diagBtn) {
-      diagBtn.textContent = '🔧';
-      diagBtn.title = diagBtn.title || 'Diagnostics';
-      diagBtn.style.position = 'fixed';
-      diagBtn.style.top = '16px';
-      diagBtn.style.right = '64px'; // near the music toggle; tweak if needed
-      diagBtn.style.zIndex = '9999';
-      diagBtn.style.background = 'none';
-      diagBtn.style.border = 'none';
-      diagBtn.style.padding = '0';
-      diagBtn.style.fontSize = '18px';
-      diagBtn.style.lineHeight = '1';
-      diagBtn.style.cursor = 'pointer';
-      diagBtn.style.opacity = '0.65';
-      diagBtn.addEventListener('mouseenter', () => { diagBtn.style.opacity = '1'; });
-      diagBtn.addEventListener('mouseleave', () => { diagBtn.style.opacity = '0.65'; });
     }
 
     function hideAllPanels() {
@@ -1628,56 +1562,127 @@ function addPages() {
       if (toggleMusicBtn) toggleMusicBtn.addEventListener('click', () => window.toggleMusic && window.toggleMusic());
     }
 
-    // Diagnostics panel wiring
-    function setDiagVisible(v) {
-      if (!diagPanel || !diagText) return;
-      if (!v) {
-        diagPanel.style.display = 'none';
-        return;
+    // Diagnostics panel wiring (debug-only)
+    function ensureDiagUI() {
+      if (!debugEnabled) return;
+      if (diagBtn && diagPanel && diagText) return;
+
+      // Button: match the music button styling and sit beside it.
+      diagBtn = document.createElement('button');
+      diagBtn.id = 'diagBtn';
+      diagBtn.type = 'button';
+      diagBtn.className = 'music-button';
+      diagBtn.title = 'Diagnostics';
+      diagBtn.innerHTML = '<span id="diagIcon">🔧</span>';
+
+      if (musicToggleBtn && musicToggleBtn.parentElement) {
+        musicToggleBtn.parentElement.insertBefore(diagBtn, musicToggleBtn);
+      } else {
+        // fallback: fixed top-right (only if the DOM changes)
+        document.body.appendChild(diagBtn);
+        diagBtn.style.position = 'fixed';
+        diagBtn.style.top = '16px';
+        diagBtn.style.right = '64px';
+        diagBtn.style.zIndex = '1000';
       }
-      const dump = lastAIDiagnostics
-        ? JSON.stringify(lastAIDiagnostics, null, 2)
-        : 'No diagnostics captured yet.\n\nTip: if the AI returns “Could not generate…”, try again, then open diagnostics.';
-      diagText.value = dump;
-      diagPanel.style.display = 'block';
-    }
 
-    // Show diag button if URL enables it
-    try {
-      const params = new URLSearchParams(location.search);
-      if (params.get('debug') === '1' && diagBtn) diagBtn.style.display = 'inline-block';
-    } catch (_) {}
+      // Panel: same conventions as the Sound panel (fixed, above the button)
+      diagPanel = document.createElement('div');
+      diagPanel.id = 'diagPanel';
+      diagPanel.style.display = 'none';
+      diagPanel.style.position = 'fixed';
+      diagPanel.style.zIndex = '1000';
+      diagPanel.style.width = '420px';
+      diagPanel.style.maxWidth = '92vw';
+      diagPanel.style.padding = '12px';
+      diagPanel.style.border = '2px solid var(--border)';
+      diagPanel.style.borderRadius = '10px';
+      diagPanel.style.background = 'var(--secondary-bg)';
+      diagPanel.style.boxShadow = '0 8px 28px rgba(0,0,0,0.22)';
+      diagPanel.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <strong style="font-size: 13px; opacity:0.9;">Diagnostics</strong>
+          <button type="button" id="diagCloseBtn" style="padding:6px 10px;">✕</button>
+        </div>
+        <textarea id="diagText" readonly style="width:100%; height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 12px; padding: 10px;"></textarea>
+        <div style="display:flex; gap:10px; margin-top:10px; justify-content:flex-end;">
+          <button type="button" id="diagCopyBtn">Copy</button>
+        </div>
+      `;
+      document.body.appendChild(diagPanel);
 
-    if (diagBtn) {
-      diagBtn.addEventListener('click', () => {
+      diagCloseBtn = diagPanel.querySelector('#diagCloseBtn');
+      diagText = diagPanel.querySelector('#diagText');
+      diagCopyBtn = diagPanel.querySelector('#diagCopyBtn');
+
+      function positionPanelAboveButton(btn, panel) {
+        if (!btn || !panel) return;
+        try {
+          panel.style.visibility = 'hidden';
+          panel.style.display = 'block';
+          const rect = btn.getBoundingClientRect();
+          const panelW = panel.offsetWidth;
+          const panelH = panel.offsetHeight;
+          const gap = 10;
+          const top = Math.max(10, rect.top - panelH - gap);
+          const left = Math.min(
+            window.innerWidth - panelW - 10,
+            Math.max(10, rect.right - panelW)
+          );
+          panel.style.top = `${top}px`;
+          panel.style.left = `${left}px`;
+        } catch (_) {}
+        panel.style.visibility = 'visible';
+      }
+
+      function setDiagVisible(v) {
+        if (!diagPanel || !diagText) return;
+        if (!v) {
+          diagPanel.style.display = 'none';
+          return;
+        }
+        const dump = lastAIDiagnostics
+          ? JSON.stringify(lastAIDiagnostics, null, 2)
+          : 'No diagnostics captured yet.\n\nTip: run an AI eval, then open diagnostics.';
+        diagText.value = dump;
+        diagPanel.style.display = 'block';
+        positionPanelAboveButton(diagBtn, diagPanel);
+      }
+
+      diagBtn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const isOpen = diagPanel && diagPanel.style.display === 'block';
+        hideAllPanels();
+        setDiagVisible(!isOpen);
+      });
+
+      if (diagCloseBtn) diagCloseBtn.addEventListener('click', () => setDiagVisible(false));
+      if (diagCopyBtn && diagText) {
+        diagCopyBtn.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(diagText.value || '');
+            diagCopyBtn.textContent = 'Copied';
+            setTimeout(() => (diagCopyBtn.textContent = 'Copy'), 900);
+          } catch (_) {
+            diagText.select();
+            document.execCommand('copy');
+          }
+        });
+      }
+
+      // Ctrl+Alt+D toggles diagnostics (debug-only)
+      document.addEventListener('keydown', (e) => {
+        if (!debugEnabled) return;
+        if (!(e.ctrlKey && e.altKey && (e.key === 'd' || e.key === 'D'))) return;
         const isOpen = diagPanel && diagPanel.style.display === 'block';
         hideAllPanels();
         setDiagVisible(!isOpen);
       });
     }
-    if (diagCloseBtn) diagCloseBtn.addEventListener('click', () => setDiagVisible(false));
-    if (diagCopyBtn && diagText) {
-      diagCopyBtn.addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(diagText.value || '');
-          diagCopyBtn.textContent = 'Copied';
-          setTimeout(() => (diagCopyBtn.textContent = 'Copy'), 900);
-        } catch (_) {
-          // fallback
-          diagText.select();
-          document.execCommand('copy');
-        }
-      });
-    }
 
-    // Keyboard shortcut: Ctrl+Alt+D toggles diagnostics
-    document.addEventListener('keydown', (e) => {
-      if (!(e.ctrlKey && e.altKey && (e.key === 'd' || e.key === 'D'))) return;
-      if (diagBtn) diagBtn.style.display = 'inline-block';
-      const isOpen = diagPanel && diagPanel.style.display === 'block';
-      hideAllPanels();
-      setDiagVisible(!isOpen);
-    });
+    // Build debug UI only when enabled.
+    ensureDiagUI();
 
     // Click outside closes panels (lightweight)
     document.addEventListener('click', (e) => {
