@@ -904,11 +904,21 @@ function addPages() {
     const passageText = pageElement.querySelector('.page-text').textContent;
     const userText = page?.consolidation || "";
 
+    // Diagnostics flag (?debug=1). When enabled, the API returns extra debug fields that are
+    // stored only in lastAIDiagnostics (never rendered into the normal UI).
+    let debugEnabled = false;
+    try {
+      const params = new URLSearchParams(location.search);
+      debugEnabled = (params.get('debug') === '1');
+    } catch (_) {}
+
     const requestPayload = {
       pageText: passageText,
       userText: userText,
       betterCharLimit: goalCharCount,
-      bulletMaxChars: 110
+      bulletMaxChars: 110,
+      // Ask the API to include raw/unparsed model output in a separate `debug` field.
+      debug: debugEnabled ? "1" : undefined
     };
 
     try {
