@@ -27,6 +27,8 @@ export default async function handler(req, res) {
     const pageText = String(body?.pageText ?? "").trim();
     const userText = String(body?.userText ?? "").trim();
 
+    const debugEnabled = Boolean(body?.debug);
+
     if (!pageText || !userText) {
       return json(res, 400, { error: "Missing pageText/userText" });
     }
@@ -57,6 +59,8 @@ export default async function handler(req, res) {
 
     const data = JSON.parse(rawText);
     const modelText = data?.choices?.[0]?.message?.content ?? "";
+    let usedModelText = modelText;
+    let retryOutput = "";
 
     const parsed = parseMultiCriteriaOutput(modelText);
     let feedback = formatAs4Lines(parsed);
@@ -78,14 +82,26 @@ export default async function handler(req, res) {
       const retryText = await retry.text();
       if (retry.ok) {
         const retryData = JSON.parse(retryText);
-        const retryOutput = retryData?.choices?.[0]?.message?.content ?? "";
+        retryOutput = retryData?.choices?.[0]?.message?.content ?? "";
         const parsed2 = parseMultiCriteriaOutput(retryOutput);
         const feedback2 = formatAs4Lines(parsed2);
-        if (isValid4LineFeedback(feedback2)) feedback = feedback2;
+        if (isValid4LineFeedback(feedback2)) {
+          feedback = feedback2;
+          usedModelText = retryOutput;
+        }
       }
     }
 
-    return json(res, 200, { feedback });
+    const out = { feedback };
+    if (debugEnabled) {
+      out.debug = {
+        model: MODEL,
+        raw_model_output: String(usedModelText || ""),
+        // If a retry occurred, include it so you can compare outputs.
+        retry_model_output: String(retryOutput || "")
+      };
+    }
+    return json(res, 200, out);
   } catch (err) {
     return json(res, 500, { error: "Server error", detail: String(err) });
   }
