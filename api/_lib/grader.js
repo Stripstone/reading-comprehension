@@ -17,10 +17,9 @@ export function compassEmojis(rating) {
 }
 
 export function parseMultiCriteriaOutput(rawText) {
-  // NOTE:
-  // - We parse the model's structured output for per-criterion scores + Overall Score.
-  // - We apply the +5 "structural fidelity" bonus deterministically in code (3a),
-  //   without altering any individual criterion scores.
+  // Parse the model's structured output for per-criterion scores + Overall Score.
+  // Apply the +5 "structural fidelity" bonus deterministically in code (3a),
+  // without altering any individual criterion scores.
   const cleaned = String(rawText || "")
     .replace(/\*\*/g, "")
     .replace(/^###\s+/gm, "")
@@ -129,7 +128,6 @@ export function parseMultiCriteriaOutput(rawText) {
     }
   }
 
-  // Normalize / fallbacks
   const overallRounded = (() => {
     if (overallScore === null) return 60;
     const r = Math.round(Number.parseFloat(overallScore));
@@ -172,7 +170,6 @@ export function parseMultiCriteriaOutput(rawText) {
   if (!consolidationText) consolidationText = "Unable to generate improved consolidation.";
 
   return {
-    // Keep the model's original overall (rounded) and expose adjusted score for rating.
     overallScore: overallRounded,
     adjustedOverallScore,
     coreIdeaScore,
@@ -193,10 +190,13 @@ export function formatAs4Lines(parsed) {
   const line2 = String(parsed.notesText || "").trim();
   const line3 = "Better consolidation:";
   const line4 = String(parsed.consolidationText || "").trim();
-  return `${line1}\n${line2}\n${line3}\n${line4}`;
+  return `${line1}
+${line2}
+${line3}
+${line4}`;
 }
 
-export function isValid4LineFeedback(feedback) {(feedback) {
+export function isValid4LineFeedback(feedback) {
   const lines = String(feedback || "")
     .split(/\r?\n/)
     .map((l) => l.trim())
