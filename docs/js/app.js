@@ -20,6 +20,9 @@
   let intervals = [];
   let lastFocusedPageIndex = -1; // for keyboard navigation
 
+  // Diagnostics (hidden panel): capture last AI request/response for bug-fixing
+  let lastAIDiagnostics = null;
+
   let goalTime = DEFAULT_TIME_GOAL;
   let goalCharCount = DEFAULT_CHAR_GOAL;
 
@@ -31,13 +34,42 @@
   const evaluateSound = document.getElementById("evaluateSound");
   
   // Set initial volumes
-  sandSound.volume = SAND_VOLUME;
-  stoneSound.volume = STONE_VOLUME;
-  rewardSound.volume = REWARD_VOLUME;
-  compassSound.volume = COMPASS_VOLUME;
-  pageTurnSound.volume = PAGE_TURN_VOLUME;
-  evaluateSound.volume = EVALUATE_VOLUME;
-  music.volume = MUSIC_VOLUME;
+  function loadSavedVolumes() {
+    try {
+      const raw = localStorage.getItem('rc_volumes');
+      return raw ? JSON.parse(raw) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function saveVolumes(v) {
+    try { localStorage.setItem('rc_volumes', JSON.stringify(v)); } catch (_) {}
+  }
+
+  const savedVol = loadSavedVolumes() || {};
+  sandSound.volume = typeof savedVol.sand === 'number' ? savedVol.sand : SAND_VOLUME;
+  stoneSound.volume = typeof savedVol.stone === 'number' ? savedVol.stone : STONE_VOLUME;
+  rewardSound.volume = typeof savedVol.reward === 'number' ? savedVol.reward : REWARD_VOLUME;
+  compassSound.volume = typeof savedVol.compass === 'number' ? savedVol.compass : COMPASS_VOLUME;
+  pageTurnSound.volume = typeof savedVol.pageTurn === 'number' ? savedVol.pageTurn : PAGE_TURN_VOLUME;
+  evaluateSound.volume = typeof savedVol.evaluate === 'number' ? savedVol.evaluate : EVALUATE_VOLUME;
+  music.volume = typeof savedVol.music === 'number' ? savedVol.music : MUSIC_VOLUME;
+
+  // Small helper used by the volume panel
+  function setVolume(key, val) {
+    const v = Math.max(0, Math.min(1, Number(val)));
+    const cur = loadSavedVolumes() || {};
+    cur[key] = v;
+    saveVolumes(cur);
+    if (key === 'sand') sandSound.volume = v;
+    if (key === 'stone') stoneSound.volume = v;
+    if (key === 'reward') rewardSound.volume = v;
+    if (key === 'compass') compassSound.volume = v;
+    if (key === 'pageTurn') pageTurnSound.volume = v;
+    if (key === 'evaluate') evaluateSound.volume = v;
+    if (key === 'music') music.volume = v;
+  }
   
   // Set initial input values from constants
   document.getElementById("goalTimeInput").value = DEFAULT_TIME_GOAL;
@@ -280,6 +312,19 @@
           lastErr = e;
         }
       }
+      // Fallback for local file:// usage (fetch is often blocked). If an embedded manifest exists, use it.
+      try {
+        if (window.EMBED_MANIFEST && Array.isArray(window.EMBED_MANIFEST)) {
+          const data = window.EMBED_MANIFEST;
+          manifest = (Array.isArray(data) ? data : []).map((b) => {
+            const id = b.id || b.name || "";
+            const p = b.path || (id ? `assets/books/${id}.md` : "");
+            const title = b.title || titleFromBookId(id) || id || "Untitled";
+            return { id, title, path: p };
+          }).filter(b => b.id && b.path);
+          return;
+        }
+      } catch (_) {}
       throw lastErr || new Error("manifest fetch failed");
     }
 
@@ -313,6 +358,19 @@
 
         refreshChapterAndPagesUI();
       } catch (e) {
+        // Fallback for local file:// usage: try embedded books
+        try {
+          if (window.EMBED_BOOKS && typeof window.EMBED_BOOKS[id] === "string") {
+            currentBookRaw = window.EMBED_BOOKS[id];
+            hasExplicitChapters = countExplicitH1(currentBookRaw) > 0;
+            if (hasExplicitChapters) {
+              chapterList = parseChaptersFromMarkdown(currentBookRaw);
+            }
+            refreshChapterAndPagesUI();
+            return;
+          }
+        } catch (_) {}
+
         setSelectOptions(chapterSelect, [], "Failed to load book");
         setSelectOptions(pageStart, [], "Failed to load book");
         setSelectOptions(pageEnd, [], "Failed to load book");
@@ -356,13 +414,24 @@
     });
 
     loadBtn.addEventListener("click", () => {
+      // Dual-purpose button: in Text mode, it just loads pages from the textarea.
+      if (sourceSel.value === "text") {
+        addPages();
+        return;
+      }
+
+      // Book mode: load selected book/page slice into the textarea, then add pages.
       if (!currentBookRaw) return;
       if (!currentPages.length) return;
 
       const s = Math.max(0, parseInt(pageStart.value || "0", 10));
       const e = Math.max(s, parseInt(pageEnd.value || String(s), 10));
 
-      const slice = currentPages.slice(s, e + 1).map(p => p.text).filter(Boolean);
+      const slice = currentPages
+        .slice(s, e + 1)
+        .map((p) => p.text)
+        .filter(Boolean);
+      // Keep delimiter in a single JS string line (prevents accidental raw-newline parse errors)
       applySelectionToBulkInput(slice.join("\n---\n"));
     });
 
@@ -406,6 +475,9 @@ function addPages() {
     goalCharCount = parseInt(document.getElementById("goalCharInput").value);
     if (!input) return;
 
+    // UX rule: whenever user generates new pages, start fresh (no leftover pages)
+    if (pages.length > 0) resetSession({ confirm: false });
+
     input.split(/\n---\n|\n## Page\s+\d+/i).forEach(c => {
       const cleaned = c.split("\n").map(l => l.trim()).filter(l => l && !/^[#â€”]/.test(l));
       if (cleaned.length) {
@@ -413,6 +485,7 @@ function addPages() {
         pageData.push({
           text: cleaned.join(" "),
           consolidation: "",
+          aiFeedbackRaw: "",
           charCount: 0,
           completedOnTime: true, // Assume true until sandstoned
           isSandstone: false,
@@ -424,6 +497,21 @@ function addPages() {
     document.getElementById("bulkInput").value = "";
     render();
     checkSubmitButton();
+  }
+
+  function resetSession({ confirm = true } = {}) {
+    if (confirm && !window.confirm("Clear all pages, consolidations, and timers?")) return false;
+    pages = [];
+    pageData = [];
+    timers = [];
+    intervals.forEach(i => clearInterval(i));
+    intervals = [];
+    sandSound.pause();
+    document.getElementById("pages").innerHTML = "";
+    document.getElementById("submitBtn").disabled = true;
+    document.getElementById("verdictSection").style.display = "none";
+    lastFocusedPageIndex = -1;
+    return true;
   }
 
   function render() {
@@ -528,10 +616,15 @@ function addPages() {
 
       // Keyboard navigation (iPad + desktop)
       textarea.addEventListener("keydown", (e) => {
-        // Enter: next consolidation box (Shift+Enter remains normal newline behavior)
+        // Enter: unfocus textarea (Shift+Enter remains normal newline behavior)
+        // This makes iPad flow smoother: user can hit Enter to dismiss keyboard,
+        // then press Enter again (global) to jump to next box or click AI.
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
-          goToNext(i);
+          // Prevent the global Enter handler from running in the same event.
+          // (blur changes activeElement, which would otherwise trigger goToNext).
+          e.stopPropagation();
+          textarea.blur();
           return;
         }
 
@@ -663,16 +756,7 @@ function addPages() {
   }
 
   function clearSession() {
-    if (!confirm("Clear all pages, consolidations, and timers?")) return;
-    pages = [];
-    pageData = [];
-    timers = [];
-    intervals.forEach(i => clearInterval(i));
-    intervals = [];
-    sandSound.pause();
-    document.getElementById("pages").innerHTML = "";
-    document.getElementById("submitBtn").disabled = true;
-    document.getElementById("verdictSection").style.display = "none";
+    resetSession({ confirm: true });
   }
 
   // ===================================
@@ -680,41 +764,40 @@ function addPages() {
   // ===================================
   
   function checkCompassUnlock() {
-    // Unlock compasses when ALL pages have at least 1 character
-    // AND user is not currently focused on any textarea
+    // UX rule:
+    // - Allow AI feedback page-by-page (show AI button once that page has text)
+    // - Do NOT allow compass rating until ALL pages have at least 1 character AND no textarea is focused
     const allHaveText = pageData.every(p => p.isSandstone || p.charCount > 0);
     const noTextareaFocused = document.activeElement.tagName !== 'TEXTAREA';
-    
-    if (allHaveText && noTextareaFocused) {
-      let anyUnlocked = false;
-      
-      // Get all pages to find both evaluation sections and action buttons
-      const allPages = document.querySelectorAll(".page");
-      
-      allPages.forEach((page, i) => {
-        const starsDiv = page.querySelector(".stars");
-        const evalSection = page.querySelector(".evaluation-section");
-        const aiBtn = page.querySelector(".ai-btn");
-        
-        // Only unlock non-sandstone pages
-        if (!pageData[i].isSandstone && starsDiv) {
-          starsDiv.classList.remove("locked");
-          // Add 'ready' class to trigger label glow animation
-          if (!starsDiv.classList.contains('rated') && evalSection) {
-            evalSection.classList.add('ready');
-            anyUnlocked = true;
-          }
-          // Show AI button when compasses unlock
-          if (aiBtn) aiBtn.style.display = 'block';
-        }
-      });
-      
-      // Play evaluation sound once when unlocking
-      if (anyUnlocked && !allSoundsMuted) {
-        evaluateSound.currentTime = 0;
-        if (window.playSfx) window.playSfx(evaluateSound, { restart: true, loop: false, retries: 2, delay: 120 });
-        else evaluateSound.play();
+
+    const allPages = document.querySelectorAll(".page");
+    allPages.forEach((pageEl, i) => {
+      const aiBtn = pageEl.querySelector(".ai-btn");
+      if (aiBtn) {
+        const canShowAI = !pageData[i]?.isSandstone && (pageData[i]?.charCount || 0) > 0;
+        aiBtn.style.display = canShowAI ? 'block' : 'none';
       }
+    });
+
+    if (!(allHaveText && noTextareaFocused)) return;
+
+    let anyUnlocked = false;
+    allPages.forEach((pageEl, i) => {
+      const starsDiv = pageEl.querySelector(".stars");
+      const evalSection = pageEl.querySelector(".evaluation-section");
+      if (!pageData[i].isSandstone && starsDiv) {
+        starsDiv.classList.remove("locked");
+        if (!starsDiv.classList.contains('rated') && evalSection) {
+          evalSection.classList.add('ready');
+          anyUnlocked = true;
+        }
+      }
+    });
+
+    if (anyUnlocked && !allSoundsMuted) {
+      evaluateSound.currentTime = 0;
+      if (window.playSfx) window.playSfx(evaluateSound, { restart: true, loop: false, retries: 2, delay: 120 });
+      else evaluateSound.play();
     }
   }
 
@@ -795,34 +878,58 @@ function addPages() {
     const passageText = pageElement.querySelector('.page-text').textContent;
     const userText = page?.consolidation || "";
 
+    const requestPayload = {
+      pageText: passageText,
+      userText: userText,
+      betterCharLimit: goalCharCount,
+      bulletMaxChars: 110
+    };
+
     try {
       const response = await fetch("https://reading-comprehension-rpwd.vercel.app/api/evaluate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pageText: passageText,
-          userText: userText,
-          // Use server's default model (set via OLLAMA_MODEL env var if needed)
-          // model: "llama3.1",  // optional override
-          
-          // CRITICAL: Pass the user's character goal to enforce limits
-          betterCharLimit: goalCharCount,
-          bulletMaxChars: 110
-        })
+        body: JSON.stringify(requestPayload)
       });
 
+      const rawText = await response.text();
       if (!response.ok) {
-        const msg = await response.text();
-        throw new Error(msg);
+        lastAIDiagnostics = {
+          kind: 'evaluate',
+          pageIndex,
+          status: response.status,
+          request: requestPayload,
+          responseText: rawText,
+          at: new Date().toISOString()
+        };
+        throw new Error(rawText);
       }
 
-      const data = await response.json();
+      const data = JSON.parse(rawText || "{}");
+      lastAIDiagnostics = {
+        kind: 'evaluate',
+        pageIndex,
+        status: response.status,
+        request: requestPayload,
+        responseText: rawText,
+        at: new Date().toISOString()
+      };
       displayAIFeedback(pageIndex, data.feedback || "");
 
       aiBtn.textContent = '▲ AI';
       aiBtn.classList.remove('loading');
     } catch (error) {
       console.error('AI evaluation error:', error);
+      if (!lastAIDiagnostics) {
+        lastAIDiagnostics = {
+          kind: 'evaluate',
+          pageIndex,
+          status: 0,
+          request: requestPayload,
+          responseText: String(error?.message || error || ''),
+          at: new Date().toISOString()
+        };
+      }
       feedbackDiv.innerHTML =
         '<div style="color: #8B2500;">Error getting AI feedback. Check console and verify AI Host is running.</div>';
       aiBtn.textContent = '▼ AI';
@@ -833,6 +940,11 @@ function addPages() {
   function displayAIFeedback(pageIndex, feedback) {
     const feedbackDiv = document.querySelector(`.ai-feedback[data-page="${pageIndex}"]`);
     if (!feedbackDiv) return;
+
+    // Persist raw feedback so Final Summary can reuse it later.
+    if (pageData?.[pageIndex]) {
+      pageData[pageIndex].aiFeedbackRaw = String(feedback || "");
+    }
 
     // Robust parsing:
     // - Works with \n or \r\n
@@ -1117,6 +1229,14 @@ function addPages() {
           <span class="stat-value">${Math.round(avgChars)}</span>
         </div>
       </div>
+
+      <div class="final-summary-controls" style="margin-top: 18px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+        <button class="submit-btn" id="finalSummaryBtn" type="button" onclick="generateFinalSummary()">Unlock Final Summary</button>
+        <button class="submit-btn" id="printResultsBtn" type="button" onclick="printResults()" style="opacity:0.9;">Print Results</button>
+      </div>
+
+      <div id="finalSummaryStatus" style="margin-top:10px; text-align:center; font-size: 14px; opacity:0.8;"></div>
+      <div id="finalSummaryOutput" style="margin-top:12px; display:none;"></div>
     `;
     
     // Show verdict with animation
@@ -1132,6 +1252,134 @@ function addPages() {
     if (tier.name === 'Masterful') {
       triggerConfetti();
     }
+  }
+
+  // ===================================
+  // 🧠 FINAL SUMMARY (CHAPTER CONSOLIDATION)
+  // ===================================
+
+  function buildFinalSummaryPagesPayload() {
+    // Tiered input:
+    // 1) Use stored AI feedback if present for a page.
+    // 2) Otherwise fall back to raw page text + user consolidation.
+    // This keeps token usage controlled and avoids reprocessing pages that already have feedback.
+    return pageData
+      .map((p, idx) => {
+        const ai = String(p?.aiFeedbackRaw ?? "").trim();
+        const pageText = String(p?.text ?? "").trim();
+        const userText = String(p?.consolidation ?? "").trim();
+
+        if (ai) return { n: idx + 1, aiFeedback: ai };
+        return { n: idx + 1, pageText, userText };
+      })
+      .filter((p) => {
+        const ai = String(p?.aiFeedback ?? "").trim();
+        const t = String(p?.pageText ?? "").trim();
+        const u = String(p?.userText ?? "").trim();
+        return ai || t || u;
+      });
+  }
+
+  async function generateFinalSummary() {
+    const btn = document.getElementById("finalSummaryBtn");
+    const status = document.getElementById("finalSummaryStatus");
+    const out = document.getElementById("finalSummaryOutput");
+    if (!btn || !status || !out) return;
+
+    const pagesPayload = buildFinalSummaryPagesPayload();
+    if (!pagesPayload.length) {
+      status.textContent = "Insufficient material to summarize.";
+      return;
+    }
+
+    btn.disabled = true;
+    status.textContent = "Generating final summary…";
+    out.style.display = "none";
+    out.innerHTML = "";
+
+    const requestPayload = { title: "", pages: pagesPayload };
+
+    try {
+      const response = await fetch("https://reading-comprehension-rpwd.vercel.app/api/summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestPayload)
+      });
+
+      const rawText = await response.text();
+      if (!response.ok) {
+        lastAIDiagnostics = {
+          kind: 'summary',
+          status: response.status,
+          request: requestPayload,
+          responseText: rawText,
+          at: new Date().toISOString()
+        };
+        throw new Error(rawText);
+      }
+
+      const data = JSON.parse(rawText || "{}");
+      lastAIDiagnostics = {
+        kind: 'summary',
+        status: response.status,
+        request: requestPayload,
+        responseText: rawText,
+        at: new Date().toISOString()
+      };
+      const summary = String(data?.summary ?? "").trim();
+      if (!summary) {
+        status.textContent = "No summary returned.";
+        btn.disabled = false;
+        return;
+      }
+
+      status.textContent = "";
+      out.style.display = "block";
+      out.innerHTML = `
+        <div style="white-space:pre-wrap; line-height:1.45; padding:14px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,0.04);">
+          ${escapeHtml(summary)}
+        </div>
+      `;
+    } catch (err) {
+      console.error("Final summary error:", err);
+      status.textContent = "Error generating final summary. Check console.";
+      btn.disabled = false;
+    }
+  }
+  function printResults() {
+    // Simple, stable text print (no UI/CSS parity attempts).
+    const verdict = document.getElementById("verdictSection");
+    if (!verdict) return;
+
+    const text = verdict.innerText || "";
+
+    const w = window.open("", "_blank", "width=800,height=600");
+    if (!w) return;
+
+    w.document.open();
+    w.document.write(`
+      <!doctype html>
+      <html><head><meta charset="utf-8" />
+      <title>Reading Results</title>
+      <style>
+        body { font-family: monospace; padding: 40px; white-space: pre-wrap; line-height: 1.6; }
+      </style>
+      </head><body>${escapeHtml(text)}</body></html>
+    `);
+    w.document.close();
+
+    w.focus();
+    w.print();
+  }
+
+  // Keep escaping helper for rendering AI text safely into HTML blocks.
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
   
   function getNextTierAdvice(currentTier) {
@@ -1163,3 +1411,152 @@ function addPages() {
 
   // Initialize optional Book Import UI
   initBookImporter();
+
+  // ===================================
+  // 🛠️ Utility Panels (Volume + Diagnostics)
+  // ===================================
+
+  (function initUtilityPanels() {
+    const musicToggleBtn = document.getElementById('musicToggle');
+    const toggleMusicBtn = document.getElementById('toggleMusicBtn');
+    const volumePanel = document.getElementById('volumePanel');
+    const volumeCloseBtn = document.getElementById('volumeCloseBtn');
+
+    const diagBtn = document.getElementById('diagBtn');
+    const diagPanel = document.getElementById('diagPanel');
+    const diagCloseBtn = document.getElementById('diagCloseBtn');
+    const diagText = document.getElementById('diagText');
+    const diagCopyBtn = document.getElementById('diagCopyBtn');
+
+    function hideAllPanels() {
+      if (volumePanel) volumePanel.style.display = 'none';
+      if (diagPanel) diagPanel.style.display = 'none';
+    }
+
+    // Volume panel wiring
+    if (musicToggleBtn && volumePanel) {
+      const sliders = {
+        music: document.getElementById('vol_music'),
+        sand: document.getElementById('vol_sand'),
+        stone: document.getElementById('vol_stone'),
+        reward: document.getElementById('vol_reward'),
+        compass: document.getElementById('vol_compass'),
+        pageTurn: document.getElementById('vol_pageTurn'),
+        evaluate: document.getElementById('vol_evaluate'),
+      };
+
+      function syncSlidersFromState() {
+        if (sliders.music) sliders.music.value = String(music.volume);
+        if (sliders.sand) sliders.sand.value = String(sandSound.volume);
+        if (sliders.stone) sliders.stone.value = String(stoneSound.volume);
+        if (sliders.reward) sliders.reward.value = String(rewardSound.volume);
+        if (sliders.compass) sliders.compass.value = String(compassSound.volume);
+        if (sliders.pageTurn) sliders.pageTurn.value = String(pageTurnSound.volume);
+        if (sliders.evaluate) sliders.evaluate.value = String(evaluateSound.volume);
+      }
+
+      Object.entries(sliders).forEach(([key, el]) => {
+        if (!el) return;
+        el.addEventListener('input', () => setVolume(key, el.value));
+      });
+
+      // Open the volume panel from the existing music button (no extra top-controls button).
+      musicToggleBtn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+
+        const isOpen = volumePanel.style.display === 'block';
+        hideAllPanels();
+        if (!isOpen) {
+          syncSlidersFromState();
+          // Position the panel just ABOVE the music toggle so it never drops below the fold.
+          // (iPad cursor can't reach off-page dropdowns.)
+          try {
+            // Temporarily show invisibly so we can measure height.
+            volumePanel.style.visibility = 'hidden';
+            volumePanel.style.display = 'block';
+
+            const rect = musicToggleBtn.getBoundingClientRect();
+            const panelW = volumePanel.offsetWidth;
+            const panelH = volumePanel.offsetHeight;
+
+            const gap = 10;
+            const top = Math.max(10, rect.top - panelH - gap);
+            const left = Math.min(
+              window.innerWidth - panelW - 10,
+              Math.max(10, rect.right - panelW)
+            );
+
+            volumePanel.style.top = `${top}px`;
+            volumePanel.style.left = `${left}px`;
+          } catch (_) {}
+          volumePanel.style.visibility = 'visible';
+        }
+      });
+
+      if (volumeCloseBtn) volumeCloseBtn.addEventListener('click', () => (volumePanel.style.display = 'none'));
+      if (toggleMusicBtn) toggleMusicBtn.addEventListener('click', () => window.toggleMusic && window.toggleMusic());
+    }
+
+    // Diagnostics panel wiring
+    function setDiagVisible(v) {
+      if (!diagPanel || !diagText) return;
+      if (!v) {
+        diagPanel.style.display = 'none';
+        return;
+      }
+      const dump = lastAIDiagnostics
+        ? JSON.stringify(lastAIDiagnostics, null, 2)
+        : 'No diagnostics captured yet.\n\nTip: if the AI returns “Could not generate…”, try again, then open diagnostics.';
+      diagText.value = dump;
+      diagPanel.style.display = 'block';
+    }
+
+    // Show diag button if URL enables it
+    try {
+      const params = new URLSearchParams(location.search);
+      if (params.get('debug') === '1' && diagBtn) diagBtn.style.display = 'inline-block';
+    } catch (_) {}
+
+    if (diagBtn) {
+      diagBtn.addEventListener('click', () => {
+        const isOpen = diagPanel && diagPanel.style.display === 'block';
+        hideAllPanels();
+        setDiagVisible(!isOpen);
+      });
+    }
+    if (diagCloseBtn) diagCloseBtn.addEventListener('click', () => setDiagVisible(false));
+    if (diagCopyBtn && diagText) {
+      diagCopyBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(diagText.value || '');
+          diagCopyBtn.textContent = 'Copied';
+          setTimeout(() => (diagCopyBtn.textContent = 'Copy'), 900);
+        } catch (_) {
+          // fallback
+          diagText.select();
+          document.execCommand('copy');
+        }
+      });
+    }
+
+    // Keyboard shortcut: Ctrl+Alt+D toggles diagnostics
+    document.addEventListener('keydown', (e) => {
+      if (!(e.ctrlKey && e.altKey && (e.key === 'd' || e.key === 'D'))) return;
+      if (diagBtn) diagBtn.style.display = 'inline-block';
+      const isOpen = diagPanel && diagPanel.style.display === 'block';
+      hideAllPanels();
+      setDiagVisible(!isOpen);
+    });
+
+    // Click outside closes panels (lightweight)
+    document.addEventListener('click', (e) => {
+      const t = e.target;
+      const inVol = volumePanel && volumePanel.contains(t);
+      const inDiag = diagPanel && diagPanel.contains(t);
+      const isVolBtn = musicToggleBtn && (t === musicToggleBtn || musicToggleBtn.contains(t));
+      const isDiagBtn = diagBtn && (t === diagBtn || diagBtn.contains(t));
+      if (inVol || inDiag || isVolBtn || isDiagBtn) return;
+      hideAllPanels();
+    });
+  })();
