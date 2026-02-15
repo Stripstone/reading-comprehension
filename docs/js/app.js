@@ -912,8 +912,7 @@ function addPages() {
     } catch (_) {}
 
     const MAX_DEBUG_CHARS = 900; // small on purpose
-    const pageTextForRequest =
-      debugEnabled ? passageText.slice(0, MAX_DEBUG_CHARS) : passageText;
+    const pageTextForRequest = passageText; // never alter grading input for debugging
 
     const requestPayload = {
       pageText: pageTextForRequest,
@@ -922,6 +921,24 @@ function addPages() {
       bulletMaxChars: 110,
       debug: debugEnabled ? "1" : undefined
     };
+    // Keep diagnostics readable without changing the actual request sent to the API.
+    const diagRequest = (() => {
+      if (!debugEnabled) return requestPayload;
+      try {
+        const clone = JSON.parse(JSON.stringify(requestPayload));
+        const max = 2000; // cap stored text only (not sent)
+        if (typeof clone.pageText === 'string' && clone.pageText.length > max) {
+          clone.pageText = clone.pageText.slice(0, max) + `… (truncated, ${clone.pageText.length} chars total)`;
+        }
+        if (typeof clone.userText === 'string' && clone.userText.length > max) {
+          clone.userText = clone.userText.slice(0, max) + `… (truncated, ${clone.userText.length} chars total)`;
+        }
+        return clone;
+      } catch (_) {
+        return requestPayload;
+      }
+    })();
+
 
     // remove undefined keys (optional)
     if (!requestPayload.debug) delete requestPayload.debug;
@@ -939,7 +956,7 @@ function addPages() {
           kind: 'evaluate',
           pageIndex,
           status: response.status,
-          request: requestPayload,
+          request: diagRequest,
           responseText: rawText,
           at: new Date().toISOString()
         };
@@ -951,7 +968,7 @@ function addPages() {
         kind: 'evaluate',
         pageIndex,
         status: response.status,
-        request: requestPayload,
+        request: diagRequest,
         responseText: rawText,
         // If the API returned debug info, keep it out of the normal UI and only
         // expose it via the diagnostics panel.
@@ -969,7 +986,7 @@ function addPages() {
           kind: 'evaluate',
           pageIndex,
           status: 0,
-          request: requestPayload,
+          request: diagRequest,
           responseText: String(error?.message || error || ''),
           at: new Date().toISOString()
         };
@@ -1121,7 +1138,7 @@ function addPages() {
   }
 
   // ===================================
-  // ðŸ“Š EVALUATION & TIER SYSTEM
+  // 📊 EVALUATION & TIER SYSTEM
   // ===================================
   
   function calculateScores() {
@@ -1357,7 +1374,7 @@ function addPages() {
         lastAIDiagnostics = {
           kind: 'summary',
           status: response.status,
-          request: requestPayload,
+          request: diagRequest,
           responseText: rawText,
           at: new Date().toISOString()
         };
@@ -1368,7 +1385,7 @@ function addPages() {
       lastAIDiagnostics = {
         kind: 'summary',
         status: response.status,
-        request: requestPayload,
+        request: diagRequest,
         responseText: rawText,
         at: new Date().toISOString()
       };

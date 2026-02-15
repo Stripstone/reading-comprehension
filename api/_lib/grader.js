@@ -26,11 +26,6 @@ export function parseMultiCriteriaOutput(rawText) {
   const lines = cleaned.split("\n");
 
   let overallScore = null;
-  let coreIdeaScore = null;
-  let accuracyScore = null;
-  let compressionScore = null;
-  let engagementScore = null;
-  let adjustedOverallScore = null;
   let notesText = "";
   let consolidationText = "";
 
@@ -45,28 +40,6 @@ export function parseMultiCriteriaOutput(rawText) {
       const match = line.match(/Overall Score:\s*\[?([\d.]+)%?\]?/i);
       if (match) overallScore = Math.round(parseFloat(match[1]));
       continue;
-
-    // Criterion scores (accept decimals)
-    if (line.match(/^Core Idea:\s*([\d.]+)%?/i)) {
-      const m = line.match(/^Core Idea:\s*([\d.]+)%?/i);
-      if (m) coreIdeaScore = Math.round(parseFloat(m[1]));
-      continue;
-    }
-    if (line.match(/^Accuracy:\s*([\d.]+)%?/i)) {
-      const m = line.match(/^Accuracy:\s*([\d.]+)%?/i);
-      if (m) accuracyScore = Math.round(parseFloat(m[1]));
-      continue;
-    }
-    if (line.match(/^Compression:\s*([\d.]+)%?/i)) {
-      const m = line.match(/^Compression:\s*([\d.]+)%?/i);
-      if (m) compressionScore = Math.round(parseFloat(m[1]));
-      continue;
-    }
-    if (line.match(/^Engagement:\s*([\d.]+)%?/i)) {
-      const m = line.match(/^Engagement:\s*([\d.]+)%?/i);
-      if (m) engagementScore = Math.round(parseFloat(m[1]));
-      continue;
-    }
     }
 
     if (line === "Notes" || line === "Notes:") {
@@ -115,48 +88,20 @@ export function parseMultiCriteriaOutput(rawText) {
       if (line.length > 10) consolidationText += (consolidationText ? " " : "") + line;
     }
   }
-  // Normalize / fallbacks
+
   if (overallScore === null) overallScore = 60;
-
-  // 3a (code): +5 bonus is applied ONLY to the *overall* (for compass rating),
-  // never to individual criterion scores. This supports—not replaces—the model's scoring.
-  const cleanedAll = cleaned;
-  const hasNoMaterialInaccuracies = /no material inaccuracies/i.test(cleanedAll);
-  const hasMaterialInaccuracies = /material inaccuracies/i.test(cleanedAll) && !hasNoMaterialInaccuracies;
-  const hardErrorPattern = /\b(incorrect|inaccurate|wrong|misstates|false|contradict(?:s|ing)|fabricat(?:e|ed|ion)|hallucinat(?:e|ed|ion))\b/i;
-  const hasHardErrorLanguage = hardErrorPattern.test(cleanedAll) && !hasNoMaterialInaccuracies;
-
-  const canAssessFidelity = Number.isFinite(coreIdeaScore) && Number.isFinite(accuracyScore);
-
-  // Align with prompt 3a: overall already high (>=86) and no material inaccuracies.
-  // We allow minor nuance loss (e.g., Accuracy ~85) as long as there is no hard error language.
-  const qualifies3a =
-    overallScore >= 86 &&
-    (!canAssessFidelity || (coreIdeaScore >= 88 && accuracyScore >= 85)) &&
-    !hasMaterialInaccuracies &&
-    !hasHardErrorLanguage;
-
-  adjustedOverallScore = qualifies3a ? Math.min(100, overallScore + 5) : overallScore;
-
   if (!notesText) notesText = "Review the passage for key details and mechanisms.";
   if (!consolidationText) consolidationText = "Unable to generate improved consolidation.";
 
   return {
     overallScore,
-    adjustedOverallScore,
-    coreIdeaScore,
-    accuracyScore,
-    compressionScore,
-    engagementScore,
     notesText: notesText.replace(/\s+/g, " ").trim(),
     consolidationText: consolidationText.replace(/\s+/g, " ").trim(),
   };
 }
 
-
 export function formatAs4Lines(parsed) {
-  const ratingScore = (parsed && Number.isFinite(parsed.adjustedOverallScore)) ? parsed.adjustedOverallScore : parsed.overallScore;
-  const rating = scoreToCompassRating(ratingScore);
+  const rating = scoreToCompassRating(parsed.overallScore);
   const line1 = compassEmojis(rating);
   const line2 = String(parsed.notesText || "").trim();
   const line3 = "Better consolidation:";
