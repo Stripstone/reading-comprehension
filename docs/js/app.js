@@ -1,9 +1,9 @@
 // ===================================
-  // ðŸ“š READING COMPREHENSION APP
+  // READING COMPREHENSION APP
   // ===================================
   
   // ===================================
-  // ðŸ“š APPLICATION STATE
+  // APPLICATION STATE
   // ===================================
   
   const TIERS = [
@@ -479,7 +479,7 @@ function addPages() {
     if (pages.length > 0) resetSession({ confirm: false });
 
     input.split(/\n---\n|\n## Page\s+\d+/i).forEach(c => {
-      const cleaned = c.split("\n").map(l => l.trim()).filter(l => l && !/^[#â€”]/.test(l));
+      const cleaned = c.split("\n").map(l => l.trim()).filter(l => l && !/^[# ]/.test(l));
       if (cleaned.length) {
         pages.push(cleaned.join(" "));
         pageData.push({
@@ -904,11 +904,18 @@ function addPages() {
     const passageText = pageElement.querySelector('.page-text').textContent;
     const userText = page?.consolidation || "";
 
+    let debugEnabled = false;
+    try {
+      const params = new URLSearchParams(location.search);
+      debugEnabled = (params.get('debug') === '1');
+    } catch (_) {}
+
     const requestPayload = {
       pageText: passageText,
       userText: userText,
       betterCharLimit: goalCharCount,
-      bulletMaxChars: 110
+      bulletMaxChars: 110,
+      debug: debugEnabled
     };
 
     try {
@@ -1413,10 +1420,10 @@ function addPages() {
   function getNextTierAdvice(currentTier) {
     const advice = {
       'Fragmented': 'Focus on writing substantial consolidations (90%+ of your character goal) before time runs out. Discipline means both beating the timer AND writing enough to capture the core idea.',
-      'Developing': 'Build consistencyâ€”finish every page on time and meet the character goal. Be honest in your self-evaluations to identify gaps.',
+      'Developing': 'Build consistency by finishing every page on time and within the character goal. Be honest in your self-evaluations to identify gaps.',
       'Competent': 'Capture the main mechanisms and causal relationships in each passage, not just surface-level facts. This depth will raise your comprehension score.',
-      'Proficient': 'Perfect your compressionâ€”hit the sweet spot every timeâ€”and consistently rate yourself 5/5 when you have truly mastered the material.',
-      'Masterful': 'ðŸ† Outstanding work! You have mastered focused reading, honest self-assessment, and concise consolidation. Keep this discipline as you tackle harder material.'
+      'Proficient': 'Perfect your compression hit the sweet spot every time and consistently rate yourself 5/5 when you have truly mastered the material.',
+      'Masterful': 'Outstanding work! You have mastered focused reading, honest self-assessment, and concise consolidation. Keep this discipline as you tackle harder material.'
     };
     return advice[currentTier] || '';
   }
