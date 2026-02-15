@@ -82,7 +82,7 @@ Copy code
    * Multiple successes raise the score proportionally.
 3. Overall Score = arithmetic mean of the four criteria.
 3a. add 10% to the overall score when the learner preserves scope, causality, conditional claims, and key mechanisms with no material inaccuracies. Do not cap scores due to “style,” “missing insight,” or the learner not adding extra ideas beyond the passage.
-3b. When the Overall Score is 90% or higher after applying 3a, feedback in the "Failed" and "Notes" sections should frame improvements as optional refinements rather than deficiencies. Do not imply error if none exists.
+3b. When the Overall Score is 90% or higher after applying 3a, feedback in the "Failed" and "Notes" sections should frame improvements as optional refinements rather than deficiencies. Do not imply error if none exists. Otherwise, when the Overall Score is below 90%, follow the standard grading behavior defined above without refinement framing.
 4. **PASS threshold:** 70% or higher indicates acceptable performance.
 5. Document in **Notes** why a score was assigned, referencing successes and failures.
 
