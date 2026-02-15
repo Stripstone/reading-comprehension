@@ -905,7 +905,7 @@ function addPages() {
     const userText = page?.consolidation || "";
 
     // Diagnostics flag (?debug=1). When enabled, the API returns extra debug fields that are
-    // stored only in lastAIDiagnostics (never rendered into the normal UI).
+    // stored only in lastAIDiagnostics (these are never rendered into the normal UI).
     let debugEnabled = false;
     try {
       debugEnabled = new URLSearchParams(location.search).get('debug') === '1';
