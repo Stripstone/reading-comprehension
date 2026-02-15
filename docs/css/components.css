@@ -552,9 +552,17 @@
       letter-spacing: 0.5px;
     }
 
-    .use-rating-btn {
-      display: block;
+    .ai-actions {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
       margin: 20px auto 0;
+      flex-wrap: wrap;
+    }
+
+    .use-rating-btn {
+      display: inline-block;
+      margin: 0;
       padding: 10px 24px;
       background: var(--accent);
       color: white;
@@ -568,10 +576,42 @@
       box-shadow: 0 2px 8px rgba(193, 125, 74, 0.3);
     }
 
+    .use-rating-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
     .use-rating-btn:hover {
       background: var(--accent-hover);
       transform: translateY(-2px);
       box-shadow: 0 4px 12px rgba(193, 125, 74, 0.4);
+    }
+
+    .use-rating-btn:disabled:hover {
+      background: var(--accent);
+      transform: none;
+      box-shadow: none;
+    }
+
+    .next-after-ai-btn {
+      display: inline-block;
+      padding: 10px 24px;
+      background: rgba(0,0,0,0.06);
+      color: var(--ink);
+      border: 1px solid rgba(0,0,0,0.10);
+      border-radius: 6px;
+      font-family: 'Karla', sans-serif;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .next-after-ai-btn:hover {
+      background: rgba(0,0,0,0.09);
+      transform: translateY(-2px);
     }
 
     /* Glow animation when evaluation is ready */

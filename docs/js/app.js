@@ -791,6 +791,10 @@ function addPages() {
           evalSection.classList.add('ready');
           anyUnlocked = true;
         }
+
+        // If this page already has an AI response rendered, enabling compasses
+        // should also enable the "Use This Rating" button.
+        updateUseRatingButtons(i);
       }
     });
 
@@ -799,6 +803,28 @@ function addPages() {
       if (window.playSfx) window.playSfx(evaluateSound, { restart: true, loop: false, retries: 2, delay: 120 });
       else evaluateSound.play();
     }
+  }
+
+  // "Use This Rating" should only be clickable once the page is in Evaluation stage.
+  function canUseAIRating(pageIndex) {
+    const pageEl = document.querySelectorAll('.page')[pageIndex];
+    if (!pageEl) return false;
+    if (pageData?.[pageIndex]?.isSandstone) return false;
+    const starsDiv = pageEl.querySelector('.evaluation-section .stars');
+    const evalSection = pageEl.querySelector('.evaluation-section');
+    if (!starsDiv || !evalSection) return false;
+    return !starsDiv.classList.contains('locked') && evalSection.classList.contains('ready');
+  }
+
+  function updateUseRatingButtons(pageIndex) {
+    const feedbackDiv = document.querySelector(`.ai-feedback[data-page="${pageIndex}"]`);
+    if (!feedbackDiv) return;
+    const useBtn = feedbackDiv.querySelector('.use-rating-btn');
+    if (!useBtn) return;
+    const rating = Number(useBtn.getAttribute('data-rating') || '0');
+    const enabled = rating > 0 && canUseAIRating(pageIndex);
+    useBtn.disabled = !enabled;
+    useBtn.title = enabled ? '' : 'Locked until Evaluation stage.';
   }
 
   function scrollToTop() {
@@ -1011,8 +1037,16 @@ function addPages() {
       </div>`;
     }
 
-    html += `<button class="use-rating-btn" onclick="applyAIRating(${pageIndex}, ${rating})">Use This Rating (${rating}/5)</button>`;
+    // Actions: "Use This Rating" is disabled until the page reaches Evaluation stage.
+    const useDisabled = !(rating > 0 && canUseAIRating(pageIndex));
+    html += `<div class="ai-actions">`
+    html += `<button class="use-rating-btn" data-rating="${rating}" ${useDisabled ? 'disabled' : ''} onclick="applyAIRating(${pageIndex}, ${rating})">Use This Rating (${rating}/5)</button>`;
+    html += `<button class="next-after-ai-btn" onclick="goToNext(${pageIndex})">Next Page →</button>`;
+    html += `</div>`;
     feedbackDiv.innerHTML = html;
+
+    // In case the compass unlock happens after AI renders, keep button state synced.
+    updateUseRatingButtons(pageIndex);
   }
 
 
@@ -1022,12 +1056,6 @@ function addPages() {
     
     const stars = starsDiv.querySelectorAll(".star");
     setRating(pageIndex, rating, stars);
-    
-    // Scroll to next page if exists
-    const pages = document.querySelectorAll('.page');
-    if (pages[pageIndex + 1]) {
-      pages[pageIndex + 1].scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
   }
 
   function setRating(pageIndex, value, stars) {
