@@ -908,18 +908,23 @@ function addPages() {
     // stored only in lastAIDiagnostics (never rendered into the normal UI).
     let debugEnabled = false;
     try {
-      const params = new URLSearchParams(location.search);
-      debugEnabled = (params.get('debug') === '1');
+      debugEnabled = new URLSearchParams(location.search).get('debug') === '1';
     } catch (_) {}
 
+    const MAX_DEBUG_CHARS = 900; // small on purpose
+    const pageTextForRequest =
+      debugEnabled ? passageText.slice(0, MAX_DEBUG_CHARS) : passageText;
+
     const requestPayload = {
-      pageText: passageText,
-      userText: userText,
+      pageText: pageTextForRequest,
+      userText,
       betterCharLimit: goalCharCount,
       bulletMaxChars: 110,
-      // Ask the API to include raw/unparsed model output in a separate `debug` field.
       debug: debugEnabled ? "1" : undefined
     };
+
+    // remove undefined keys (optional)
+    if (!requestPayload.debug) delete requestPayload.debug;
 
     try {
       const response = await fetch("https://reading-comprehension-rpwd.vercel.app/api/evaluate", {
