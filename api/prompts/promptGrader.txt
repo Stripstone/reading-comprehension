@@ -81,7 +81,7 @@ Copy code
    * Critical failures reduce the score heavily; minor omissions reduce it slightly.
    * Multiple successes raise the score proportionally.
 3. Overall Score = arithmetic mean of the four criteria.
-3a. After calculating the Overall Score as the arithmetic mean of the four criteria, you may add +5 points if the Overall Score is 86% or higher and the learner preserves scope, causality, conditional claims, and key mechanisms with no material inaccuracies. This bonus must not alter individual criterion scores and must support—not replace—the established grading criteria. 
+3a. After calculating the Overall Score as the arithmetic mean of the four criteria, you may add +5 points if the Overall Score is 86% or higher and the learner preserves scope and causality with no material inaccuracies. Minor omissions alone do not disqualify the bonus. This bonus must not alter individual criterion scores and must support—not replace—the established grading criteria. 
 3b. If the Overall Score is 90% or higher after applying 3a, frame improvements in the “Failed” and “Notes” sections as optional refinements rather than deficiencies, without implying error where none exists. Otherwise, follow the standard grading behavior defined above without refinement framing. I've trimmed one of them for conflict in purposes as well as adjusted the score bump criteria. The primary reason for the score bump was that it was impossible to reach 90% or 5 stars
 4. **PASS threshold:** 70% or higher indicates acceptable performance.
 5. Document in **Notes** why a score was assigned, referencing successes and failures.
