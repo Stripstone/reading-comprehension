@@ -3,7 +3,7 @@
 export function scoreToCompassRating(overallScore) {
   const score = Number.parseFloat(overallScore);
   const s = Number.isFinite(score) ? score : 0;
-  if (s >= 88) return 5;
+  if (s >= 90) return 5;
   if (s >= 80) return 4;
   if (s >= 70) return 3;
   if (s >= 50) return 2;
