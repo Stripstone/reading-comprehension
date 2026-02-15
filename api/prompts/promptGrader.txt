@@ -69,9 +69,6 @@ Example of Strong Consolidation:
 
 A 1-2 sentence version of the learner’s text that preserves scope, causality, conditional claims, and maximum correctness.
 
-yaml
-Copy code
-
 ---
 
 ### Numeric Scoring Instructions (Degrees of Correctness)
@@ -81,6 +78,8 @@ Copy code
    * Critical failures reduce the score heavily; minor omissions reduce it slightly.
    * Multiple successes raise the score proportionally.
 3. Overall Score = arithmetic mean of the four criteria.
+3a. After calculating the Overall Score as the arithmetic mean of the four criteria, you may add +5 points if the overall score is already 86 or higher and the learner preserves scope, causality, conditional claims, and key mechanisms with no material inaccuracies. This bonus must not alter individual criterion scores and must support—not replace—the established grading criteria.
+3b. If the Overall Score is 90% or higher after applying 3a, frame improvements in the “Failed” and “Notes” sections as optional refinements rather than deficiencies, without implying error where none exists. Otherwise, follow the standard grading behavior defined above without refinement framing.
 4. **PASS threshold:** 70% or higher indicates acceptable performance.
 5. Document in **Notes** why a score was assigned, referencing successes and failures.
 
@@ -88,10 +87,10 @@ Copy code
 
 ### Grading Criteria
 
-* **Core Idea** → Captures the passage’s main mechanisms, scope, and intended meaning.
+* **Core Idea** → Captures the passage’s main mechanisms, scope, and intended meaning; vague paraphrase without key mechanisms/details must score lower.
 * **Accuracy** → Preserves conditional statements, causal links, and factual correctness.
 * **Compression** → Condenses the passage effectively without losing meaning or adding unnecessary detail.
-* **Engagement** → Demonstrates active cognitive processing of the passage’s mechanisms, distinctions, or implications without adding new claims.
+* **Engagement** → Shows reasoning, insight, or actionable interpretation grounded in the passage’s mechanisms (not generic or speculative).
 
 ---
 
