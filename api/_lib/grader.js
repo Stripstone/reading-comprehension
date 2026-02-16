@@ -5,7 +5,7 @@ export function scoreToCompassRating(overallScore) {
   const s = Number.isFinite(score) ? score : 0;
   if (s >= 84) return 5;
   if (s >= 76) return 4;
-  if (s >= 67) return 3;
+  if (s >= 70) return 3;
   if (s >= 50) return 2;
   return 1;
 }

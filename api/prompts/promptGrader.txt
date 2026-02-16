@@ -89,10 +89,10 @@ Copy code
 
 ### Grading Criteria
 
-* **Core Idea** → Captures the passage’s main mechanisms, scope, and intended meaning.
+* **Core Idea** → Captures the passage’s main mechanisms, scope, and intended meaning in reasonable detail. No vague or one-phrase summaries.
 * **Accuracy** → Preserves conditional statements, causal links, and factual correctness.
-* **Compression** → Condenses the passage effectively without losing meaning or adding unnecessary detail.
-* **Engagement** → Shows reasoning, insight, or actionable interpretation from the passage.
+* **Compression** → Condenses the passage effectively with reasonable detail and without losing meaning or adding unnecessary detail.
+* **Engagement** → Shows textually ground reasoning, insight, or actionable interpretation of the passage.
 
 ---
 
