@@ -92,7 +92,7 @@ Copy code
 * **Core Idea** → Captures the passage’s main mechanisms, scope, and intended meaning.
 * **Accuracy** → Preserves conditional statements, causal links, and factual correctness.
 * **Compression** → Condenses the passage effectively without losing meaning or adding unnecessary detail.
-* **Engagement** → Demonstrates active cognitive processing of the passage’s mechanisms, distinctions, or implications without adding new claims.
+* **Engagement** → Shows reasoning, insight, or actionable interpretation from the passage.
 
 ---
 
