@@ -69,6 +69,9 @@ Example of Strong Consolidation:
 
 A 1-2 sentence version of the learner’s text that preserves scope, causality, conditional claims, and maximum correctness.
 
+yaml
+Copy code
+
 ---
 
 ### Numeric Scoring Instructions (Degrees of Correctness)
@@ -86,10 +89,10 @@ A 1-2 sentence version of the learner’s text that preserves scope, causality, 
 
 ### Grading Criteria
 
-* **Core Idea** → Captures the passage’s main mechanisms, scope, and intended meaning; vague paraphrase without key mechanisms/details must score lower.
+* **Core Idea** → Captures the passage’s main mechanisms, scope, and intended meaning.
 * **Accuracy** → Preserves conditional statements, causal links, and factual correctness.
 * **Compression** → Condenses the passage effectively without losing meaning or adding unnecessary detail.
-* **Engagement** → Shows reasoning, insight, or actionable interpretation grounded in the passage’s mechanisms (not generic or speculative).
+* **Engagement** → Demonstrates active cognitive processing of the passage’s mechanisms, distinctions, or implications without adding new claims.
 
 ---
 
