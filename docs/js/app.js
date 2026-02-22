@@ -121,6 +121,16 @@
     labelEl.textContent = total ? `Coverage: ${covered}/${total}` : 'Coverage: --';
   }
 
+  function setCoverageStatusAll(msg) {
+    try {
+      const pageEls = document.querySelectorAll('.page');
+      for (let i = 0; i < pageEls.length; i++) {
+        const labelEl = pageEls[i]?.querySelector?.('.coverage-label');
+        if (labelEl) labelEl.textContent = msg;
+      }
+    } catch (_) {}
+  }
+
   async function ensureAnchorsLoaded() {
     if (anchorsLoading) return;
     if (!pages.length) return;
@@ -182,6 +192,10 @@
     } catch (e) {
       // If anchors fail, we keep the app usable (coverage shows '--').
       console.warn('Anchor load failed:', e);
+      if (isDebugEnabledFromUrl()) {
+        const detail = (e && (e.message || String(e))) ? ` (${e.message || String(e)})` : '';
+        setCoverageStatusAll(`Coverage: -- (anchors unavailable)${detail}`);
+      }
     } finally {
       anchorsLoading = false;
     }

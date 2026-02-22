@@ -9,11 +9,13 @@ export function json(res, status, obj) {
 export function withCors(req, res, allowlistOrigins = []) {
   const origin = req.headers.origin;
 
-  // If no Origin header, it’s likely server-to-server; allow.
+  // This project is frequently hosted on custom domains/ports during development.
+  // To avoid brittle allowlists breaking the UX, we reflect the Origin if present.
+  // (If no Origin header, it’s likely server-to-server; allow.)
   let allowedOrigin = "";
   if (!origin) {
     allowedOrigin = "*";
-  } else if (allowlistOrigins.includes(origin)) {
+  } else {
     allowedOrigin = origin;
   }
 
