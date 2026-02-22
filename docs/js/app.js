@@ -20,6 +20,10 @@
   let intervals = [];
   let lastFocusedPageIndex = -1; // for keyboard navigation
 
+  // When true, the UI is in the "Evaluation" phase (compasses unlocked).
+  // In this phase, the Next button should advance pages without focusing the textarea.
+  let evaluationPhase = false;
+
   // Diagnostics (hidden panel): capture last AI request/response for bug-fixing
   let lastAIDiagnostics = null;
 
@@ -146,9 +150,10 @@
     const pageStart = document.getElementById("pageStart");
     const pageEnd = document.getElementById("pageEnd");
     const loadBtn = document.getElementById("loadBookSelection");
+    const appendBtn = document.getElementById("appendBookSelection");
     const bulkInput = document.getElementById("bulkInput");
 
-    if (!sourceSel || !bookControls || !bookSelect || !chapterControls || !chapterSelect || !pageControls || !pageStart || !pageEnd || !loadBtn || !bulkInput) {
+    if (!sourceSel || !bookControls || !bookSelect || !chapterControls || !chapterSelect || !pageControls || !pageStart || !pageEnd || !loadBtn || !appendBtn || !bulkInput) {
       console.warn("Book importer: missing required elements");
       return;
     }
@@ -378,9 +383,10 @@
       }
     }
 
-    function applySelectionToBulkInput(text) {
+    function applySelectionToBulkInput(text, { append = false } = {}) {
       bulkInput.value = String(text || "").trim();
-      addPages();
+      if (append) appendPages();
+      else addPages();
     }
 
     // Events
@@ -432,7 +438,29 @@
         .map((p) => p.text)
         .filter(Boolean);
       // Keep delimiter in a single JS string line (prevents accidental raw-newline parse errors)
-      applySelectionToBulkInput(slice.join("\n---\n"));
+      applySelectionToBulkInput(slice.join("\n---\n"), { append: false });
+    });
+
+    appendBtn.addEventListener("click", () => {
+      // Dual-purpose button: in Text mode, append from textarea.
+      if (sourceSel.value === "text") {
+        appendPages();
+        return;
+      }
+
+      // Book mode: append selected slice.
+      if (!currentBookRaw) return;
+      if (!currentPages.length) return;
+
+      const s = Math.max(0, parseInt(pageStart.value || "0", 10));
+      const e = Math.max(s, parseInt(pageEnd.value || String(s), 10));
+
+      const slice = currentPages
+        .slice(s, e + 1)
+        .map((p) => p.text)
+        .filter(Boolean);
+
+      applySelectionToBulkInput(slice.join("\n---\n"), { append: true });
     });
 
     try {
@@ -488,6 +516,36 @@ function addPages() {
           aiFeedbackRaw: "",
           charCount: 0,
           completedOnTime: true, // Assume true until sandstoned
+          isSandstone: false,
+          rating: 0
+        });
+      }
+    });
+
+    document.getElementById("bulkInput").value = "";
+    render();
+    checkSubmitButton();
+  }
+
+  // Append pages to the existing session (does NOT clear pages/timers/ratings).
+  // Uses the same splitting rules as addPages().
+  function appendPages() {
+    const input = document.getElementById("bulkInput").value.trim();
+    goalTime = parseInt(document.getElementById("goalTimeInput").value);
+    goalCharCount = parseInt(document.getElementById("goalCharInput").value);
+    if (!input) return;
+
+    input.split(/\n---\n|\n## Page\s+\d+/i).forEach(c => {
+      const cleaned = c.split("\n").map(l => l.trim()).filter(l => l && !/^[# ]/.test(l));
+      if (cleaned.length) {
+        const joined = cleaned.join(" ");
+        pages.push(joined);
+        pageData.push({
+          text: joined,
+          consolidation: "",
+          aiFeedbackRaw: "",
+          charCount: 0,
+          completedOnTime: true,
           isSandstone: false,
           rating: 0
         });
@@ -779,7 +837,10 @@ function addPages() {
       }
     });
 
-    if (!(allHaveText && noTextareaFocused)) return;
+    // Track phase so navigation can behave differently.
+    evaluationPhase = !!(allHaveText && noTextareaFocused);
+
+    if (!evaluationPhase) return;
 
     let anyUnlocked = false;
     allPages.forEach((pageEl, i) => {
@@ -835,8 +896,32 @@ function addPages() {
   }
 
   function goToNext(currentIndex) {
-    // Move to the next consolidation textarea; if none remain, go to top.
+    // Navigation rules:
+    // - Consolidation phase: focus the next editable textarea.
+    // - Evaluation phase: DO NOT focus the textarea; scroll to the next page block instead.
     // currentIndex is the page index the user is "on" (0-based). Use -1 to start from the beginning.
+
+    // Keep phase flag up to date (especially when called from buttons).
+    checkCompassUnlock();
+
+    const pageEls = document.querySelectorAll('.page');
+
+    if (evaluationPhase) {
+      // Scroll to the next page, or wrap to top.
+      const nextIdx = Math.min(currentIndex + 1, pageEls.length - 1);
+      const target = pageEls[nextIdx];
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        scrollToTop();
+      }
+      // Ensure no textarea gets auto-focused.
+      const active = document.activeElement;
+      if (active && active.tagName === 'TEXTAREA') active.blur();
+      return;
+    }
+
+    // Consolidation phase: focus the next editable textarea.
     const textareas = document.querySelectorAll('.page textarea');
     for (let j = currentIndex + 1; j < textareas.length; j++) {
       const ta = textareas[j];
@@ -1091,6 +1176,10 @@ function addPages() {
     
     const stars = starsDiv.querySelectorAll(".star");
     setRating(pageIndex, rating, stars);
+
+    // UX: after accepting the AI rating, advance to the next page.
+    // In Evaluation phase this will scroll without focusing the textarea.
+    goToNext(pageIndex);
   }
 
   function setRating(pageIndex, value, stars) {
