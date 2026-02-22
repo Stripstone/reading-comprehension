@@ -31,6 +31,163 @@
   let goalCharCount = DEFAULT_CHAR_GOAL;
 
   // -----------------------------------
+  // Anchor guidance (Phase 1 minimal)
+  // -----------------------------------
+  // Anchors are generated once per page (via /api/anchors) and used only for a
+  // lightweight coverage bar + optional 2s hint reveal. They do NOT affect scoring.
+  const DEFAULT_ANCHORS_PER_PAGE = 5;
+  let anchorsLoading = false;
+  const anchorCache = new Map(); // key: pageText hash -> anchors[]
+
+  function hashText(s) {
+    // FNV-1a 32-bit (deterministic, cheap)
+    let h = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = (h * 0x01000193) >>> 0;
+    }
+    return h.toString(16);
+  }
+
+  const STOPWORDS = new Set([
+    'the','a','an','and','or','but','if','then','so','to','of','in','on','for','with','as','at','by','from',
+    'is','are','was','were','be','been','being','it','this','that','these','those','they','them','their',
+    'you','your','we','our','i','me','my','he','his','she','her','who','what','when','where','why','how',
+    'not','no','yes','do','does','did','doing','can','could','should','would','will','just','all','most'
+  ]);
+
+  function normText(s) {
+    return String(s || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function keywordsFromSnippet(snip) {
+    const toks = normText(snip).split(' ').filter(Boolean);
+    const kw = [];
+    for (const t of toks) {
+      if (t.length < 4) continue;
+      if (STOPWORDS.has(t)) continue;
+      kw.push(t);
+    }
+    // Keep stable order; cap for speed.
+    return kw.slice(0, 8);
+  }
+
+  function isAnchorCovered(anchorSnippet, userText) {
+    const u = normText(userText);
+    if (!u) return false;
+    const kws = keywordsFromSnippet(anchorSnippet);
+    if (!kws.length) {
+      // Fallback: try direct normalized substring match if snippet is short.
+      const sn = normText(anchorSnippet);
+      return sn && sn.length <= 24 ? u.includes(sn) : false;
+    }
+    const required = Math.min(2, kws.length);
+    let hits = 0;
+    for (const k of kws) {
+      if (u.includes(k)) hits++;
+      if (hits >= required) return true;
+    }
+    return false;
+  }
+
+  function getAnchorsForPage(i) {
+    return Array.isArray(pageData?.[i]?.anchors) ? pageData[i].anchors : [];
+  }
+
+  function computeCoverage(i) {
+    const anchors = getAnchorsForPage(i);
+    if (!anchors.length) return { covered: 0, total: 0, coveredMap: [] };
+    const userText = pageData?.[i]?.consolidation || '';
+    const coveredMap = anchors.map(a => isAnchorCovered(a, userText));
+    const covered = coveredMap.filter(Boolean).length;
+    return { covered, total: anchors.length, coveredMap };
+  }
+
+  function updateCoverageUI(i) {
+    const pageEl = document.querySelectorAll('.page')[i];
+    if (!pageEl) return;
+    const fillEl = pageEl.querySelector('.coverage-bar .fill');
+    const labelEl = pageEl.querySelector('.coverage-label');
+    if (!fillEl || !labelEl) return;
+
+    const { covered, total, coveredMap } = computeCoverage(i);
+    pageData[i].anchorsCoveredMap = coveredMap;
+    const pct = total ? Math.round((covered / total) * 100) : 0;
+    fillEl.style.width = `${pct}%`;
+    labelEl.textContent = total ? `Coverage: ${covered}/${total}` : 'Coverage: --';
+  }
+
+  async function ensureAnchorsLoaded() {
+    if (anchorsLoading) return;
+    if (!pages.length) return;
+    anchorsLoading = true;
+    try {
+      // Build request for pages that don't have anchors yet.
+      const payloadPages = [];
+      for (let i = 0; i < pages.length; i++) {
+        const text = String(pages[i] || '');
+        const key = hashText(text);
+
+        // localStorage cache
+        if (!anchorCache.has(key)) {
+          try {
+            const raw = localStorage.getItem(`rc_anchors_${key}`);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed) && parsed.length) anchorCache.set(key, parsed);
+            }
+          } catch (_) {}
+        }
+
+        if (anchorCache.has(key)) {
+          pageData[i].anchors = anchorCache.get(key);
+          continue;
+        }
+
+        payloadPages.push({ pageIndex: i, pageText: text });
+      }
+
+      if (!payloadPages.length) {
+        // Nothing to fetch.
+        for (let i = 0; i < pages.length; i++) updateCoverageUI(i);
+        return;
+      }
+
+      const resp = await fetch('/api/anchors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pages: payloadPages, anchorsPerPage: DEFAULT_ANCHORS_PER_PAGE })
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data?.error || 'Anchor API error');
+
+      const outPages = Array.isArray(data?.pages) ? data.pages : [];
+      for (const p of outPages) {
+        const idx = Number(p?.pageIndex);
+        const anchors = Array.isArray(p?.anchors) ? p.anchors : [];
+        const text = String(pages[idx] || '');
+        const key = hashText(text);
+        if (anchors.length) {
+          anchorCache.set(key, anchors);
+          try { localStorage.setItem(`rc_anchors_${key}`, JSON.stringify(anchors)); } catch (_) {}
+          if (pageData[idx]) pageData[idx].anchors = anchors;
+        }
+      }
+
+      for (let i = 0; i < pages.length; i++) updateCoverageUI(i);
+    } catch (e) {
+      // If anchors fail, we keep the app usable (coverage shows '--').
+      console.warn('Anchor load failed:', e);
+    } finally {
+      anchorsLoading = false;
+    }
+  }
+
+  // -----------------------------------
   // Debug flag helper
   // -----------------------------------
   // We support truthy URL forms: ?debug=1, ?debug=true, ?debug (empty), ?debug=on/yes
@@ -59,7 +216,7 @@
       .replace(/'/g, '&#039;');
   }
 
-  function applyHighlightSnippetsToPage(pageIndex, snippets) {
+  function applyHighlightSnippetsToPage(pageIndex, snippets, { className = 'highlight-missed' } = {}) {
     const pageEl = document.querySelectorAll('.page')[pageIndex];
     if (!pageEl) return;
     const textEl = pageEl.querySelector('.page-text');
@@ -107,7 +264,7 @@
     let cursor = 0;
     for (const r of merged) {
       if (r.start > cursor) out += escapeHtml(source.slice(cursor, r.start));
-      out += `<mark class="highlight-missed">${escapeHtml(source.slice(r.start, r.end))}</mark>`;
+      out += `<mark class="${className}">${escapeHtml(source.slice(r.start, r.end))}</mark>`;
       cursor = r.end;
     }
     if (cursor < source.length) out += escapeHtml(source.slice(cursor));
@@ -599,6 +756,8 @@ function addPages() {
           text: cleaned.join(" "),
           consolidation: "",
           aiFeedbackRaw: "",
+          anchors: [],
+          anchorsCoveredMap: [],
           charCount: 0,
           completedOnTime: true, // Assume true until sandstoned
           isSandstone: false,
@@ -629,6 +788,8 @@ function addPages() {
           text: joined,
           consolidation: "",
           aiFeedbackRaw: "",
+          anchors: [],
+          anchorsCoveredMap: [],
           charCount: 0,
           completedOnTime: true,
           isSandstone: false,
@@ -670,6 +831,13 @@ function addPages() {
       page.innerHTML = `
         <div class="page-header">Page ${i + 1}</div>
         <div class="page-text">${text}</div>
+        <div class="coverage-row">
+          <div class="coverage-bar" aria-label="Coverage">
+            <div class="fill"></div>
+          </div>
+          <div class="coverage-label">Coverage: --</div>
+          <button class="hint-btn" type="button" data-page="${i}" title="Show key anchors briefly">Hint</button>
+        </div>
         <div class="page-header">Consolidation</div>
 
         <div class="sand-wrapper">
@@ -724,6 +892,30 @@ function addPages() {
         
         // Check if all pages have text to unlock compasses
         checkCompassUnlock();
+
+        // Update coverage (client-side, debounced).
+        clearTimeout(pageData[i]._covT);
+        pageData[i]._covT = setTimeout(() => updateCoverageUI(i), 250);
+      });
+
+      // Hint button: reveal missing anchors for ~2 seconds with fade-in/out.
+      const hintBtn = page.querySelector('.hint-btn');
+      hintBtn?.addEventListener('click', () => {
+        const anchors = getAnchorsForPage(i);
+        if (!anchors.length) return;
+        const { coveredMap } = computeCoverage(i);
+        const missing = anchors.filter((_, idx) => !coveredMap[idx]);
+        if (!missing.length) return;
+
+        // Temporarily show only the missing anchors as hint highlights.
+        applyHighlightSnippetsToPage(i, missing, { className: 'highlight-hint' });
+
+        // Restore any AI highlights after the hint animation ends.
+        clearTimeout(pageData[i]._hintT);
+        pageData[i]._hintT = setTimeout(() => {
+          const restore = pageData?.[i]?.highlightSnippets || [];
+          applyHighlightSnippetsToPage(i, restore, { className: 'highlight-missed' });
+        }, 2100);
       });
 
       // Timer events
@@ -831,6 +1023,10 @@ function addPages() {
     // Check states after rendering
     checkCompassUnlock();
     checkSubmitButton();
+
+    // Load anchors (once) and initialize coverage UI.
+    ensureAnchorsLoaded();
+    for (let i = 0; i < pages.length; i++) updateCoverageUI(i);
   }
 
   function startTimer(i, sand, timerDiv, wrapper, textarea) {
