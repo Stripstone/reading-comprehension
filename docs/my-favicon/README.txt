@@ -1,0 +1,1 @@
+Place favicon assets here.

@@ -1,9 +1,5 @@
 {
   "type": "module",
-  "scripts": {
-    "dev": "node api/dev-server.js",
-    "start": "node api/dev-server.js"
-  },
   "dependencies": {
     "express": "^4.21.2",
     "node-fetch": "^3.3.2"
