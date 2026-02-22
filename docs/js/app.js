@@ -173,25 +173,45 @@
         return;
       }
 
-      const apiUrl = '/api/anchors';
-      const resp = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pages: payloadPages, anchorsPerPage: DEFAULT_ANCHORS_PER_PAGE })
-      });
+      const payload = JSON.stringify({ pages: payloadPages, anchorsPerPage: DEFAULT_ANCHORS_PER_PAGE });
 
-      // If the API route is missing (static hosting), many servers return HTML.
-      // Provide a helpful diagnostic in debug mode.
-      const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+      // Try canonical route first. If the deployment exposes folder functions at
+      // /api/<name>/index, fall back automatically.
+      const tryUrls = ['/api/anchors', '/api/anchors/index'];
+      let lastErr = null;
       let data = null;
-      if (contentType.includes('application/json')) {
-        data = await resp.json();
-      } else {
-        const txt = await resp.text();
-        const preview = txt.slice(0, 80).replace(/\s+/g, ' ');
-        throw new Error(`Anchor API did not return JSON (status ${resp.status}). Got: ${preview}`);
+      let lastStatus = 0;
+      for (const apiUrl of tryUrls) {
+        try {
+          const resp = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload
+          });
+          lastStatus = resp.status;
+
+          const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+          if (!contentType.includes('application/json')) {
+            // If the API route is missing or blocked, many servers return HTML.
+            const txt = await resp.text();
+            const preview = txt.slice(0, 80).replace(/\s+/g, ' ');
+            throw new Error(`Anchor API did not return JSON (status ${resp.status}). Got: ${preview}`);
+          }
+
+          data = await resp.json();
+          if (!resp.ok) throw new Error(data?.error || `Anchor API error (status ${resp.status})`);
+          // Success
+          break;
+        } catch (e) {
+          lastErr = e;
+          data = null;
+        }
       }
-      if (!resp.ok) throw new Error(data?.error || `Anchor API error (status ${resp.status})`);
+
+      if (!data) {
+        const msg = (lastErr && (lastErr.message || String(lastErr))) ? (lastErr.message || String(lastErr)) : `Anchor API failed (status ${lastStatus})`;
+        throw new Error(msg);
+      }
 
       const outPages = Array.isArray(data?.pages) ? data.pages : [];
       for (const p of outPages) {
@@ -213,7 +233,7 @@
       if (isDebugEnabledFromUrl()) {
         const detail = (e && (e.message || String(e))) ? ` (${e.message || String(e)})` : '';
         setCoverageStatusAll(
-          `Coverage: -- (anchors unavailable)${detail} — If you're running static docs only, start the app with the local server (npm run dev).`
+          `Coverage: -- (anchors unavailable)${detail} — Check that /api/anchors is deployed and accepts POST (Vercel Functions).`
         );
       }
     } finally {
