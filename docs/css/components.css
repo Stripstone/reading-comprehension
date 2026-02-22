@@ -502,6 +502,13 @@
       z-index: 1;
     }
 
+    /* Yellow marker highlight for missed/weak core items (AI-provided snippets). */
+    .highlight-missed {
+      background: #fff176;
+      padding: 0 2px;
+      border-radius: 2px;
+    }
+
     .ai-feedback .ai-rating {
       font-size: 24px;
       margin-bottom: 12px;

@@ -62,8 +62,8 @@ export default async function handler(req, res) {
     let usedModelText = modelText;
     let retryOutput = "";
 
-    const parsed = parseMultiCriteriaOutput(modelText);
-    let feedback = formatAs4Lines(parsed);
+    let finalParsed = parseMultiCriteriaOutput(modelText);
+    let feedback = formatAs4Lines(finalParsed);
 
     if (!isValid4LineFeedback(feedback)) {
       const retry = await fetch(GROQ_URL, {
@@ -87,13 +87,20 @@ export default async function handler(req, res) {
         const feedback2 = formatAs4Lines(parsed2);
         if (isValid4LineFeedback(feedback2)) {
           feedback = feedback2;
+          finalParsed = parsed2;
           usedModelText = retryOutput;
         }
       }
     }
 
-    // Debug info is returned only when explicitly requested, and never changes `feedback`.
-    const out = { feedback };
+    // Highlights are a first-class feature (not diagnostics): used by the UI to visually
+    // mark missed/weak core items directly in the passage text.
+    const out = {
+      feedback,
+      highlights: {
+        snippets: Array.isArray(finalParsed.highlightSnippets) ? finalParsed.highlightSnippets : [],
+      },
+    };
     if (debug) {
       out.debug = {
         model: MODEL,

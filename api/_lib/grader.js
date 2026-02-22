@@ -28,9 +28,11 @@ export function parseMultiCriteriaOutput(rawText) {
   let overallScore = null;
   let notesText = "";
   let consolidationText = "";
+  let highlightSnippets = [];
 
   let inNotes = false;
   let inConsolidation = false;
+  let inHighlights = false;
 
   for (let i = 0; i < lines.length; i++) {
     const line = String(lines[i] || "").trim();
@@ -45,6 +47,7 @@ export function parseMultiCriteriaOutput(rawText) {
     if (line === "Notes" || line === "Notes:") {
       inNotes = true;
       inConsolidation = false;
+      inHighlights = false;
       continue;
     }
 
@@ -57,6 +60,14 @@ export function parseMultiCriteriaOutput(rawText) {
     ) {
       inConsolidation = true;
       inNotes = false;
+      inHighlights = false;
+      continue;
+    }
+
+    if (line.match(/^Highlight Snippets\s*:?$/i)) {
+      inHighlights = true;
+      inNotes = false;
+      inConsolidation = false;
       continue;
     }
 
@@ -72,6 +83,7 @@ export function parseMultiCriteriaOutput(rawText) {
     ) {
       inNotes = false;
       inConsolidation = false;
+      inHighlights = false;
       continue;
     }
 
@@ -87,6 +99,25 @@ export function parseMultiCriteriaOutput(rawText) {
       }
       if (line.length > 10) consolidationText += (consolidationText ? " " : "") + line;
     }
+
+    if (inHighlights && line) {
+      // 1–5 verbatim substrings from pageText, or literal NONE.
+      if (/^none\s*$/i.test(line)) {
+        highlightSnippets = [];
+        inHighlights = false;
+        continue;
+      }
+
+      const s = line.trim();
+      if (s.length >= 3 && s.length <= 200) {
+        highlightSnippets.push(s);
+      }
+
+      // Hard cap to keep UI sane.
+      if (highlightSnippets.length >= 5) {
+        inHighlights = false;
+      }
+    }
   }
 
   if (overallScore === null) overallScore = 60;
@@ -97,6 +128,7 @@ export function parseMultiCriteriaOutput(rawText) {
     overallScore,
     notesText: notesText.replace(/\s+/g, " ").trim(),
     consolidationText: consolidationText.replace(/\s+/g, " ").trim(),
+    highlightSnippets,
   };
 }
 

@@ -6,18 +6,36 @@ import path from "node:path";
 const cachedPrompts = new Map();
 
 function readPromptTemplate(filename) {
-  const key = String(filename || "").trim() || "promptGrader.txt";
+  const key = String(filename || "").trim() || "promptGrader.md";
   if (cachedPrompts.has(key)) return cachedPrompts.get(key);
 
-  const p = path.join(process.cwd(), "api", "prompts", key);
-  const txt = fs.readFileSync(p, "utf8");
+  // Prefer .md for system prompts (readability), but keep backward compatibility
+  // in case a deployment still has the old .txt filename.
+  const base = path.join(process.cwd(), "api", "prompts");
+  const tryPaths = [path.join(base, key)];
+  if (key === "promptGrader.md") {
+    tryPaths.push(path.join(base, "promptGrader.txt"));
+  }
+
+  let txt = null;
+  for (const p of tryPaths) {
+    try {
+      txt = fs.readFileSync(p, "utf8");
+      break;
+    } catch (_) {
+      // continue
+    }
+  }
+  if (txt === null) {
+    throw new Error(`Missing prompt template: ${key}`);
+  }
   cachedPrompts.set(key, txt);
   return txt;
 }
 
 // Backwards compatible: page-level grader prompt.
 export function buildPromptMessages(pageText, userText) {
-  const promptTemplate = readPromptTemplate("promptGrader.txt");
+  const promptTemplate = readPromptTemplate("promptGrader.md");
 
   // Match your local “template + appended content” behavior
   const userBlock = [
