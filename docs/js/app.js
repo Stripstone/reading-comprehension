@@ -30,6 +30,23 @@
   let goalTime = DEFAULT_TIME_GOAL;
   let goalCharCount = DEFAULT_CHAR_GOAL;
 
+  // -----------------------------------
+  // Debug flag helper
+  // -----------------------------------
+  // We support truthy URL forms: ?debug=1, ?debug=true, ?debug (empty), ?debug=on/yes
+  // and treat ?debug=0/false/off/no as disabled.
+  function isDebugEnabledFromUrl() {
+    try {
+      const params = new URLSearchParams(location.search);
+      if (!params.has('debug')) return false;
+      const v = (params.get('debug') || '').trim().toLowerCase();
+      if (v === '' || v === '1' || v === 'true' || v === 'yes' || v === 'on') return true;
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   const sandSound = document.getElementById("sandSound");
   const stoneSound = document.getElementById("stoneSound");
   const rewardSound = document.getElementById("rewardSound");
@@ -989,12 +1006,9 @@ function addPages() {
     const passageText = pageElement.querySelector('.page-text').textContent;
     const userText = page?.consolidation || "";
 
-    // Diagnostics flag (?debug=1). When enabled, the API returns extra debug fields that are
-    // stored only in lastAIDiagnostics (these are never rendered into the normal UI).
-    let debugEnabled = false;
-    try {
-      debugEnabled = new URLSearchParams(location.search).get('debug') === '1';
-    } catch (_) {}
+    // Diagnostics flag (URL): when enabled, the API returns extra debug fields that are
+    // stored only in lastAIDiagnostics (never rendered into the normal UI).
+    const debugEnabled = isDebugEnabledFromUrl();
 
     const MAX_DEBUG_CHARS = 900; // small on purpose
     const pageTextForRequest = passageText; // never alter grading input for debugging
@@ -1584,15 +1598,7 @@ function addPages() {
     let diagCopyBtn = null;
 
     // URL flag: show diagnostics when debug is present/truthy.
-    // Supported: ?debug=1, ?debug=true, ?debug (empty), but NOT ?debug=0.
-    let debugEnabled = false;
-    try {
-      const params = new URLSearchParams(location.search);
-      if (params.has('debug')) {
-        const v = (params.get('debug') || '').trim().toLowerCase();
-        debugEnabled = (v === '' || v === '1' || v === 'true' || v === 'yes' || v === 'on');
-      }
-    } catch (_) {}
+    const debugEnabled = isDebugEnabledFromUrl();
 
     // If any legacy diag elements exist in the DOM (from older patches), hide them
     // so they don't consume layout space.
@@ -1699,6 +1705,12 @@ function addPages() {
       diagBtn.className = 'music-button';
       diagBtn.title = 'Diagnostics';
       diagBtn.innerHTML = '<span id="diagIcon">🔧</span>';
+
+      // IMPORTANT: .music-button is fixed bottom-right. If we don't offset,
+      // the diagnostics button will sit directly under the music button.
+      // Nudge it left so both are visible.
+      diagBtn.style.right = '88px';
+      diagBtn.style.bottom = '20px';
 
       if (musicToggleBtn && musicToggleBtn.parentElement) {
         musicToggleBtn.parentElement.insertBefore(diagBtn, musicToggleBtn);
