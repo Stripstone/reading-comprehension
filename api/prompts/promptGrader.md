@@ -139,5 +139,3 @@ Rules:
 - Minor refinement suggestions should **not** require a highlight unless they materially affected the score.
 - If the learner earned a perfect score, return **at most one** snippet (or `NONE`).
 - If nothing significant is missing: output the single line `NONE`.
-
----

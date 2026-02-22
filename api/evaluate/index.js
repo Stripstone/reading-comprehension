@@ -111,9 +111,34 @@ export default async function handler(req, res) {
       ? finalParsed.highlightSnippets
       : [];
 
-    // Clamp to max (we allow fewer than min if the model didn't provide enough candidates).
-    // This preserves the "grader is innocent" stance while preventing highlight overload.
-    const clamped = candidates.slice(0, Math.min(maxHighlights, candidates.length));
+    // The model sometimes prepends numbering/bullets (e.g., "1. ...") even when instructed not to.
+    // Since highlights must be exact substrings of pageText, we sanitize and then only keep
+    // snippets that actually match the provided pageText.
+    const normalizeSnippet = (s) => {
+      let t = String(s ?? "").trim();
+      if (!t) return "";
+      if (/^NONE$/i.test(t)) return "";
+      // Strip leading bullets
+      t = t.replace(/^[-*•\u2022]\s+/, "");
+      // Strip leading enumeration: 1. / 1) / (1)
+      t = t.replace(/^\(?\d+\)?[.)]\s+/, "");
+      // Strip wrapping quotes
+      t = t.replace(/^["'“”‘’]+/, "").replace(/["'“”‘’]+$/, "");
+      return t.trim();
+    };
+
+    const clamped = [];
+    const seen = new Set();
+    for (const raw of candidates) {
+      if (clamped.length >= maxHighlights) break;
+      const snip = normalizeSnippet(raw);
+      if (!snip) continue;
+      if (seen.has(snip)) continue;
+      // Keep only snippets that can be located deterministically in the exact pageText.
+      if (!pageText.includes(snip)) continue;
+      seen.add(snip);
+      clamped.push(snip);
+    }
 
     const out = {
       feedback,
