@@ -262,6 +262,12 @@
       const txt = await resp.text();
       if (!resp.ok) {
         console.warn('prepare error', txt);
+        if (isDebugEnabledFromUrl()) {
+          lastAIDiagnostics = {
+            ...(lastAIDiagnostics || {}),
+            lastPrepareError: { status: resp.status, body: txt },
+          };
+        }
         return;
       }
       const data = JSON.parse(txt);
@@ -286,6 +292,12 @@
       }
     } catch (e) {
       console.warn('prepare exception', e);
+      if (isDebugEnabledFromUrl()) {
+        lastAIDiagnostics = {
+          ...(lastAIDiagnostics || {}),
+          lastPrepareException: String(e?.message || e),
+        };
+      }
     }
   }
 

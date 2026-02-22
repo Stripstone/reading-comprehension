@@ -542,6 +542,10 @@
       padding: 6px 12px;
       cursor: pointer;
       font-size: 13px;
+      /* Override global button styles (which make button text white) */
+      color: rgba(0,0,0,0.78);
+      box-shadow: none;
+      transform: none;
     }
 
     .anchor-hud .hint-btn:hover {
@@ -884,6 +888,10 @@
 
     .advice-label {
       font-size: 13px;
+      /* Override global button styles (which make button text white) */
+      color: rgba(0,0,0,0.78);
+      box-shadow: none;
+      transform: none;
       font-weight: 700;
       color: var(--accent);
       text-transform: uppercase;

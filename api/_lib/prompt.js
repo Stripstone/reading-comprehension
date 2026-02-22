@@ -56,6 +56,25 @@ export function buildPromptMessages(pageText, userText) {
   ];
 }
 
+
+// Core Anchor preparation prompt. Returns strict JSON with 5 core anchors per page.
+export function buildPrepareMessages(pageText) {
+  const promptTemplate = readPromptTemplate('promptPrepare.md');
+
+  const userBlock = [
+    '---PAGE CONTENT---',
+    pageText,
+    '',
+    '---',
+    '',
+    'Return anchors now:',
+  ].join('\n');
+
+  return [
+    { role: 'system', content: promptTemplate },
+    { role: 'user', content: userBlock },
+  ];
+}
 // Final Summary / Full Chapter Consolidation prompt.
 // Accepts an array of pages with text + user consolidation + optional aiFeedback.
 export function buildFinalSummaryMessages({ title = "", pages = [] } = {}) {
