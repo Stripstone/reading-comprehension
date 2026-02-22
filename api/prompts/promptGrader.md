@@ -150,6 +150,8 @@ Rules:
 - Order candidates from **most important** to **least important** for explaining score reduction.
 - Prefer `MECHANISM / CONSTRAINT / GOAL / DEFINITION / OUTCOME` over `FRAMING`, and prefer those over `EXAMPLE`.
 - Minor refinement suggestions should **not** require a highlight unless they **materially affected** the score.
+- Avoid choosing a substring that already appears in the learner consolidation unless it is necessary to explain a score reduction.
+- If `Overall Score` is below **70%**, return **exactly 5** candidate lines (unless the page is extremely short and fewer exist).
 - If the learner earned a perfect score, return **at most one** candidate line (or the single line `NONE`).
 - If nothing significant is missing: output the single line `NONE`.
 

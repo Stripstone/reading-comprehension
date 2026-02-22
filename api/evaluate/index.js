@@ -111,7 +111,9 @@ export default async function handler(req, res) {
       ? finalParsed.highlightCandidates
       : [];
 
-    // Normalize a candidate line into a deterministic, matchable substring.
+    const userTextLower = String(userText || "").toLowerCase();
+
+    // Normalize a candidate line into a deterministic substring (strip decoration only).
     const normalizeSnippet = (s) => {
       let t = String(s ?? "").trim();
       if (!t) return "";
@@ -121,7 +123,7 @@ export default async function handler(req, res) {
       // Strip leading enumeration: 1. / 1) / (1)
       t = t.replace(/^\(?\d+\)?[.)]\s+/, "");
       // Strip wrapping quotes
-      t = t.replace(/^["'“”‘’]+/, "").replace(/["'“”‘’]+$/, "");
+      t = t.replace(/^[\"'“”‘’]+/, "").replace(/[\"'“”‘’]+$/, "");
       return t.trim();
     };
 
@@ -136,79 +138,130 @@ export default async function handler(req, res) {
       UNKNOWN: 8,
     };
 
-    // Sanitize, dedupe, and keep only candidates that match the exact pageText.
+    const isStructural = (cat) =>
+      ["MECHANISM", "CONSTRAINT", "GOAL", "DEFINITION", "OUTCOME"].includes(cat);
+
+    // Try to find a match in pageText even if the model varies case or drops trailing punctuation.
+    // Returns an object with { idx, len, matched } or null.
+    const findInPage = (page, snip) => {
+      if (!snip) return null;
+
+      // 1) Exact match
+      let idx = page.indexOf(snip);
+      if (idx !== -1) return { idx, len: snip.length, matched: snip };
+
+      // 2) Case-insensitive exact-length match
+      const pageLower = page.toLowerCase();
+      const snipLower = snip.toLowerCase();
+      idx = pageLower.indexOf(snipLower);
+      if (idx !== -1) {
+        let len = snip.length;
+        // Optionally include trailing punctuation if present in page
+        const tail = page.slice(idx + len, idx + len + 1);
+        if (tail && /[!?.:,;)]/.test(tail)) len += 1;
+        const matched = page.slice(idx, idx + len);
+        return { idx, len, matched };
+      }
+
+      // 3) Strip trailing punctuation from snippet and retry
+      const stripped = snip.replace(/[!?.:,;]+$/, "").trim();
+      if (stripped && stripped !== snip) return findInPage(page, stripped);
+
+      return null;
+    };
+
+    // Sanitize, dedupe, and keep only candidates that match the pageText (with mild tolerance).
     const normalized = [];
     const seen = new Set();
     for (let i = 0; i < candidates.length; i++) {
       const c = candidates[i] || {};
-      const category = String(c.category || "UNKNOWN").toUpperCase().trim() || "UNKNOWN";
+      const rawCategory = String(c.category || "UNKNOWN").toUpperCase().trim() || "UNKNOWN";
       const reason = String(c.reason || "").trim();
       const snip = normalizeSnippet(c.snippet ?? c);
 
       if (!snip) continue;
-      if (seen.has(snip)) continue;
-      if (!pageText.includes(snip)) continue;
+      const found = findInPage(pageText, snip);
+      if (!found) continue;
 
-      seen.add(snip);
+      const matched = found.matched;
+      const key = matched; // dedupe by matched text
+      if (seen.has(key)) continue;
+
+      seen.add(key);
+
+      const category = CATEGORY_PRIORITY[rawCategory] ? rawCategory : "UNKNOWN";
+      const redundant = userTextLower.includes(String(matched).toLowerCase());
+
       normalized.push({
         reason,
-        category: CATEGORY_PRIORITY[category] ? category : "UNKNOWN",
-        snippet: snip,
+        category,
+        snippet: matched,
         rank: i, // preserve model rank as a tie-breaker
+        redundant,
       });
     }
 
-    // Enforce proportional bounds with a small amount of leeway:
-    // rating=5 -> 0-1 highlights
-    // rating=4 -> 1-2 highlights
-    // rating=3 -> 2-3 highlights
-    // rating=2 -> 3-4 highlights
-    // rating=1 -> 4-5 highlights
+    // Proportional bounds with small leeway (but we allow fewer highlights if the page truly has
+    // fewer high-quality structural anchors).
     const minHighlights = missing; // rating=5 => 0, rating=4 => 1, ...
     const maxAllowed = Math.min(5, missing + 1);
 
-    // Prefer mechanism/constraint/goal/etc over example; only use EXAMPLE to meet minimum if needed.
-    const sortedPreferred = normalized
+    // Ranking: prefer structural categories, then non-structural; avoid redundancy unless needed.
+    const sortKey = (x) => {
+      const p = CATEGORY_PRIORITY[x.category] ?? 99;
+      return [p, x.rank];
+    };
+
+    const preferred = normalized
       .filter((x) => x.category !== "EXAMPLE")
       .sort((a, b) => {
-        const pa = CATEGORY_PRIORITY[a.category] ?? 99;
-        const pb = CATEGORY_PRIORITY[b.category] ?? 99;
+        const [pa, ra] = sortKey(a);
+        const [pb, rb] = sortKey(b);
         if (pa !== pb) return pa - pb;
-        return a.rank - b.rank;
+        return ra - rb;
       });
 
-    const sortedExamples = normalized
+    const examples = normalized
       .filter((x) => x.category === "EXAMPLE")
       .sort((a, b) => a.rank - b.rank);
 
+    // Helper: push candidates up to cap, optionally skipping redundant.
     const chosen = [];
-    const pushUpTo = (arr, cap) => {
+    const already = new Set();
+    const pushFrom = (arr, cap, allowRedundant) => {
       for (const it of arr) {
         if (chosen.length >= cap) break;
+        if (already.has(it.snippet)) continue;
+        if (!allowRedundant && it.redundant) continue;
         chosen.push(it);
+        already.add(it.snippet);
       }
     };
 
-    // First fill from preferred up to maxAllowed.
-    pushUpTo(sortedPreferred, maxAllowed);
+    // 1) Fill with non-redundant, structural-preferred up to maxAllowed.
+    pushFrom(preferred, maxAllowed, false);
 
-    // If we still haven't met the minimum, top up from EXAMPLE candidates.
+    // 2) If we are below minHighlights, allow non-redundant EXAMPLE to top up.
     if (chosen.length < minHighlights) {
-      pushUpTo(sortedExamples, Math.min(maxAllowed, minHighlights));
+      pushFrom(examples, Math.min(maxAllowed, minHighlights), false);
     }
 
-    // If we still have room (and the model provided extra preferred), allow leeway up to maxAllowed.
-    if (chosen.length < maxAllowed) {
-      // Add remaining preferred not already included (by rank order).
-      const already = new Set(chosen.map((x) => x.snippet));
-      for (const it of sortedPreferred) {
-        if (chosen.length >= maxAllowed) break;
-        if (already.has(it.snippet)) continue;
-        chosen.push(it);
-      }
+    // 3) If still below minHighlights, allow redundant items (last resort) from preferred then examples.
+    if (chosen.length < minHighlights) {
+      pushFrom(preferred, Math.min(maxAllowed, minHighlights), true);
+    }
+    if (chosen.length < minHighlights) {
+      pushFrom(examples, Math.min(maxAllowed, minHighlights), true);
     }
 
-    const clamped = chosen.map((x) => x.snippet);
+    // 4) For perfect score, prefer 0 highlights; only include 1 if it's non-redundant.
+    let final = chosen;
+    if (rating === 5) {
+      // Keep at most 1, and only if it wasn't redundant.
+      final = chosen.filter((x) => !x.redundant).slice(0, 1);
+    }
+
+    const clamped = final.map((x) => x.snippet);
 
 
     const out = {

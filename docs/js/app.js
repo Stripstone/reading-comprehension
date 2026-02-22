@@ -993,7 +993,7 @@ function addPages() {
 
     if (evaluationPhase) {
       // Scroll to the next page, or wrap to top.
-      const nextIdx = Math.min(currentIndex + 1, pageEls.length - 1);
+      const nextIdx = (pageEls.length > 0) ? ((currentIndex + 1) % pageEls.length) : 0;
       const target = pageEls[nextIdx];
       if (target) {
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
