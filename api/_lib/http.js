@@ -15,6 +15,9 @@ export function withCors(req, res, allowlistOrigins = []) {
     allowedOrigin = "*";
   } else if (allowlistOrigins.includes(origin)) {
     allowedOrigin = origin;
+  } else if (typeof origin === "string" && origin.endsWith(".vercel.app")) {
+    // Allow Vercel preview/prod domains for this project.
+    allowedOrigin = origin;
   }
 
   if (allowedOrigin) {

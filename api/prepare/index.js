@@ -1,26 +1,18 @@
 // api/prepare/index.js
-// Generates "Core Anchors" for a page: 5 structural snippets (verbatim substrings) + keywords.
+// Generates 5 "Core Anchors" for each page: verbatim snippets + lightweight keyword lists.
+// This is used for the calm, mid-writing progress/coach layer (NOT grading).
 
 import { json, withCors, readJsonBody } from "../_lib/http.js";
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 
-function safeJsonParse(s) {
-  try { return JSON.parse(s); } catch (_) { return null; }
-}
-
-function normalizeAnchor(a, fallbackId) {
-  const snippet = String(a?.snippet ?? "").trim();
-  const keywords = Array.isArray(a?.keywords)
-    ? a.keywords.map((k) => String(k || "").trim()).filter(Boolean)
-    : [];
-
-  return {
-    id: String(a?.id || fallbackId),
-    snippet,
-    keywords: keywords.slice(0, 8),
-  };
+function safeParseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 export default async function handler(req, res) {
@@ -31,16 +23,16 @@ export default async function handler(req, res) {
   ];
   if (withCors(req, res, allowed)) return;
 
+  // Allow GET so you can sanity-check the route in a browser.
+  if (req.method === "GET") {
+    return json(res, 200, { ok: true, route: "/api/prepare", methods: ["POST"] });
+  }
+
+  if (req.method !== "POST") {
+    return json(res, 405, { error: "Method not allowed. Use POST." });
+  }
+
   try {
-    // Allow GET for quick diagnostics in-browser.
-    if (req.method === "GET") {
-      return json(res, 200, { ok: true, hint: "POST { pages:[{pageIndex,pageText}] }" });
-    }
-
-    if (req.method !== "POST") {
-      return json(res, 405, { error: "Method not allowed. Use POST." });
-    }
-
     const body = await readJsonBody(req);
     const pages = Array.isArray(body?.pages) ? body.pages : [];
     const debug = String(body?.debug ?? "").trim() === "1" || body?.debug === true;
@@ -53,84 +45,71 @@ export default async function handler(req, res) {
       return json(res, 500, { error: "Missing GROQ_API_KEY env var" });
     }
 
-    // Generate anchors per page, sequentially (keeps it simple + predictable).
-    const results = [];
+    // One call per request; we send all pages and request 5 anchors each.
+    // Output MUST be strict JSON.
+    const prompt = `You are extracting "Core Anchors" from reading passages.
 
-    for (let i = 0; i < pages.length; i++) {
-      const pageIndex = Number(pages[i]?.pageIndex ?? i);
-      const pageText = String(pages[i]?.pageText ?? "").trim();
-      if (!pageText) {
-        results.push({ pageIndex, anchors: [] });
-        continue;
-      }
+For EACH page, return exactly 5 anchors.
 
-      const system =
-        "You extract EXACTLY 5 core structural ideas (" +
-        "Core Anchors) from a passage. Each anchor must be a verbatim substring " +
-        "that appears in the passage. Avoid examples, fluff, and minor details. " +
-        "Return STRICT JSON only.";
+Rules:
+- Each anchor.snippet MUST be a verbatim substring from the pageText.
+- Snippets should be structural (core claim, mechanism, constraint, outcome, definition).
+- Avoid decorative/context-only lines.
+- Keep snippets short: 4 to 14 words.
+- Each anchor.keywords must be 3 to 6 lowercase keywords that help detect coverage in a learner's consolidation.
+- keywords do NOT have to be verbatim, but should be close (no long phrases).
 
-      const user =
-        "PASSAGE:\n" +
-        pageText +
-        "\n\nTASK:\n" +
-        "Return a JSON object with this shape:\n" +
-        "{\"anchors\":[{\"id\":\"a1\",\"snippet\":\"...\",\"keywords\":[\"...\",\"...\"]}, ...]}\n" +
-        "Rules:\n" +
-        "- anchors must have length 5\n" +
-        "- snippet must appear EXACTLY in the passage (verbatim substring)\n" +
-        "- keywords: 3 to 6 lowercase words that help detect coverage; include only meaningful words\n" +
-        "- do not include any additional keys\n";
+Return strict JSON only with this schema:
+{
+  "pages": [
+    {"pageIndex": number, "anchors": [{"id": string, "label": "Core Anchor", "snippet": string, "keywords": string[]}]}
+  ]
+}
 
-      const upstream = await fetch(GROQ_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          messages: [
-            { role: "system", content: system },
-            { role: "user", content: user },
-          ],
-          temperature: 0.2,
-        }),
-      });
+Pages:
+${pages
+  .map((p) => {
+    const pageIndex = Number(p?.pageIndex ?? 0);
+    const pageText = String(p?.pageText ?? "").trim();
+    return `---\npageIndex: ${pageIndex}\npageText: ${pageText}`;
+  })
+  .join("\n\n")}
+`;
 
-      const rawText = await upstream.text();
-      if (!upstream.ok) {
-        results.push({
-          pageIndex,
-          anchors: [],
-          ...(debug ? { error: "Groq API error", detail: rawText } : {}),
-        });
-        continue;
-      }
+    const upstream = await fetch(GROQ_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [
+          { role: "system", content: "Return only strict JSON." },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.2,
+      }),
+    });
 
-      const data = safeJsonParse(rawText);
-      const modelText = data?.choices?.[0]?.message?.content ?? "";
-      const parsed = safeJsonParse(modelText);
+    const rawText = await upstream.text();
+    if (!upstream.ok) {
+      return json(res, 502, { error: "Groq API error", detail: rawText });
+    }
 
-      let anchors = Array.isArray(parsed?.anchors) ? parsed.anchors : [];
-      anchors = anchors.map((a, idx) => normalizeAnchor(a, `a${idx + 1}`));
-      anchors = anchors.filter((a) => a.snippet);
+    const data = safeParseJson(rawText);
+    const modelText = data?.choices?.[0]?.message?.content ?? "";
+    const parsed = safeParseJson(modelText);
 
-      // Enforce EXACTLY 5, but don't crash if the model misbehaves.
-      if (anchors.length > 5) anchors = anchors.slice(0, 5);
-      while (anchors.length < 5) {
-        anchors.push({ id: `a${anchors.length + 1}`, snippet: "", keywords: [] });
-      }
-
-      results.push({
-        pageIndex,
-        anchors,
-        ...(debug ? { model: MODEL, raw_model_output: modelText } : {}),
+    if (!parsed || !Array.isArray(parsed.pages)) {
+      return json(res, 502, {
+        error: "Bad model output (expected JSON)",
+        ...(debug ? { modelText } : {}),
       });
     }
 
-    return json(res, 200, { pages: results });
-  } catch (err) {
-    return json(res, 500, { error: "Prepare error", detail: String(err?.message || err) });
+    return json(res, 200, parsed);
+  } catch (e) {
+    return json(res, 500, { error: "Unexpected error", detail: String(e?.message ?? e) });
   }
 }

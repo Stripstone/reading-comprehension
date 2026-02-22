@@ -26,8 +26,8 @@
 
   // Diagnostics (hidden panel): capture last AI request/response for bug-fixing
   let lastAIDiagnostics = null;
-  // Prepare diagnostics (core-anchor generation): captured only when ?debug=1
-  let lastPrepareDiagnostics = null;
+  // Diagnostics for /api/prepare (anchor generation)
+  let lastPrepareError = null;
 
   let goalTime = DEFAULT_TIME_GOAL;
   let goalCharCount = DEFAULT_CHAR_GOAL;
@@ -118,190 +118,141 @@
   }
 
   // -----------------------------------
-  // Core Anchor coach layer (pre-defined structural anchors)
+  // Core Anchor (coach layer) rendering
   // -----------------------------------
-  function clamp01(x) {
-    const n = Number(x);
-    if (!Number.isFinite(n)) return 0;
-    return Math.max(0, Math.min(1, n));
-  }
-
-  function computeAnchorCoverage(userText, keywords) {
-    const text = String(userText || "").toLowerCase();
-    const kws = Array.isArray(keywords)
-      ? keywords.map((k) => String(k || "").trim().toLowerCase()).filter(Boolean)
-      : [];
-    if (!kws.length) return 0;
-    let hits = 0;
-    for (const kw of kws) {
-      // simple word/phrase containment
-      if (kw && text.includes(kw)) hits++;
-    }
-    return clamp01(hits / kws.length);
-  }
-
-  function escapeRegExp(s) {
-    return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
-
-  function applyCoreAnchorsToPage(pageIndex) {
+  function applyCoreAnchorsToPage(pageIndex, anchors) {
     const pageEl = document.querySelectorAll('.page')[pageIndex];
     if (!pageEl) return;
     const textEl = pageEl.querySelector('.page-text');
     if (!textEl) return;
 
     const source = String(pages?.[pageIndex] ?? textEl.textContent ?? '');
-    const anchors = Array.isArray(pageData?.[pageIndex]?.coreAnchors)
-      ? pageData[pageIndex].coreAnchors
-      : [];
-
-    if (!anchors.length) {
+    const list = Array.isArray(anchors) ? anchors : [];
+    if (!list.length) {
       textEl.textContent = source;
       return;
     }
 
-    // Build match ranges for snippets (exact substring match, all occurrences).
+    // Build non-overlapping ranges using FIRST occurrence per anchor (simple + deterministic).
     const ranges = [];
-    for (const a of anchors) {
+    for (const a of list) {
       const snip = String(a?.snippet || '').trim();
       if (!snip) continue;
-      let idx = 0;
-      while (idx < source.length) {
-        const found = source.indexOf(snip, idx);
-        if (found === -1) break;
-        ranges.push({ start: found, end: found + snip.length, id: String(a.id || '') });
-        idx = found + Math.max(1, snip.length);
-      }
+      const found = source.indexOf(snip);
+      if (found === -1) continue;
+      ranges.push({ start: found, end: found + snip.length, id: String(a?.id || '') });
     }
-
     if (!ranges.length) {
       textEl.textContent = source;
       return;
     }
 
-    // Merge overlaps: prefer the earliest range; if overlap, extend but keep first id.
+    // Sort + drop overlaps (keep earliest).
     ranges.sort((a, b) => a.start - b.start || a.end - b.end);
-    const merged = [];
+    const kept = [];
+    let lastEnd = -1;
     for (const r of ranges) {
-      const last = merged[merged.length - 1];
-      if (!last || r.start >= last.end) {
-        merged.push({ ...r });
-      } else {
-        last.end = Math.max(last.end, r.end);
+      if (r.start >= lastEnd) {
+        kept.push(r);
+        lastEnd = r.end;
       }
     }
 
     let out = '';
     let cursor = 0;
-    for (const r of merged) {
+    for (const r of kept) {
       if (r.start > cursor) out += escapeHtml(source.slice(cursor, r.start));
-      const chunk = source.slice(r.start, r.end);
-      out += `<mark class="core-anchor" data-anchor-id="${escapeHtml(r.id)}">${escapeHtml(chunk)}</mark>`;
+      out += `<mark class="core-anchor" data-anchor-id="${escapeHtml(r.id)}" style="opacity:0;">${escapeHtml(source.slice(r.start, r.end))}</mark>`;
       cursor = r.end;
     }
     if (cursor < source.length) out += escapeHtml(source.slice(cursor));
     textEl.innerHTML = out;
-
-    // Apply current opacity state.
-    updateCoreAnchorOpacity(pageIndex);
   }
 
-  function updateCoreAnchorOpacity(pageIndex) {
+  function getAnchorHudEls(pageIndex) {
+    const pageEl = document.querySelectorAll('.page')[pageIndex];
+    if (!pageEl) return {};
+    return {
+      foundEl: pageEl.querySelector('[data-anchor-found]'),
+      hintBtn: pageEl.querySelector('[data-anchor-hint]'),
+    };
+  }
+
+  function computeAnchorCoverage(userText, anchor) {
+    const txt = String(userText || '').toLowerCase();
+    const kw = Array.isArray(anchor?.keywords) ? anchor.keywords : [];
+    const keywords = kw.length ? kw : String(anchor?.snippet || '').toLowerCase().split(/\W+/).filter(Boolean).slice(0, 5);
+    if (!keywords.length) return 0;
+    let hits = 0;
+    for (const k of keywords) {
+      const kk = String(k || '').toLowerCase().trim();
+      if (!kk) continue;
+      if (txt.includes(kk)) hits++;
+    }
+    return hits / keywords.length;
+  }
+
+  function updateCoreAnchorUI(pageIndex, userText) {
+    const anchors = pageData?.[pageIndex]?.coreAnchors || [];
     const pageEl = document.querySelectorAll('.page')[pageIndex];
     if (!pageEl) return;
 
-    const anchors = Array.isArray(pageData?.[pageIndex]?.coreAnchors)
-      ? pageData[pageIndex].coreAnchors
-      : [];
+    let found = 0;
+    for (const a of anchors) {
+      const cov = computeAnchorCoverage(userText, a);
+      const satisfied = cov >= 0.34 || cov > 0; // “some satisfaction”
+      if (satisfied) found++;
 
-    const hintActive = !!pageData?.[pageIndex]?.hintActive;
-    const foundThreshold = 0.34;
-
-    const marks = pageEl.querySelectorAll('mark.core-anchor[data-anchor-id]');
-    marks.forEach((m) => {
-      const id = String(m.getAttribute('data-anchor-id') || '');
-      const a = anchors.find((x) => String(x.id) === id);
-      const cov = clamp01(a?.coverage ?? 0);
-      const satisfied = cov >= foundThreshold;
-      // Base opacity from coverage.
-      let op = cov;
-      // Hint briefly boosts missing anchors (but does not affect counter/score).
-      if (hintActive && !satisfied) op = Math.max(op, 0.85);
-      m.style.opacity = String(op);
-    });
-
-    // Update HUD count
-    const hudCount = pageEl.querySelector('.anchor-hud .anchor-count');
-    if (hudCount) {
-      const found = anchors.filter((a) => clamp01(a.coverage) >= foundThreshold).length;
-      hudCount.textContent = `Anchors Found: ${found}/5`;
+      const mark = pageEl.querySelector(`mark.core-anchor[data-anchor-id="${CSS.escape(String(a.id || ''))}"]`);
+      if (mark) {
+        // Smooth fade-in; cap opacity to avoid neon blocks.
+        const op = Math.min(0.85, Math.max(0, cov * 0.95));
+        mark.style.opacity = String(op);
+      }
     }
+
+    const { foundEl } = getAnchorHudEls(pageIndex);
+    if (foundEl) foundEl.textContent = `${found}/${Math.max(anchors.length, 5)}`;
+
+    // Track for hint behavior
+    pageData[pageIndex].coreAnchorsFound = found;
   }
 
-  async function prepareAnchorsForPages(pageIndices) {
-    const indices = Array.isArray(pageIndices) ? pageIndices : [];
-    const debugEnabled = isDebugEnabledFromUrl();
-    if (!indices.length) return;
-
-    const payload = {
-      pages: indices.map((idx) => ({ pageIndex: idx, pageText: String(pageData?.[idx]?.text || pages?.[idx] || '').trim() })),
-      debug: debugEnabled ? 1 : 0,
-    };
-
+  async function prepareAnchorsForPageIndices(indices) {
     try {
+      lastPrepareError = null;
+      const payloadPages = indices
+        .map((i) => ({ pageIndex: i, pageText: String(pages?.[i] || '') }))
+        .filter((p) => p.pageText.trim().length > 0);
+      if (!payloadPages.length) return;
+
       const resp = await fetch('/api/prepare', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ pages: payloadPages, debug: isDebugEnabledFromUrl() ? 1 : 0 })
       });
-
-      const raw = await resp.text();
       if (!resp.ok) {
-        if (debugEnabled) {
-          lastPrepareDiagnostics = { lastPrepareError: { status: resp.status, body: raw } };
-          lastAIDiagnostics = { ...(lastAIDiagnostics || {}), ...(lastPrepareDiagnostics || {}) };
-        }
+        const t = await resp.text();
+        lastPrepareError = { status: resp.status, body: t };
         return;
       }
+      const data = await resp.json();
+      const outPages = Array.isArray(data?.pages) ? data.pages : [];
+      for (const p of outPages) {
+        const idx = Number(p?.pageIndex ?? -1);
+        if (idx < 0 || idx >= pageData.length) continue;
+        const anchors = Array.isArray(p?.anchors) ? p.anchors : [];
+        pageData[idx].coreAnchors = anchors;
+      }
 
-      const data = JSON.parse(raw);
-      const results = Array.isArray(data?.pages) ? data.pages : [];
-      for (const r of results) {
-        const idx = Number(r?.pageIndex);
-        if (!Number.isFinite(idx) || !pageData[idx]) continue;
-        const anchors = Array.isArray(r?.anchors) ? r.anchors : [];
-        pageData[idx].coreAnchors = anchors
-          .map((a, j) => ({
-            id: String(a?.id || `a${j + 1}`),
-            snippet: String(a?.snippet || '').trim(),
-            keywords: Array.isArray(a?.keywords) ? a.keywords : [],
-            coverage: 0,
-          }))
-          .filter((a) => a.snippet);
-
-        // In debug, capture raw model output per page for inspection.
-        if (debugEnabled) {
-          lastPrepareDiagnostics = {
-            ...(lastPrepareDiagnostics || {}),
-            prepare: {
-              ...(lastPrepareDiagnostics?.prepare || {}),
-              [String(idx)]: {
-                model: r?.model,
-                raw_model_output: r?.raw_model_output,
-              },
-            },
-          };
-          lastAIDiagnostics = { ...(lastAIDiagnostics || {}), ...(lastPrepareDiagnostics || {}) };
-        }
-
-        // Render anchor marks into the passage.
-        applyCoreAnchorsToPage(idx);
+      // Apply anchor marks now that we have them.
+      for (const i of indices) {
+        const anchors = pageData?.[i]?.coreAnchors || [];
+        applyCoreAnchorsToPage(i, anchors);
+        updateCoreAnchorUI(i, pageData?.[i]?.consolidation || '');
       }
     } catch (e) {
-      if (isDebugEnabledFromUrl()) {
-        lastPrepareDiagnostics = { lastPrepareException: String(e?.message || e) };
-        lastAIDiagnostics = { ...(lastAIDiagnostics || {}), ...(lastPrepareDiagnostics || {}) };
-      }
+      lastPrepareError = { status: 0, body: String(e?.message ?? e) };
     }
   }
 
@@ -658,10 +609,10 @@
       }
     }
 
-    async function applySelectionToBulkInput(text, { append = false } = {}) {
+    function applySelectionToBulkInput(text, { append = false } = {}) {
       bulkInput.value = String(text || "").trim();
-      if (append) await appendPages();
-      else await addPages();
+      if (append) appendPages();
+      else addPages();
     }
 
     // Events
@@ -694,10 +645,10 @@
       if (Number.isFinite(s) && Number.isFinite(e) && e < s) pageStart.value = String(e);
     });
 
-    loadBtn.addEventListener("click", async () => {
+    loadBtn.addEventListener("click", () => {
       // Dual-purpose button: in Text mode, it just loads pages from the textarea.
       if (sourceSel.value === "text") {
-        await addPages();
+        addPages();
         return;
       }
 
@@ -713,13 +664,13 @@
         .map((p) => p.text)
         .filter(Boolean);
       // Keep delimiter in a single JS string line (prevents accidental raw-newline parse errors)
-      await applySelectionToBulkInput(slice.join("\n---\n"), { append: false });
+      applySelectionToBulkInput(slice.join("\n---\n"), { append: false });
     });
 
-    appendBtn.addEventListener("click", async () => {
+    appendBtn.addEventListener("click", () => {
       // Dual-purpose button: in Text mode, append from textarea.
       if (sourceSel.value === "text") {
-        await appendPages();
+        appendPages();
         return;
       }
 
@@ -735,7 +686,7 @@
         .map((p) => p.text)
         .filter(Boolean);
 
-      await applySelectionToBulkInput(slice.join("\n---\n"), { append: true });
+      applySelectionToBulkInput(slice.join("\n---\n"), { append: true });
     });
 
     try {
@@ -772,7 +723,7 @@
 
 
 
-async function addPages() {
+function addPages() {
     const input = document.getElementById("bulkInput").value.trim();
     goalTime = parseInt(document.getElementById("goalTimeInput").value);
     goalCharCount = parseInt(document.getElementById("goalCharInput").value);
@@ -789,8 +740,6 @@ async function addPages() {
           text: cleaned.join(" "),
           consolidation: "",
           aiFeedbackRaw: "",
-          coreAnchors: [],
-          hintActive: false,
           charCount: 0,
           completedOnTime: true, // Assume true until sandstoned
           isSandstone: false,
@@ -803,20 +752,20 @@ async function addPages() {
     render();
     checkSubmitButton();
 
-    // Generate core anchors (one-shot per new page) after render so UI stays responsive.
-    const indices = pageData.map((_, idx) => idx);
-    await prepareAnchorsForPages(indices);
+    // Generate anchors once per page (coach layer)
+    const idxs = Array.from({ length: pages.length }, (_, k) => k);
+    prepareAnchorsForPageIndices(idxs);
   }
 
   // Append pages to the existing session (does NOT clear pages/timers/ratings).
   // Uses the same splitting rules as addPages().
-  async function appendPages() {
+  function appendPages() {
+    const startIdx = pages.length;
     const input = document.getElementById("bulkInput").value.trim();
     goalTime = parseInt(document.getElementById("goalTimeInput").value);
     goalCharCount = parseInt(document.getElementById("goalCharInput").value);
     if (!input) return;
 
-    const startIndex = pages.length;
     input.split(/\n---\n|\n## Page\s+\d+/i).forEach(c => {
       const cleaned = c.split("\n").map(l => l.trim()).filter(l => l && !/^[# ]/.test(l));
       if (cleaned.length) {
@@ -826,8 +775,6 @@ async function addPages() {
           text: joined,
           consolidation: "",
           aiFeedbackRaw: "",
-          coreAnchors: [],
-          hintActive: false,
           charCount: 0,
           completedOnTime: true,
           isSandstone: false,
@@ -840,9 +787,11 @@ async function addPages() {
     render();
     checkSubmitButton();
 
-    const newIndices = [];
-    for (let i = startIndex; i < pageData.length; i++) newIndices.push(i);
-    await prepareAnchorsForPages(newIndices);
+    // Generate anchors only for newly appended pages
+    const endIdx = pages.length;
+    const idxs = [];
+    for (let k = startIdx; k < endIdx; k++) idxs.push(k);
+    prepareAnchorsForPageIndices(idxs);
   }
 
   function resetSession({ confirm = true } = {}) {
@@ -873,9 +822,9 @@ async function addPages() {
       page.innerHTML = `
         <div class="page-header">Page ${i + 1}</div>
         <div class="page-text">${text}</div>
-        <div class="anchor-hud" data-page="${i}">
-          <span class="anchor-count">Anchors Found: 0/5</span>
-          <button type="button" class="hint-btn" data-page="${i}">Hint</button>
+        <div class="anchor-hud">
+          <span class="anchor-found">Anchors Found: <span data-anchor-found>0/5</span></span>
+          <button class="hint-btn" type="button" data-anchor-hint>Hint</button>
         </div>
         <div class="page-header">Consolidation</div>
 
@@ -929,43 +878,12 @@ async function addPages() {
         pageData[i].charCount = count;
         charCountSpan.textContent = Math.min(count, goalCharCount);
 
-        // Update core-anchor coverage + fade-in progress as the user types.
-        const anchors = Array.isArray(pageData?.[i]?.coreAnchors) ? pageData[i].coreAnchors : [];
-        if (anchors.length) {
-          anchors.forEach((a) => {
-            a.coverage = computeAnchorCoverage(pageData[i].consolidation, a.keywords);
-          });
-          updateCoreAnchorOpacity(i);
-        }
+        // Calm coach layer (anchors)
+        updateCoreAnchorUI(i, e.target.value);
         
         // Check if all pages have text to unlock compasses
         checkCompassUnlock();
       });
-
-      // Initialize anchor coverage on first render.
-      try {
-        const anchors0 = Array.isArray(pageData?.[i]?.coreAnchors) ? pageData[i].coreAnchors : [];
-        if (anchors0.length) {
-          anchors0.forEach((a) => {
-            a.coverage = computeAnchorCoverage(pageData[i].consolidation, a.keywords);
-          });
-        }
-      } catch (_) {}
-
-      // Hint button: briefly reveal missing anchors.
-      const hintBtn = page.querySelector('.hint-btn');
-      if (hintBtn) {
-        hintBtn.addEventListener('click', () => {
-          if (!pageData[i]) return;
-          pageData[i].hintActive = true;
-          updateCoreAnchorOpacity(i);
-          window.setTimeout(() => {
-            if (!pageData[i]) return;
-            pageData[i].hintActive = false;
-            updateCoreAnchorOpacity(i);
-          }, 2000);
-        });
-      }
 
       // Timer events
       textarea.addEventListener("focus", () => {
@@ -1034,6 +952,32 @@ async function addPages() {
       if (aiBtn) {
         aiBtn.addEventListener("click", () => evaluatePageWithAI(i));
       }
+
+      // Hint button: briefly reveal missing anchors (2s)
+      const hintBtn = page.querySelector('[data-anchor-hint]');
+      if (hintBtn) {
+        hintBtn.addEventListener('click', () => {
+          const anchors = pageData?.[i]?.coreAnchors || [];
+          if (!anchors.length) return;
+          const pageEl = document.querySelectorAll('.page')[i];
+          if (!pageEl) return;
+          const userText = pageData?.[i]?.consolidation || '';
+
+          const restore = [];
+          for (const a of anchors) {
+            const cov = computeAnchorCoverage(userText, a);
+            const satisfied = cov >= 0.34 || cov > 0;
+            if (satisfied) continue;
+            const mark = pageEl.querySelector(`mark.core-anchor[data-anchor-id="${CSS.escape(String(a.id || ''))}"]`);
+            if (!mark) continue;
+            restore.push([mark, mark.style.opacity]);
+            mark.style.opacity = '0.85';
+          }
+          setTimeout(() => {
+            for (const [mark, op] of restore) mark.style.opacity = op;
+          }, 2000);
+        });
+      }
       
       // Restore previous rating if exists
       if (pageData[i].rating > 0) {
@@ -1068,12 +1012,10 @@ async function addPages() {
 
       container.appendChild(page);
 
-      // If anchors already exist for this page (e.g. re-render), re-apply them.
+      // If anchors already exist for this page, re-apply them after DOM insertion.
       if (Array.isArray(pageData?.[i]?.coreAnchors) && pageData[i].coreAnchors.length) {
-        applyCoreAnchorsToPage(i);
-      } else {
-        // Still update HUD count (keeps layout deterministic)
-        updateCoreAnchorOpacity(i);
+        applyCoreAnchorsToPage(i, pageData[i].coreAnchors);
+        updateCoreAnchorUI(i, pageData[i].consolidation || '');
       }
     });
     
@@ -2106,9 +2048,12 @@ async function addPages() {
           diagPanel.style.display = 'none';
           return;
         }
-        const dump = lastAIDiagnostics
-          ? JSON.stringify(lastAIDiagnostics, null, 2)
-          : 'No diagnostics captured yet.\n\nTip: run an AI eval, then open diagnostics.';
+        const payload = lastAIDiagnostics ? { ...lastAIDiagnostics } : {};
+        if (lastPrepareError) payload.lastPrepareError = lastPrepareError;
+
+        const dump = Object.keys(payload).length
+          ? JSON.stringify(payload, null, 2)
+          : 'No diagnostics captured yet.\n\nTip: run Load Pages (anchors) or an AI eval, then open diagnostics.';
         diagText.value = dump;
         diagPanel.style.display = 'block';
         positionPanelAboveButton(diagBtn, diagPanel);

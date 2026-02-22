@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    { "source": "/", "destination": "/docs/index.html" },
+
+    { "source": "/assets/:path*", "destination": "/docs/assets/:path*" },
+    { "source": "/css/:path*", "destination": "/docs/css/:path*" },
+    { "source": "/js/:path*", "destination": "/docs/js/:path*" },
+
+    { "source": "/my-favicon/:path*", "destination": "/docs/my-favicon/:path*" },
+    { "source": "/favicon.ico", "destination": "/docs/my-favicon/favicon.ico" }
+  ]
+}
