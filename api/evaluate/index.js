@@ -107,13 +107,11 @@ export default async function handler(req, res) {
     const missing = Math.max(0, 5 - rating);
     const maxHighlights = Math.min(5, missing + 1);
 
-    const candidates = Array.isArray(finalParsed.highlightSnippets)
-      ? finalParsed.highlightSnippets
+    const candidates = Array.isArray(finalParsed.highlightCandidates)
+      ? finalParsed.highlightCandidates
       : [];
 
-    // The model sometimes prepends numbering/bullets (e.g., "1. ...") even when instructed not to.
-    // Since highlights must be exact substrings of pageText, we sanitize and then only keep
-    // snippets that actually match the provided pageText.
+    // Normalize a candidate line into a deterministic, matchable substring.
     const normalizeSnippet = (s) => {
       let t = String(s ?? "").trim();
       if (!t) return "";
@@ -127,18 +125,91 @@ export default async function handler(req, res) {
       return t.trim();
     };
 
-    const clamped = [];
+    const CATEGORY_PRIORITY = {
+      MECHANISM: 1,
+      CONSTRAINT: 2,
+      GOAL: 3,
+      DEFINITION: 4,
+      OUTCOME: 5,
+      FRAMING: 6,
+      EXAMPLE: 7,
+      UNKNOWN: 8,
+    };
+
+    // Sanitize, dedupe, and keep only candidates that match the exact pageText.
+    const normalized = [];
     const seen = new Set();
-    for (const raw of candidates) {
-      if (clamped.length >= maxHighlights) break;
-      const snip = normalizeSnippet(raw);
+    for (let i = 0; i < candidates.length; i++) {
+      const c = candidates[i] || {};
+      const category = String(c.category || "UNKNOWN").toUpperCase().trim() || "UNKNOWN";
+      const reason = String(c.reason || "").trim();
+      const snip = normalizeSnippet(c.snippet ?? c);
+
       if (!snip) continue;
       if (seen.has(snip)) continue;
-      // Keep only snippets that can be located deterministically in the exact pageText.
       if (!pageText.includes(snip)) continue;
+
       seen.add(snip);
-      clamped.push(snip);
+      normalized.push({
+        reason,
+        category: CATEGORY_PRIORITY[category] ? category : "UNKNOWN",
+        snippet: snip,
+        rank: i, // preserve model rank as a tie-breaker
+      });
     }
+
+    // Enforce proportional bounds with a small amount of leeway:
+    // rating=5 -> 0-1 highlights
+    // rating=4 -> 1-2 highlights
+    // rating=3 -> 2-3 highlights
+    // rating=2 -> 3-4 highlights
+    // rating=1 -> 4-5 highlights
+    const minHighlights = missing; // rating=5 => 0, rating=4 => 1, ...
+    const maxAllowed = Math.min(5, missing + 1);
+
+    // Prefer mechanism/constraint/goal/etc over example; only use EXAMPLE to meet minimum if needed.
+    const sortedPreferred = normalized
+      .filter((x) => x.category !== "EXAMPLE")
+      .sort((a, b) => {
+        const pa = CATEGORY_PRIORITY[a.category] ?? 99;
+        const pb = CATEGORY_PRIORITY[b.category] ?? 99;
+        if (pa !== pb) return pa - pb;
+        return a.rank - b.rank;
+      });
+
+    const sortedExamples = normalized
+      .filter((x) => x.category === "EXAMPLE")
+      .sort((a, b) => a.rank - b.rank);
+
+    const chosen = [];
+    const pushUpTo = (arr, cap) => {
+      for (const it of arr) {
+        if (chosen.length >= cap) break;
+        chosen.push(it);
+      }
+    };
+
+    // First fill from preferred up to maxAllowed.
+    pushUpTo(sortedPreferred, maxAllowed);
+
+    // If we still haven't met the minimum, top up from EXAMPLE candidates.
+    if (chosen.length < minHighlights) {
+      pushUpTo(sortedExamples, Math.min(maxAllowed, minHighlights));
+    }
+
+    // If we still have room (and the model provided extra preferred), allow leeway up to maxAllowed.
+    if (chosen.length < maxAllowed) {
+      // Add remaining preferred not already included (by rank order).
+      const already = new Set(chosen.map((x) => x.snippet));
+      for (const it of sortedPreferred) {
+        if (chosen.length >= maxAllowed) break;
+        if (already.has(it.snippet)) continue;
+        chosen.push(it);
+      }
+    }
+
+    const clamped = chosen.map((x) => x.snippet);
+
 
     const out = {
       feedback,

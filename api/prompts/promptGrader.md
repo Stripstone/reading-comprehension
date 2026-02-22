@@ -126,16 +126,30 @@ After you write the **Example of Strong Consolidation**, include a section named
 
 Highlight Snippets (Ranked Candidates):
 
-Return **up to 5 lines**, where each line is an **exact verbatim substring copied from the page content**.
+Return **up to 5 lines**, where each line is a **ranked candidate** in this exact format:
 
-Purpose: these snippets will be highlighted in the UI (yellow marker) to show the learner what core ideas were missed or weak.
+`R# | CATEGORY | <verbatim substring>`
+
+Where:
+- `R#` is a short reason id like `R1`, `R2`, etc. (you may reuse ids across lines).
+- `CATEGORY` must be one of:
+  - `MECHANISM` (causal link / how something works)
+  - `CONSTRAINT` (condition, limitation, tradeoff)
+  - `GOAL` (thesis, purpose, motivation, target)
+  - `DEFINITION` (key term definition / what something is)
+  - `OUTCOME` (result / consequence)
+  - `FRAMING` (high-level framing that materially affected the score)
+  - `EXAMPLE` (anecdote, illustration, demographic/scene-setting detail)
+
+Purpose: these snippets will be highlighted in the UI (yellow marker) to show the learner what **most directly** explains the score reduction.
 
 Rules:
-- Each line must be copied **exactly** from the page content (character-for-character).
-- **No bullets, no numbering, no quotes**. One snippet per line.
-- Keep snippets **minimal** (shortest phrase that carries the core idea).
-- Order snippets from **most important** to **least important**.
-- Prefer highlighting **mechanism / scope / constraints / framing** over minor biographical details.
-- Minor refinement suggestions should **not** require a highlight unless they materially affected the score.
-- If the learner earned a perfect score, return **at most one** snippet (or `NONE`).
+- The `<verbatim substring>` must be copied **exactly** from the page content (character-for-character).
+- **Do not** add bullets, numbering, or quotes around the substring.
+- Keep substrings **minimal** (shortest phrase that carries the core idea).
+- Order candidates from **most important** to **least important** for explaining score reduction.
+- Prefer `MECHANISM / CONSTRAINT / GOAL / DEFINITION / OUTCOME` over `FRAMING`, and prefer those over `EXAMPLE`.
+- Minor refinement suggestions should **not** require a highlight unless they **materially affected** the score.
+- If the learner earned a perfect score, return **at most one** candidate line (or the single line `NONE`).
 - If nothing significant is missing: output the single line `NONE`.
+

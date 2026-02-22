@@ -28,7 +28,7 @@ export function parseMultiCriteriaOutput(rawText) {
   let overallScore = null;
   let notesText = "";
   let consolidationText = "";
-  let highlightSnippets = [];
+  let highlightCandidates = [];
 
   let inNotes = false;
   let inConsolidation = false;
@@ -104,20 +104,52 @@ export function parseMultiCriteriaOutput(rawText) {
     }
 
     if (inHighlights && line) {
-      // 1–5 verbatim substrings from pageText, or literal NONE.
+      // Up to 5 ranked candidates in the format:
+      //   R# | CATEGORY | <verbatim substring>
+      // or literal NONE.
       if (/^none\s*$/i.test(line)) {
-        highlightSnippets = [];
+        highlightCandidates = [];
         inHighlights = false;
         continue;
       }
 
-      const s = line.trim();
-      if (s.length >= 3 && s.length <= 200) {
-        highlightSnippets.push(s);
+      // Keep the raw line for resilience; downstream selection will sanitize and validate
+      // against the exact pageText.
+      let raw = line.trim();
+      if (raw.length >= 3 && raw.length <= 300) {
+        // Try to parse pipe-delimited fields; if not present, treat as UNKNOWN category.
+        // We intentionally keep parsing permissive here and enforce correctness later.
+        const cleanedLine = raw
+          .replace(/^[-*•\u2022]\s+/, "")
+          .replace(/^["'“”‘’]+/, "")
+          .replace(/["'“”‘’]+$/, "")
+          .trim();
+
+        const parts = cleanedLine.split("|").map((p) => p.trim()).filter(Boolean);
+
+        let reason = "";
+        let category = "UNKNOWN";
+        let snippet = cleanedLine;
+
+        if (parts.length >= 3) {
+          reason = parts[0];
+          category = String(parts[1] || "UNKNOWN").toUpperCase();
+          snippet = parts.slice(2).join(" | ").trim();
+        } else if (parts.length === 2) {
+          // e.g. CATEGORY | snippet
+          category = String(parts[0] || "UNKNOWN").toUpperCase();
+          snippet = String(parts[1] || "").trim();
+        } else {
+          snippet = cleanedLine;
+        }
+
+        if (snippet && snippet.length >= 3) {
+          highlightCandidates.push({ reason, category, snippet });
+        }
       }
 
       // Hard cap to keep UI sane.
-      if (highlightSnippets.length >= 5) {
+      if (highlightCandidates.length >= 5) {
         inHighlights = false;
       }
     }
@@ -131,7 +163,7 @@ export function parseMultiCriteriaOutput(rawText) {
     overallScore,
     notesText: notesText.replace(/\s+/g, " ").trim(),
     consolidationText: consolidationText.replace(/\s+/g, " ").trim(),
-    highlightSnippets,
+    highlightCandidates,
   };
 }
 
