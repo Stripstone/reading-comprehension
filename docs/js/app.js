@@ -1266,8 +1266,13 @@ function addPages() {
     setRating(pageIndex, rating, stars);
 
     // UX: after accepting the AI rating, advance to the next page.
-    // In Evaluation phase this will scroll without focusing the textarea.
-    goToNext(pageIndex);
+    // Exception: on the final page, do NOT wrap to the first page (keep the user in place).
+    // (The dedicated Next button handles wrap-to-first.)
+    const lastIndex = pageData.length - 1;
+    if (pageIndex < lastIndex) {
+      // In Evaluation phase this will scroll without focusing the textarea.
+      goToNext(pageIndex);
+    }
   }
 
   function setRating(pageIndex, value, stars) {
