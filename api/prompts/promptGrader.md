@@ -124,9 +124,9 @@ Copy code
 
 After you write the **Example of Strong Consolidation**, include a section named exactly:
 
-Highlight Snippets:
+Highlight Snippets (Ranked Candidates):
 
-Return **1–5 lines**, where each line is an **exact verbatim substring copied from the page content**.
+Return **up to 5 lines**, where each line is an **exact verbatim substring copied from the page content**.
 
 Purpose: these snippets will be highlighted in the UI (yellow marker) to show the learner what core ideas were missed or weak.
 
@@ -134,7 +134,10 @@ Rules:
 - Each line must be copied **exactly** from the page content (character-for-character).
 - **No bullets, no numbering, no quotes**. One snippet per line.
 - Keep snippets **minimal** (shortest phrase that carries the core idea).
-- Prefer highlighting **mechanism / scope / constraints** over minor biographical details.
+- Order snippets from **most important** to **least important**.
+- Prefer highlighting **mechanism / scope / constraints / framing** over minor biographical details.
+- Minor refinement suggestions should **not** require a highlight unless they materially affected the score.
+- If the learner earned a perfect score, return **at most one** snippet (or `NONE`).
 - If nothing significant is missing: output the single line `NONE`.
 
 ---

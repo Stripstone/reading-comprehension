@@ -4,6 +4,7 @@ import {
   parseMultiCriteriaOutput,
   formatAs4Lines,
   isValid4LineFeedback,
+  scoreToCompassRating,
 } from "../_lib/grader.js";
 import { json, withCors, readJsonBody } from "../_lib/http.js";
 
@@ -95,10 +96,30 @@ export default async function handler(req, res) {
 
     // Highlights are a first-class feature (not diagnostics): used by the UI to visually
     // mark missed/weak core items directly in the passage text.
+    //
+    // Policy: keep highlights proportional to the compass rating with a small amount of leeway.
+    // rating=5 -> 0-1 highlights
+    // rating=4 -> 1-2 highlights
+    // rating=3 -> 2-3 highlights
+    // rating=2 -> 3-4 highlights
+    // rating=1 -> 4-5 highlights
+    const rating = scoreToCompassRating(finalParsed.overallScore);
+    const missing = Math.max(0, 5 - rating);
+    const maxHighlights = Math.min(5, missing + 1);
+
+    const candidates = Array.isArray(finalParsed.highlightSnippets)
+      ? finalParsed.highlightSnippets
+      : [];
+
+    // Clamp to max (we allow fewer than min if the model didn't provide enough candidates).
+    // This preserves the "grader is innocent" stance while preventing highlight overload.
+    const clamped = candidates.slice(0, Math.min(maxHighlights, candidates.length));
+
     const out = {
       feedback,
       highlights: {
-        snippets: Array.isArray(finalParsed.highlightSnippets) ? finalParsed.highlightSnippets : [],
+        rating,
+        snippets: clamped,
       },
     };
     if (debug) {

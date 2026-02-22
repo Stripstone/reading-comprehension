@@ -64,7 +64,10 @@ export function parseMultiCriteriaOutput(rawText) {
       continue;
     }
 
-    if (line.match(/^Highlight Snippets\s*:?$/i)) {
+    // Optional highlighting support used by the UI.
+    // Accept both:
+    //   "Highlight Snippets:" and "Highlight Snippets (Ranked Candidates):"
+    if (line.match(/^Highlight Snippets(?:\s*\(.*\))?\s*:?$/i)) {
       inHighlights = true;
       inNotes = false;
       inConsolidation = false;
