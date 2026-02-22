@@ -509,12 +509,13 @@
       border-radius: 2px;
     }
 
-    /* Core Anchor coach highlighting (typing-time fade-in). */
-    .highlight-anchor {
+    /* Core Anchor coach layer (pre-defined structural anchors). */
+    .core-anchor {
       background: #fff176;
       padding: 0 2px;
       border-radius: 2px;
-      transition: opacity 240ms ease;
+      opacity: 0;
+      transition: opacity 320ms ease;
     }
 
     .anchor-hud {
@@ -522,35 +523,23 @@
       justify-content: flex-end;
       align-items: center;
       gap: 10px;
-      margin-top: 10px;
-      margin-bottom: 8px;
-      font-size: 13px;
-      color: rgba(0,0,0,0.65);
-      user-select: none;
+      margin-top: 8px;
+      font-size: 12px;
+      opacity: 0.75;
     }
 
-    .anchor-hud .anchor-count {
-      font-variant-numeric: tabular-nums;
-      font-weight: 600;
-      color: rgba(0,0,0,0.75);
-    }
+    .anchor-hud .anchor-count { white-space: nowrap; }
 
     .anchor-hud .hint-btn {
-      border: 1px solid rgba(0,0,0,0.15);
-      background: rgba(255,255,255,0.7);
+      padding: 6px 10px;
+      font-size: 12px;
       border-radius: 10px;
-      padding: 6px 12px;
-      cursor: pointer;
-      font-size: 13px;
-      /* Override global button styles (which make button text white) */
-      color: rgba(0,0,0,0.78);
-      box-shadow: none;
-      transform: none;
+      border: 1px solid rgba(0,0,0,0.15);
+      background: rgba(255,255,255,0.65);
+      color: #2b2b2b; /* override global button white text */
     }
 
-    .anchor-hud .hint-btn:hover {
-      background: rgba(255,255,255,0.9);
-    }
+    .anchor-hud .hint-btn:disabled { opacity: 0.5; }
 
     .ai-feedback .ai-rating {
       font-size: 24px;
@@ -888,10 +877,6 @@
 
     .advice-label {
       font-size: 13px;
-      /* Override global button styles (which make button text white) */
-      color: rgba(0,0,0,0.78);
-      box-shadow: none;
-      transform: none;
       font-weight: 700;
       color: var(--accent);
       text-transform: uppercase;

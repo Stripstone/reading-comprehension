@@ -26,14 +26,8 @@
 
   // Diagnostics (hidden panel): capture last AI request/response for bug-fixing
   let lastAIDiagnostics = null;
-
-  // Core Anchor coaching layer (generated once per page via /api/prepare)
-  // pageData[i].anchors: [{id,label,snippet,keywords[]}]
-  // pageData[i].anchorCoverage: number[] (0..1)
-  // pageData[i].anchorFoundCount: number
-  const ANCHOR_TOTAL = 5; // fixed: 5 compasses
-  const ANCHOR_FOUND_THRESHOLD = 0.34; // "some satisfaction"
-  const anchorDebounceTimers = new Map();
+  // Prepare diagnostics (core-anchor generation): captured only when ?debug=1
+  let lastPrepareDiagnostics = null;
 
   let goalTime = DEFAULT_TIME_GOAL;
   let goalCharCount = DEFAULT_CHAR_GOAL;
@@ -124,75 +118,58 @@
   }
 
   // -----------------------------------
-  // Core Anchor coach highlighting (fade-in while typing)
+  // Core Anchor coach layer (pre-defined structural anchors)
   // -----------------------------------
-  function computeAnchorCoverage(anchor, userText) {
-    const t = String(userText || "").toLowerCase();
-    const keywords = Array.isArray(anchor?.keywords) ? anchor.keywords : [];
-    if (!keywords.length) return 0;
+  function clamp01(x) {
+    const n = Number(x);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(1, n));
+  }
+
+  function computeAnchorCoverage(userText, keywords) {
+    const text = String(userText || "").toLowerCase();
+    const kws = Array.isArray(keywords)
+      ? keywords.map((k) => String(k || "").trim().toLowerCase()).filter(Boolean)
+      : [];
+    if (!kws.length) return 0;
     let hits = 0;
-    for (const kw of keywords) {
-      const k = String(kw || "").trim().toLowerCase();
-      if (!k) continue;
-      // word-boundary-ish match; keep it simple/deterministic
-      const re = new RegExp(`(^|[^a-z0-9])${k.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}([^a-z0-9]|$)`, 'i');
-      if (re.test(t)) hits += 1;
+    for (const kw of kws) {
+      // simple word/phrase containment
+      if (kw && text.includes(kw)) hits++;
     }
-    return Math.max(0, Math.min(1, hits / Math.max(1, keywords.length)));
+    return clamp01(hits / kws.length);
   }
 
-  function updateAnchorHud(pageIndex) {
-    const pageEl = document.querySelectorAll('.page')[pageIndex];
-    if (!pageEl) return;
-    const countEl = pageEl.querySelector('.anchor-count');
-    if (!countEl) return;
-    const found = Number(pageData?.[pageIndex]?.anchorFoundCount ?? 0);
-    countEl.textContent = `${found}/${ANCHOR_TOTAL}`;
+  function escapeRegExp(s) {
+    return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
-  function applyCoachAnchorsToPage(pageIndex, { hint = false } = {}) {
+  function applyCoreAnchorsToPage(pageIndex) {
     const pageEl = document.querySelectorAll('.page')[pageIndex];
     if (!pageEl) return;
     const textEl = pageEl.querySelector('.page-text');
     if (!textEl) return;
 
-    // If AI highlights are currently active for this page, do not override them.
-    // (Mismatch handling is phase 2.)
-    const aiSnips = Array.isArray(pageData?.[pageIndex]?.highlightSnippets)
-      ? pageData[pageIndex].highlightSnippets
-      : [];
-    if (aiSnips.length) return;
-
     const source = String(pages?.[pageIndex] ?? textEl.textContent ?? '');
-    const anchors = Array.isArray(pageData?.[pageIndex]?.anchors) ? pageData[pageIndex].anchors : [];
-    const coverage = Array.isArray(pageData?.[pageIndex]?.anchorCoverage) ? pageData[pageIndex].anchorCoverage : [];
+    const anchors = Array.isArray(pageData?.[pageIndex]?.coreAnchors)
+      ? pageData[pageIndex].coreAnchors
+      : [];
 
     if (!anchors.length) {
       textEl.textContent = source;
       return;
     }
 
-    // Build highlight ranges for any anchor with coverage > 0 OR hint mode for missing anchors.
+    // Build match ranges for snippets (exact substring match, all occurrences).
     const ranges = [];
-    for (let ai = 0; ai < anchors.length; ai++) {
-      const a = anchors[ai];
+    for (const a of anchors) {
       const snip = String(a?.snippet || '').trim();
       if (!snip) continue;
-      const cov = Number(coverage[ai] ?? 0);
-
-      const shouldShow = cov > 0 || (hint && cov < ANCHOR_FOUND_THRESHOLD);
-      if (!shouldShow) continue;
-
-      // Opacity ramps with coverage; hint shows missing anchors strongly.
-      const alpha = hint && cov < ANCHOR_FOUND_THRESHOLD
-        ? 0.85
-        : Math.max(0, Math.min(0.85, cov * 0.85));
-
       let idx = 0;
       while (idx < source.length) {
         const found = source.indexOf(snip, idx);
         if (found === -1) break;
-        ranges.push({ start: found, end: found + snip.length, alpha });
+        ranges.push({ start: found, end: found + snip.length, id: String(a.id || '') });
         idx = found + Math.max(1, snip.length);
       }
     }
@@ -202,16 +179,15 @@
       return;
     }
 
-    // Merge overlaps by taking max alpha.
+    // Merge overlaps: prefer the earliest range; if overlap, extend but keep first id.
     ranges.sort((a, b) => a.start - b.start || a.end - b.end);
     const merged = [];
     for (const r of ranges) {
       const last = merged[merged.length - 1];
-      if (!last || r.start > last.end) {
+      if (!last || r.start >= last.end) {
         merged.push({ ...r });
       } else {
         last.end = Math.max(last.end, r.end);
-        last.alpha = Math.max(last.alpha, r.alpha);
       }
     }
 
@@ -219,39 +195,58 @@
     let cursor = 0;
     for (const r of merged) {
       if (r.start > cursor) out += escapeHtml(source.slice(cursor, r.start));
-      out += `<mark class="highlight-anchor" style="opacity:${r.alpha}">${escapeHtml(source.slice(r.start, r.end))}</mark>`;
+      const chunk = source.slice(r.start, r.end);
+      out += `<mark class="core-anchor" data-anchor-id="${escapeHtml(r.id)}">${escapeHtml(chunk)}</mark>`;
       cursor = r.end;
     }
     if (cursor < source.length) out += escapeHtml(source.slice(cursor));
     textEl.innerHTML = out;
+
+    // Apply current opacity state.
+    updateCoreAnchorOpacity(pageIndex);
   }
 
-  function scheduleAnchorUpdate(pageIndex) {
-    const prev = anchorDebounceTimers.get(pageIndex);
-    if (prev) clearTimeout(prev);
-    const t = setTimeout(() => {
-      const anchors = Array.isArray(pageData?.[pageIndex]?.anchors) ? pageData[pageIndex].anchors : [];
-      if (!anchors.length) return;
-      const userText = String(pageData?.[pageIndex]?.consolidation || '');
-      const cov = anchors.map((a) => computeAnchorCoverage(a, userText));
-      pageData[pageIndex].anchorCoverage = cov;
-      pageData[pageIndex].anchorFoundCount = cov.filter((v) => Number(v) >= ANCHOR_FOUND_THRESHOLD).length;
-      updateAnchorHud(pageIndex);
-      applyCoachAnchorsToPage(pageIndex, { hint: false });
-    }, 250);
-    anchorDebounceTimers.set(pageIndex, t);
+  function updateCoreAnchorOpacity(pageIndex) {
+    const pageEl = document.querySelectorAll('.page')[pageIndex];
+    if (!pageEl) return;
+
+    const anchors = Array.isArray(pageData?.[pageIndex]?.coreAnchors)
+      ? pageData[pageIndex].coreAnchors
+      : [];
+
+    const hintActive = !!pageData?.[pageIndex]?.hintActive;
+    const foundThreshold = 0.34;
+
+    const marks = pageEl.querySelectorAll('mark.core-anchor[data-anchor-id]');
+    marks.forEach((m) => {
+      const id = String(m.getAttribute('data-anchor-id') || '');
+      const a = anchors.find((x) => String(x.id) === id);
+      const cov = clamp01(a?.coverage ?? 0);
+      const satisfied = cov >= foundThreshold;
+      // Base opacity from coverage.
+      let op = cov;
+      // Hint briefly boosts missing anchors (but does not affect counter/score).
+      if (hintActive && !satisfied) op = Math.max(op, 0.85);
+      m.style.opacity = String(op);
+    });
+
+    // Update HUD count
+    const hudCount = pageEl.querySelector('.anchor-hud .anchor-count');
+    if (hudCount) {
+      const found = anchors.filter((a) => clamp01(a.coverage) >= foundThreshold).length;
+      hudCount.textContent = `Anchors Found: ${found}/5`;
+    }
   }
 
   async function prepareAnchorsForPages(pageIndices) {
-    const idxs = Array.isArray(pageIndices) ? pageIndices.filter((n) => Number.isFinite(n)) : [];
-    if (!idxs.length) return;
+    const indices = Array.isArray(pageIndices) ? pageIndices : [];
+    const debugEnabled = isDebugEnabledFromUrl();
+    if (!indices.length) return;
 
-    // Build request payload.
     const payload = {
-      pages: idxs.map((i) => ({ pageIndex: i, pageText: String(pages?.[i] || '') })),
+      pages: indices.map((idx) => ({ pageIndex: idx, pageText: String(pageData?.[idx]?.text || pages?.[idx] || '').trim() })),
+      debug: debugEnabled ? 1 : 0,
     };
-    // Reuse debug flag so you can collect diagnostics.
-    if (isDebugEnabledFromUrl()) payload.debug = 1;
 
     try {
       const resp = await fetch('/api/prepare', {
@@ -259,44 +254,53 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const txt = await resp.text();
+
+      const raw = await resp.text();
       if (!resp.ok) {
-        console.warn('prepare error', txt);
-        if (isDebugEnabledFromUrl()) {
-          lastAIDiagnostics = {
-            ...(lastAIDiagnostics || {}),
-            lastPrepareError: { status: resp.status, body: txt },
-          };
+        if (debugEnabled) {
+          lastPrepareDiagnostics = { lastPrepareError: { status: resp.status, body: raw } };
+          lastAIDiagnostics = { ...(lastAIDiagnostics || {}), ...(lastPrepareDiagnostics || {}) };
         }
         return;
       }
-      const data = JSON.parse(txt);
-      const pagesOut = Array.isArray(data?.pages) ? data.pages : [];
-      for (const p of pagesOut) {
-        const pi = Number(p?.pageIndex ?? -1);
-        if (!Number.isFinite(pi) || pi < 0 || pi >= pageData.length) continue;
-        const anchors = Array.isArray(p?.anchors) ? p.anchors : [];
-        pageData[pi].anchors = anchors;
-        pageData[pi].anchorCoverage = anchors.map(() => 0);
-        pageData[pi].anchorFoundCount = 0;
-        updateAnchorHud(pi);
-        // Keep passage clean until the user types; do not force highlight render.
-      }
 
-      if (isDebugEnabledFromUrl()) {
-        // Light debug: stash last prepare response.
-        lastAIDiagnostics = {
-          ...(lastAIDiagnostics || {}),
-          lastPrepare: data,
-        };
+      const data = JSON.parse(raw);
+      const results = Array.isArray(data?.pages) ? data.pages : [];
+      for (const r of results) {
+        const idx = Number(r?.pageIndex);
+        if (!Number.isFinite(idx) || !pageData[idx]) continue;
+        const anchors = Array.isArray(r?.anchors) ? r.anchors : [];
+        pageData[idx].coreAnchors = anchors
+          .map((a, j) => ({
+            id: String(a?.id || `a${j + 1}`),
+            snippet: String(a?.snippet || '').trim(),
+            keywords: Array.isArray(a?.keywords) ? a.keywords : [],
+            coverage: 0,
+          }))
+          .filter((a) => a.snippet);
+
+        // In debug, capture raw model output per page for inspection.
+        if (debugEnabled) {
+          lastPrepareDiagnostics = {
+            ...(lastPrepareDiagnostics || {}),
+            prepare: {
+              ...(lastPrepareDiagnostics?.prepare || {}),
+              [String(idx)]: {
+                model: r?.model,
+                raw_model_output: r?.raw_model_output,
+              },
+            },
+          };
+          lastAIDiagnostics = { ...(lastAIDiagnostics || {}), ...(lastPrepareDiagnostics || {}) };
+        }
+
+        // Render anchor marks into the passage.
+        applyCoreAnchorsToPage(idx);
       }
     } catch (e) {
-      console.warn('prepare exception', e);
       if (isDebugEnabledFromUrl()) {
-        lastAIDiagnostics = {
-          ...(lastAIDiagnostics || {}),
-          lastPrepareException: String(e?.message || e),
-        };
+        lastPrepareDiagnostics = { lastPrepareException: String(e?.message || e) };
+        lastAIDiagnostics = { ...(lastAIDiagnostics || {}), ...(lastPrepareDiagnostics || {}) };
       }
     }
   }
@@ -654,10 +658,10 @@
       }
     }
 
-    function applySelectionToBulkInput(text, { append = false } = {}) {
+    async function applySelectionToBulkInput(text, { append = false } = {}) {
       bulkInput.value = String(text || "").trim();
-      if (append) appendPages();
-      else addPages();
+      if (append) await appendPages();
+      else await addPages();
     }
 
     // Events
@@ -690,10 +694,10 @@
       if (Number.isFinite(s) && Number.isFinite(e) && e < s) pageStart.value = String(e);
     });
 
-    loadBtn.addEventListener("click", () => {
+    loadBtn.addEventListener("click", async () => {
       // Dual-purpose button: in Text mode, it just loads pages from the textarea.
       if (sourceSel.value === "text") {
-        addPages();
+        await addPages();
         return;
       }
 
@@ -709,13 +713,13 @@
         .map((p) => p.text)
         .filter(Boolean);
       // Keep delimiter in a single JS string line (prevents accidental raw-newline parse errors)
-      applySelectionToBulkInput(slice.join("\n---\n"), { append: false });
+      await applySelectionToBulkInput(slice.join("\n---\n"), { append: false });
     });
 
-    appendBtn.addEventListener("click", () => {
+    appendBtn.addEventListener("click", async () => {
       // Dual-purpose button: in Text mode, append from textarea.
       if (sourceSel.value === "text") {
-        appendPages();
+        await appendPages();
         return;
       }
 
@@ -731,7 +735,7 @@
         .map((p) => p.text)
         .filter(Boolean);
 
-      applySelectionToBulkInput(slice.join("\n---\n"), { append: true });
+      await applySelectionToBulkInput(slice.join("\n---\n"), { append: true });
     });
 
     try {
@@ -768,7 +772,7 @@
 
 
 
-function addPages() {
+async function addPages() {
     const input = document.getElementById("bulkInput").value.trim();
     goalTime = parseInt(document.getElementById("goalTimeInput").value);
     goalCharCount = parseInt(document.getElementById("goalCharInput").value);
@@ -777,7 +781,6 @@ function addPages() {
     // UX rule: whenever user generates new pages, start fresh (no leftover pages)
     if (pages.length > 0) resetSession({ confirm: false });
 
-    const newIdxs = [];
     input.split(/\n---\n|\n## Page\s+\d+/i).forEach(c => {
       const cleaned = c.split("\n").map(l => l.trim()).filter(l => l && !/^[# ]/.test(l));
       if (cleaned.length) {
@@ -786,12 +789,13 @@ function addPages() {
           text: cleaned.join(" "),
           consolidation: "",
           aiFeedbackRaw: "",
+          coreAnchors: [],
+          hintActive: false,
           charCount: 0,
           completedOnTime: true, // Assume true until sandstoned
           isSandstone: false,
           rating: 0
         });
-        newIdxs.push(pageData.length - 1);
       }
     });
 
@@ -799,19 +803,20 @@ function addPages() {
     render();
     checkSubmitButton();
 
-    // Generate Core Anchors once per page.
-    prepareAnchorsForPages(newIdxs);
+    // Generate core anchors (one-shot per new page) after render so UI stays responsive.
+    const indices = pageData.map((_, idx) => idx);
+    await prepareAnchorsForPages(indices);
   }
 
   // Append pages to the existing session (does NOT clear pages/timers/ratings).
   // Uses the same splitting rules as addPages().
-  function appendPages() {
+  async function appendPages() {
     const input = document.getElementById("bulkInput").value.trim();
     goalTime = parseInt(document.getElementById("goalTimeInput").value);
     goalCharCount = parseInt(document.getElementById("goalCharInput").value);
     if (!input) return;
 
-    const newIdxs = [];
+    const startIndex = pages.length;
     input.split(/\n---\n|\n## Page\s+\d+/i).forEach(c => {
       const cleaned = c.split("\n").map(l => l.trim()).filter(l => l && !/^[# ]/.test(l));
       if (cleaned.length) {
@@ -821,12 +826,13 @@ function addPages() {
           text: joined,
           consolidation: "",
           aiFeedbackRaw: "",
+          coreAnchors: [],
+          hintActive: false,
           charCount: 0,
           completedOnTime: true,
           isSandstone: false,
           rating: 0
         });
-        newIdxs.push(pageData.length - 1);
       }
     });
 
@@ -834,8 +840,9 @@ function addPages() {
     render();
     checkSubmitButton();
 
-    // Generate Core Anchors for appended pages only.
-    prepareAnchorsForPages(newIdxs);
+    const newIndices = [];
+    for (let i = startIndex; i < pageData.length; i++) newIndices.push(i);
+    await prepareAnchorsForPages(newIndices);
   }
 
   function resetSession({ confirm = true } = {}) {
@@ -866,13 +873,10 @@ function addPages() {
       page.innerHTML = `
         <div class="page-header">Page ${i + 1}</div>
         <div class="page-text">${text}</div>
-
-        <div class="anchor-hud" aria-label="Core anchor progress">
-          <span class="anchor-label">Anchors Found:</span>
-          <span class="anchor-count">0/${ANCHOR_TOTAL}</span>
-          <button class="hint-btn" type="button" data-page="${i}" title="Briefly reveal missing core anchors">Hint</button>
+        <div class="anchor-hud" data-page="${i}">
+          <span class="anchor-count">Anchors Found: 0/5</span>
+          <button type="button" class="hint-btn" data-page="${i}">Hint</button>
         </div>
-
         <div class="page-header">Consolidation</div>
 
         <div class="sand-wrapper">
@@ -925,12 +929,43 @@ function addPages() {
         pageData[i].charCount = count;
         charCountSpan.textContent = Math.min(count, goalCharCount);
 
-        // Core anchor coach layer (fade-in highlights + counter)
-        scheduleAnchorUpdate(i);
+        // Update core-anchor coverage + fade-in progress as the user types.
+        const anchors = Array.isArray(pageData?.[i]?.coreAnchors) ? pageData[i].coreAnchors : [];
+        if (anchors.length) {
+          anchors.forEach((a) => {
+            a.coverage = computeAnchorCoverage(pageData[i].consolidation, a.keywords);
+          });
+          updateCoreAnchorOpacity(i);
+        }
         
         // Check if all pages have text to unlock compasses
         checkCompassUnlock();
       });
+
+      // Initialize anchor coverage on first render.
+      try {
+        const anchors0 = Array.isArray(pageData?.[i]?.coreAnchors) ? pageData[i].coreAnchors : [];
+        if (anchors0.length) {
+          anchors0.forEach((a) => {
+            a.coverage = computeAnchorCoverage(pageData[i].consolidation, a.keywords);
+          });
+        }
+      } catch (_) {}
+
+      // Hint button: briefly reveal missing anchors.
+      const hintBtn = page.querySelector('.hint-btn');
+      if (hintBtn) {
+        hintBtn.addEventListener('click', () => {
+          if (!pageData[i]) return;
+          pageData[i].hintActive = true;
+          updateCoreAnchorOpacity(i);
+          window.setTimeout(() => {
+            if (!pageData[i]) return;
+            pageData[i].hintActive = false;
+            updateCoreAnchorOpacity(i);
+          }, 2000);
+        });
+      }
 
       // Timer events
       textarea.addEventListener("focus", () => {
@@ -954,19 +989,6 @@ function addPages() {
         }
         startTimer(i, sand, timerDiv, wrapper, textarea);
       });
-
-      // Hint button: briefly reveal missing anchors (no scroll, no focus changes)
-      const hintBtn = page.querySelector('.hint-btn');
-      if (hintBtn) {
-        hintBtn.addEventListener('click', (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          applyCoachAnchorsToPage(i, { hint: true });
-          setTimeout(() => {
-            applyCoachAnchorsToPage(i, { hint: false });
-          }, 2000);
-        });
-      }
       
       textarea.addEventListener("blur", () => {
         // Deactivate page stripe when leaving
@@ -1045,6 +1067,14 @@ function addPages() {
       }
 
       container.appendChild(page);
+
+      // If anchors already exist for this page (e.g. re-render), re-apply them.
+      if (Array.isArray(pageData?.[i]?.coreAnchors) && pageData[i].coreAnchors.length) {
+        applyCoreAnchorsToPage(i);
+      } else {
+        // Still update HUD count (keeps layout deterministic)
+        updateCoreAnchorOpacity(i);
+      }
     });
     
     // Check states after rendering
