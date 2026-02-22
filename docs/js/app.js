@@ -118,7 +118,13 @@
     pageData[i].anchorsCoveredMap = coveredMap;
     const pct = total ? Math.round((covered / total) * 100) : 0;
     fillEl.style.width = `${pct}%`;
-    labelEl.textContent = total ? `Coverage: ${covered}/${total}` : 'Coverage: --';
+    if (!total) {
+      labelEl.textContent = 'Coverage: --';
+    } else if (isDebugEnabledFromUrl()) {
+      labelEl.textContent = `Coverage: ${pct}% (${covered}/${total})`;
+    } else {
+      labelEl.textContent = `Coverage: ${pct}%`;
+    }
   }
 
   function setCoverageStatusAll(msg) {
@@ -167,13 +173,25 @@
         return;
       }
 
-      const resp = await fetch('/api/anchors', {
+      const apiUrl = '/api/anchors';
+      const resp = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pages: payloadPages, anchorsPerPage: DEFAULT_ANCHORS_PER_PAGE })
       });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data?.error || 'Anchor API error');
+
+      // If the API route is missing (static hosting), many servers return HTML.
+      // Provide a helpful diagnostic in debug mode.
+      const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+      let data = null;
+      if (contentType.includes('application/json')) {
+        data = await resp.json();
+      } else {
+        const txt = await resp.text();
+        const preview = txt.slice(0, 80).replace(/\s+/g, ' ');
+        throw new Error(`Anchor API did not return JSON (status ${resp.status}). Got: ${preview}`);
+      }
+      if (!resp.ok) throw new Error(data?.error || `Anchor API error (status ${resp.status})`);
 
       const outPages = Array.isArray(data?.pages) ? data.pages : [];
       for (const p of outPages) {
@@ -194,7 +212,9 @@
       console.warn('Anchor load failed:', e);
       if (isDebugEnabledFromUrl()) {
         const detail = (e && (e.message || String(e))) ? ` (${e.message || String(e)})` : '';
-        setCoverageStatusAll(`Coverage: -- (anchors unavailable)${detail}`);
+        setCoverageStatusAll(
+          `Coverage: -- (anchors unavailable)${detail} — If you're running static docs only, start the app with the local server (npm run dev).`
+        );
       }
     } finally {
       anchorsLoading = false;
