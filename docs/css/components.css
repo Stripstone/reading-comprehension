@@ -55,22 +55,18 @@
 .anchors-row {
   display: flex;
   justify-content: flex-end;
-  margin-top: 10px;
+  margin: 6px 0 2px 0;
 }
 
 .anchors-counter {
   padding: 6px 12px;
-  border: 1px solid var(--border);
+  border: none;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.35);
 }
 
 .hint-btn {
-  padding: 6px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.35);
-  cursor: pointer;
+  /* Visual style comes from .top-btn; this class only adds disabled affordance. */
 }
 
 .hint-btn:disabled {

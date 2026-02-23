@@ -1062,6 +1062,14 @@ function addPages() {
       page.innerHTML = `
         <div class="page-header">Page ${i + 1}</div>
         <div class="page-text">${escapeHtml(text)}</div>
+
+        <div class="anchors-row">
+          <div class="anchors-ui anchors-ui--right">
+            <div class="anchors-counter" title="Anchors">Anchors Found: 0/0</div>
+            <button type="button" class="top-btn hint-btn" disabled>Hint</button>
+          </div>
+        </div>
+
         <div class="page-header">Consolidation</div>
 
         <div class="sand-wrapper">
@@ -1087,14 +1095,7 @@ function addPages() {
 
           <div class="action-buttons">
             <button class="top-btn" onclick="goToNext()">▶ Next</button>
-            <button class="ai-btn" data-page="" style="display: none;">▼ AI&nbsp;&nbsp;</button>
-          </div>
-        </div>
-
-        <div class="anchors-row">
-          <div class="anchors-ui anchors-ui--right">
-            <div class="anchors-counter" title="Anchors">Anchors Found: 0/0</div>
-            <button type="button" class="hint-btn" disabled>Hint</button>
+            <button class="ai-btn" data-page="${i}" style="display: none;">▼ AI Evaluate&nbsp;&nbsp;</button>
           </div>
         </div>
         
@@ -1468,7 +1469,7 @@ function addPages() {
     // Toggle if already open
     if (feedbackDiv.style.display === 'block') {
       feedbackDiv.style.display = 'none';
-      aiBtn.textContent = '▼ AI';
+      aiBtn.textContent = '▼ AI Evaluate';
       return;
     }
 
@@ -1552,7 +1553,7 @@ function addPages() {
       };
       displayAIFeedback(pageIndex, data.feedback || "", data?.highlights?.snippets || []);
 
-      aiBtn.textContent = '▲ AI';
+      aiBtn.textContent = '▲ AI Evaluate';
       aiBtn.classList.remove('loading');
     } catch (error) {
       console.error('AI evaluation error:', error);
@@ -1568,7 +1569,7 @@ function addPages() {
       }
       feedbackDiv.innerHTML =
         '<div style="color: #8B2500;">Error getting AI feedback. Check console and verify AI Host is running.</div>';
-      aiBtn.textContent = '▼ AI';
+      aiBtn.textContent = '▼ AI Evaluate';
       aiBtn.classList.remove('loading');
     }
   }
