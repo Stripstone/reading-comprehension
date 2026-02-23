@@ -123,6 +123,50 @@
   const ANCHOR_VERSION = 1;
   const anchorsInFlight = new Map(); // pageHash -> Promise
 
+  // -----------------------------------
+  // Anchors diagnostics (REQUIRED when ?debug=1)
+  // -----------------------------------
+  // Policy: every anchor load trigger must write a tangible diagnostic record,
+  // even on cache hits, so runtime validation never relies on "ghost" behavior.
+  function isAnchorsDebugEnabled() {
+    return isDebugEnabledFromUrl();
+  }
+
+  function setAnchorsDiagnostics(pageEl, pageIndex, patch) {
+    try {
+      if (!isAnchorsDebugEnabled()) return;
+      if (!pageEl) return;
+      const pd = pageData?.[pageIndex];
+      if (!pd) return;
+
+      pd.anchorsDiagnostics = Object.assign({}, pd.anchorsDiagnostics || {}, patch || {});
+      pd.anchorsDiagnostics.ts = Date.now();
+
+      const pre = pageEl.querySelector('.anchors-debug-pre');
+      if (pre) {
+        const d = pd.anchorsDiagnostics || {};
+        const lines = [
+          `stage: ${d.stage || ''}`,
+          `pageIndex: ${pageIndex}`,
+          `pageHash: ${(d.pageHash || pd.pageHash || '').slice(0, 12)}`,
+          `cacheHit: ${String(d.cacheHit)}`,
+          `api: ${d.api ? `${d.api.url} (${d.api.status})` : ''}`,
+          `anchors: ${typeof d.anchorCount === 'number' ? d.anchorCount : ''}`,
+          `spansInjected: ${typeof d.spanCount === 'number' ? d.spanCount : ''}`,
+          d.error ? `error: ${d.error}` : '',
+        ].filter(Boolean);
+        pre.textContent = lines.join('\\n');
+      }
+
+      const counter = pageEl.querySelector('.anchors-counter');
+      if (counter) {
+        const d = pd.anchorsDiagnostics || {};
+        const shortHash = String(d.pageHash || pd.pageHash || '').slice(0, 8);
+        counter.title = `anchors dbg — hash:${shortHash} cacheHit:${String(d.cacheHit)} stage:${d.stage || ''}`;
+      }
+    } catch (_) {}
+  }
+
   async function sha256HexBrowser(text) {
     const enc = new TextEncoder();
     const data = enc.encode(String(text ?? ""));
@@ -138,6 +182,21 @@
       .replace(/[^a-z0-9\s]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  function quoteChunkMatch(quote, inputNorm) {
+    const q = normalizeForMatch(quote);
+    if (!q || !inputNorm) return false;
+    // If the quote is short, allow direct substring match.
+    if (q.length <= 40) return inputNorm.includes(q);
+    // Otherwise, try 3-word chunks (deterministic)
+    const words = q.split(" ").filter(Boolean);
+    if (words.length < 3) return false;
+    for (let i = 0; i <= words.length - 3; i++) {
+      const chunk = words.slice(i, i + 3).join(" ");
+      if (chunk.length >= 12 && inputNorm.includes(chunk)) return true;
+    }
+    return false;
   }
 
   function buildAnchorsHtml(sourceText, anchors) {
@@ -211,7 +270,8 @@
 
   async function fetchAnchorsForPageText(pageText, pageHash) {
     const debug = isDebugEnabledFromUrl();
-    const resp = await fetch(`${API_BASE}/api/anchors`, {
+    const url = `${API_BASE}/api/anchors`;
+    const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pageText, maxAnchors: 5, debug: debug ? 1 : 0 }),
@@ -236,21 +296,23 @@
       throw err;
     }
 
-    // In debug mode, surface diagnostics in the console (minimum viable visibility).
-    // This keeps parity with the "?debug=1" convention without adding new UI yet.
-    if (debug && data?.debug) {
+    // In debug mode, surface diagnostics in the console AND return enough metadata
+    // for the on-page anchors debug panel.
+    if (debug) {
       try {
-        console.info('[Anchors debug]', {
+        console.info('[Anchors] /api/anchors response', {
+          status: resp.status,
           pageHash: data?.meta?.pageHash,
           anchorVersion: data?.meta?.anchorVersion,
-          debug: data.debug,
+          anchors: Array.isArray(data?.anchors) ? data.anchors.length : null,
+          debug: data?.debug,
         });
       } catch (_) {}
     }
-    return data;
+    return { data, api: { url, status: resp.status }, rawText: debug ? txt : undefined };
   }
 
-  async function ensureAnchorsForPageIndex(pageIndex) {
+  async function ensureAnchorsForPageIndex(pageIndex, pageElForDiag = null) {
     const text = String(pages?.[pageIndex] || '');
     if (!text) return null;
 
@@ -260,14 +322,30 @@
     // If already loaded for this pageHash, reuse.
     if (pd.pageHash && pd.anchors && pd.anchorVersion === ANCHOR_VERSION) return pd.anchors;
 
+    // Diagnostics: trigger recorded as soon as anchors are requested.
+    setAnchorsDiagnostics(pageElForDiag, pageIndex, { stage: 'trigger', cacheHit: null });
+
     const pageHash = pd.pageHash || await sha256HexBrowser(text);
     pd.pageHash = pageHash;
+    setAnchorsDiagnostics(pageElForDiag, pageIndex, { stage: 'pageHash', pageHash, cacheHit: null });
 
     const cached = readAnchorsFromCache(pageHash);
     if (cached?.anchors) {
       pd.anchors = cached.anchors;
       pd.anchorVersion = cached.anchorVersion;
       pd.anchorsMeta = { createdAt: cached.createdAt, cacheHit: true };
+      setAnchorsDiagnostics(pageElForDiag, pageIndex, {
+        stage: 'cache-hit',
+        pageHash,
+        cacheHit: true,
+        anchorCount: cached.anchors.length,
+        api: null,
+      });
+      if (isDebugEnabledFromUrl()) {
+        try {
+          console.info("[Anchors] cache hit", { pageHash, anchorVersion: cached.anchorVersion, createdAt: cached.createdAt });
+        } catch (_) {}
+      }
       return pd.anchors;
     }
 
@@ -278,10 +356,20 @@
     }
 
     const p = (async () => {
-      const data = await fetchAnchorsForPageText(text, pageHash);
+      setAnchorsDiagnostics(pageElForDiag, pageIndex, { stage: 'fetching', pageHash, cacheHit: false });
+      const out = await fetchAnchorsForPageText(text, pageHash);
+      const data = out.data;
       pd.anchors = data.anchors;
       pd.anchorVersion = data.meta.anchorVersion;
       pd.anchorsMeta = { createdAt: Date.now(), cacheHit: false };
+      pd.anchorsRawDebug = data?.debug || null;
+      setAnchorsDiagnostics(pageElForDiag, pageIndex, {
+        stage: 'fetched',
+        pageHash,
+        cacheHit: false,
+        api: out.api,
+        anchorCount: Array.isArray(data.anchors) ? data.anchors.length : null,
+      });
       writeAnchorsToCache(pageHash, data.anchors);
     })();
 
@@ -308,11 +396,19 @@
       const id = String(span.getAttribute('data-anchor-id') || '');
       const a = byId.get(id);
       if (!a) return;
-      const quoteNorm = normalizeForMatch(a.quote);
-      const quoteMatch = quoteNorm && inputNorm.includes(quoteNorm);
+      const quoteMatch = quoteChunkMatch(a.quote, inputNorm);
       const terms = Array.isArray(a.terms) ? a.terms : [];
-      const termsNorm = terms.map(t => normalizeForMatch(t)).filter(Boolean);
-      const termsMatch = termsNorm.length ? termsNorm.every(t => inputNorm.includes(t)) : false;
+      let termsNorm = terms.map(t => normalizeForMatch(t)).filter(Boolean);
+      let derivedTerms = false;
+      // Fallback: if the model gave no usable terms, derive a few keywords from the quote.
+      if (!termsNorm.length) {
+        derivedTerms = true;
+        const qw = normalizeForMatch(a.quote).split(" ").filter(w => w.length >= 5);
+        termsNorm = Array.from(new Set(qw)).slice(0, 4);
+      }
+      const presentCount = termsNorm.filter(t => inputNorm.includes(t)).length;
+      // Deterministic rule: if terms came from the model, require ALL; if derived, require at least 2.
+      const termsMatch = termsNorm.length ? (derivedTerms ? presentCount >= 2 : presentCount === termsNorm.length) : false;
       const isMatch = quoteMatch || termsMatch;
       span.classList.toggle('anchor--found', isMatch);
       if (isMatch) found++;
@@ -354,13 +450,15 @@
     if (!textEl) return;
 
     try {
-      const anchors = await ensureAnchorsForPageIndex(pageIndex);
+      setAnchorsDiagnostics(pageEl, pageIndex, { stage: 'hydrate-start', cacheHit: null });
+      const anchors = await ensureAnchorsForPageIndex(pageIndex, pageEl);
       if (!anchors || !anchors.length) return;
       // Only apply if the text element is still for this page.
       textEl.innerHTML = buildAnchorsHtml(text, anchors);
 
       // If we failed to inject any spans, make it visible in debug.
       const spanCount = textEl.querySelectorAll('.anchor').length;
+      setAnchorsDiagnostics(pageEl, pageIndex, { stage: 'spans-injected', spanCount, anchorCount: anchors.length });
       if (spanCount === 0) {
         const counter = pageEl.querySelector('.anchors-counter');
         if (counter) counter.textContent = `Anchors Found: 0/${anchors.length}`;
@@ -381,6 +479,8 @@
       if (counter) counter.textContent = 'Anchors: error';
       const btn = pageEl.querySelector('.hint-btn');
       if (btn) btn.disabled = true;
+
+      setAnchorsDiagnostics(pageEl, pageIndex, { stage: 'error', error: String(e?.message || e) });
 
       if (isDebugEnabledFromUrl()) {
         console.warn('Anchors failed', e);
@@ -963,12 +1063,7 @@ function addPages() {
         <div class="info-row">
           <div class="counter-section">
             <div class="timer">Timer: ${timers[i]} / ${goalTime}</div>
-            <div class="char-counter">Characters: <span class="char-count">0</span> / ${goalCharCount}</div>
-            <div class="anchors-ui">
-              <div class="anchors-counter">Anchors Found: 0/0</div>
-              <button type="button" class="hint-btn" disabled>Hint</button>
-            </div>
-          </div>
+            <div class="char-counter">Characters: <span class="char-count">0</span> / ${goalCharCount}</div></div>
 
           <div class="evaluation-section">
             <div class="evaluation-label">Evaluation</div>
@@ -982,8 +1077,18 @@ function addPages() {
           </div>
 
           <div class="action-buttons">
-            <button class="top-btn" onclick="goToNext(${i})">▶ Next</button>
-            <button class="ai-btn" data-page="${i}" style="display: none;">▼ AI&nbsp;&nbsp;</button>
+            <button class="top-btn" onclick="goToNext()">▶ Next</button>
+            <button class="ai-btn" data-page="" style="display: none;">▼ AI&nbsp;&nbsp;</button>
+            <div class="anchors-ui anchors-ui--right">
+              <div class="anchors-counter" title="Anchors">Anchors Found: 0/0</div>
+              <button type="button" class="hint-btn" disabled>Hint</button>
+              ${isDebugEnabledFromUrl() ? `
+                <details class="anchors-debug" open>
+                  <summary>anchors debug</summary>
+                  <pre class="anchors-debug-pre">(waiting for trigger…)</pre>
+                </details>
+              ` : ``}
+            </div>
           </div>
         </div>
         
