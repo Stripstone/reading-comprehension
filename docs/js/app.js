@@ -123,6 +123,11 @@
   const ANCHOR_VERSION = 1;
   const anchorsInFlight = new Map(); // pageHash -> Promise
 
+  // Global anchors diagnostics record surfaced via the 🔧 Diagnostics panel.
+  // This is REQUIRED so "Load Pages" / "Add Pages" always produces tangible
+  // runtime evidence even when anchors come from cache.
+  let lastAnchorsDiagnostics = null;
+
   // -----------------------------------
   // Anchors diagnostics (REQUIRED when ?debug=1)
   // -----------------------------------
@@ -135,12 +140,16 @@
   function setAnchorsDiagnostics(pageEl, pageIndex, patch) {
     try {
       if (!isAnchorsDebugEnabled()) return;
-      if (!pageEl) return;
       const pd = pageData?.[pageIndex];
       if (!pd) return;
 
       pd.anchorsDiagnostics = Object.assign({}, pd.anchorsDiagnostics || {}, patch || {});
       pd.anchorsDiagnostics.ts = Date.now();
+
+      // Always update global record (even if pageEl is not present).
+      lastAnchorsDiagnostics = Object.assign({ pageIndex }, pd.anchorsDiagnostics);
+
+      if (!pageEl) return;
 
       const pre = pageEl.querySelector('.anchors-debug-pre');
       if (pre) {
@@ -1079,16 +1088,13 @@ function addPages() {
           <div class="action-buttons">
             <button class="top-btn" onclick="goToNext()">▶ Next</button>
             <button class="ai-btn" data-page="" style="display: none;">▼ AI&nbsp;&nbsp;</button>
-            <div class="anchors-ui anchors-ui--right">
-              <div class="anchors-counter" title="Anchors">Anchors Found: 0/0</div>
-              <button type="button" class="hint-btn" disabled>Hint</button>
-              ${isDebugEnabledFromUrl() ? `
-                <details class="anchors-debug" open>
-                  <summary>anchors debug</summary>
-                  <pre class="anchors-debug-pre">(waiting for trigger…)</pre>
-                </details>
-              ` : ``}
-            </div>
+          </div>
+        </div>
+
+        <div class="anchors-row">
+          <div class="anchors-ui anchors-ui--right">
+            <div class="anchors-counter" title="Anchors">Anchors Found: 0/0</div>
+            <button type="button" class="hint-btn" disabled>Hint</button>
           </div>
         </div>
         
@@ -2259,9 +2265,14 @@ function addPages() {
           diagPanel.style.display = 'none';
           return;
         }
-        const dump = lastAIDiagnostics
-          ? JSON.stringify(lastAIDiagnostics, null, 2)
-          : 'No diagnostics captured yet.\n\nTip: run an AI eval, then open diagnostics.';
+        const merged = {
+          ai: lastAIDiagnostics || null,
+          anchors: lastAnchorsDiagnostics || null,
+        };
+        const hasAny = Boolean(merged.ai || merged.anchors);
+        const dump = hasAny
+          ? JSON.stringify(merged, null, 2)
+          : 'No diagnostics captured yet.\n\nTip: load pages with ?debug=1 (anchors) or run an AI eval.';
         diagText.value = dump;
         diagPanel.style.display = 'block';
         positionPanelAboveButton(diagBtn, diagPanel);

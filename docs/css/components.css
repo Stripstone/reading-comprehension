@@ -13,54 +13,62 @@
 /*
   IMPORTANT UX RULE:
   Anchors must NEVER make the passage unreadable.
-  We do *not* hide the underlying text. Instead, we animate an underline highlight.
+
+  UX requirement:
+  - highlight (not underline)
+  - fade in/out (not left→right motion)
+
+  Implementation:
+  We keep the text visible and use a soft marker-like background that
+  transitions its alpha.
 */
 .page-text .anchor {
-  /* Keep text visible at all times */
   color: inherit;
-
-  /* Animated underline via background-size so we can transition deterministically */
-  background-image: linear-gradient(currentColor, currentColor);
-  background-repeat: no-repeat;
-  background-position: 0 100%;
-  background-size: 0% 2px;
-  transition: background-size 0.35s ease;
+  background-color: rgba(255, 241, 118, 0); /* transparent marker */
+  border-radius: 3px;
+  padding: 0 2px;
+  transition: background-color 0.35s ease;
 }
 
 .page-text .anchor.anchor--found {
-  background-size: 100% 2px;
+  background-color: rgba(255, 241, 118, 0.85);
 }
 
 .page.anchor-hint-active .page-text .anchor {
-  background-size: 100% 2px;
+  background-color: rgba(255, 241, 118, 0.85);
 }
 
 .anchors-ui {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
-  flex-wrap: wrap;
-  margin-top: 6px;
-  font-size: 13px;
-  opacity: 0.85;
+  flex-wrap: nowrap;
+  font-size: 12px;
+  opacity: 0.9;
 }
 
 .anchors-ui--right {
   justify-content: flex-end;
-  margin-top: 8px;
+  width: fit-content;
+}
+
+.anchors-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
 }
 
 .anchors-counter {
   padding: 6px 12px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.35);
 }
 
 .hint-btn {
   padding: 6px 12px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.35);
   cursor: pointer;
 }
