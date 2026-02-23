@@ -26,8 +26,6 @@
 
   // Diagnostics (hidden panel): capture last AI request/response for bug-fixing
   let lastAIDiagnostics = null;
-  // Diagnostics for /api/prepare (anchor generation)
-  let lastPrepareError = null;
 
   let goalTime = DEFAULT_TIME_GOAL;
   let goalCharCount = DEFAULT_CHAR_GOAL;
@@ -115,145 +113,6 @@
     if (cursor < source.length) out += escapeHtml(source.slice(cursor));
 
     textEl.innerHTML = out;
-  }
-
-  // -----------------------------------
-  // Core Anchor (coach layer) rendering
-  // -----------------------------------
-  function applyCoreAnchorsToPage(pageIndex, anchors) {
-    const pageEl = document.querySelectorAll('.page')[pageIndex];
-    if (!pageEl) return;
-    const textEl = pageEl.querySelector('.page-text');
-    if (!textEl) return;
-
-    const source = String(pages?.[pageIndex] ?? textEl.textContent ?? '');
-    const list = Array.isArray(anchors) ? anchors : [];
-    if (!list.length) {
-      textEl.textContent = source;
-      return;
-    }
-
-    // Build non-overlapping ranges using FIRST occurrence per anchor (simple + deterministic).
-    const ranges = [];
-    for (const a of list) {
-      const snip = String(a?.snippet || '').trim();
-      if (!snip) continue;
-      const found = source.indexOf(snip);
-      if (found === -1) continue;
-      ranges.push({ start: found, end: found + snip.length, id: String(a?.id || '') });
-    }
-    if (!ranges.length) {
-      textEl.textContent = source;
-      return;
-    }
-
-    // Sort + drop overlaps (keep earliest).
-    ranges.sort((a, b) => a.start - b.start || a.end - b.end);
-    const kept = [];
-    let lastEnd = -1;
-    for (const r of ranges) {
-      if (r.start >= lastEnd) {
-        kept.push(r);
-        lastEnd = r.end;
-      }
-    }
-
-    let out = '';
-    let cursor = 0;
-    for (const r of kept) {
-      if (r.start > cursor) out += escapeHtml(source.slice(cursor, r.start));
-      out += `<mark class="core-anchor" data-anchor-id="${escapeHtml(r.id)}" style="opacity:0;">${escapeHtml(source.slice(r.start, r.end))}</mark>`;
-      cursor = r.end;
-    }
-    if (cursor < source.length) out += escapeHtml(source.slice(cursor));
-    textEl.innerHTML = out;
-  }
-
-  function getAnchorHudEls(pageIndex) {
-    const pageEl = document.querySelectorAll('.page')[pageIndex];
-    if (!pageEl) return {};
-    return {
-      foundEl: pageEl.querySelector('[data-anchor-found]'),
-      hintBtn: pageEl.querySelector('[data-anchor-hint]'),
-    };
-  }
-
-  function computeAnchorCoverage(userText, anchor) {
-    const txt = String(userText || '').toLowerCase();
-    const kw = Array.isArray(anchor?.keywords) ? anchor.keywords : [];
-    const keywords = kw.length ? kw : String(anchor?.snippet || '').toLowerCase().split(/\W+/).filter(Boolean).slice(0, 5);
-    if (!keywords.length) return 0;
-    let hits = 0;
-    for (const k of keywords) {
-      const kk = String(k || '').toLowerCase().trim();
-      if (!kk) continue;
-      if (txt.includes(kk)) hits++;
-    }
-    return hits / keywords.length;
-  }
-
-  function updateCoreAnchorUI(pageIndex, userText) {
-    const anchors = pageData?.[pageIndex]?.coreAnchors || [];
-    const pageEl = document.querySelectorAll('.page')[pageIndex];
-    if (!pageEl) return;
-
-    let found = 0;
-    for (const a of anchors) {
-      const cov = computeAnchorCoverage(userText, a);
-      const satisfied = cov >= 0.34 || cov > 0; // “some satisfaction”
-      if (satisfied) found++;
-
-      const mark = pageEl.querySelector(`mark.core-anchor[data-anchor-id="${CSS.escape(String(a.id || ''))}"]`);
-      if (mark) {
-        // Smooth fade-in; cap opacity to avoid neon blocks.
-        const op = Math.min(0.85, Math.max(0, cov * 0.95));
-        mark.style.opacity = String(op);
-      }
-    }
-
-    const { foundEl } = getAnchorHudEls(pageIndex);
-    if (foundEl) foundEl.textContent = `${found}/${Math.max(anchors.length, 5)}`;
-
-    // Track for hint behavior
-    pageData[pageIndex].coreAnchorsFound = found;
-  }
-
-  async function prepareAnchorsForPageIndices(indices) {
-    try {
-      lastPrepareError = null;
-      const payloadPages = indices
-        .map((i) => ({ pageIndex: i, pageText: String(pages?.[i] || '') }))
-        .filter((p) => p.pageText.trim().length > 0);
-      if (!payloadPages.length) return;
-
-      const resp = await fetch('/api/prepare', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pages: payloadPages, debug: isDebugEnabledFromUrl() ? 1 : 0 })
-      });
-      if (!resp.ok) {
-        const t = await resp.text();
-        lastPrepareError = { status: resp.status, body: t };
-        return;
-      }
-      const data = await resp.json();
-      const outPages = Array.isArray(data?.pages) ? data.pages : [];
-      for (const p of outPages) {
-        const idx = Number(p?.pageIndex ?? -1);
-        if (idx < 0 || idx >= pageData.length) continue;
-        const anchors = Array.isArray(p?.anchors) ? p.anchors : [];
-        pageData[idx].coreAnchors = anchors;
-      }
-
-      // Apply anchor marks now that we have them.
-      for (const i of indices) {
-        const anchors = pageData?.[i]?.coreAnchors || [];
-        applyCoreAnchorsToPage(i, anchors);
-        updateCoreAnchorUI(i, pageData?.[i]?.consolidation || '');
-      }
-    } catch (e) {
-      lastPrepareError = { status: 0, body: String(e?.message ?? e) };
-    }
   }
 
   const sandSound = document.getElementById("sandSound");
@@ -751,16 +610,11 @@ function addPages() {
     document.getElementById("bulkInput").value = "";
     render();
     checkSubmitButton();
-
-    // Generate anchors once per page (coach layer)
-    const idxs = Array.from({ length: pages.length }, (_, k) => k);
-    prepareAnchorsForPageIndices(idxs);
   }
 
   // Append pages to the existing session (does NOT clear pages/timers/ratings).
   // Uses the same splitting rules as addPages().
   function appendPages() {
-    const startIdx = pages.length;
     const input = document.getElementById("bulkInput").value.trim();
     goalTime = parseInt(document.getElementById("goalTimeInput").value);
     goalCharCount = parseInt(document.getElementById("goalCharInput").value);
@@ -786,12 +640,6 @@ function addPages() {
     document.getElementById("bulkInput").value = "";
     render();
     checkSubmitButton();
-
-    // Generate anchors only for newly appended pages
-    const endIdx = pages.length;
-    const idxs = [];
-    for (let k = startIdx; k < endIdx; k++) idxs.push(k);
-    prepareAnchorsForPageIndices(idxs);
   }
 
   function resetSession({ confirm = true } = {}) {
@@ -822,10 +670,6 @@ function addPages() {
       page.innerHTML = `
         <div class="page-header">Page ${i + 1}</div>
         <div class="page-text">${text}</div>
-        <div class="anchor-hud">
-          <span class="anchor-found">Anchors Found: <span data-anchor-found>0/5</span></span>
-          <button class="hint-btn" type="button" data-anchor-hint>Hint</button>
-        </div>
         <div class="page-header">Consolidation</div>
 
         <div class="sand-wrapper">
@@ -852,7 +696,7 @@ function addPages() {
 
           <div class="action-buttons">
             <button class="top-btn" onclick="goToNext(${i})">▶ Next</button>
-            <button class="ai-btn" data-page="${i}" style="display: none;">▼ AI Evaluation&nbsp;&nbsp;</button>
+            <button class="ai-btn" data-page="${i}" style="display: none;">▼ AI&nbsp;&nbsp;</button>
           </div>
         </div>
         
@@ -877,9 +721,6 @@ function addPages() {
         pageData[i].consolidation = e.target.value;
         pageData[i].charCount = count;
         charCountSpan.textContent = Math.min(count, goalCharCount);
-
-        // Calm coach layer (anchors)
-        updateCoreAnchorUI(i, e.target.value);
         
         // Check if all pages have text to unlock compasses
         checkCompassUnlock();
@@ -952,32 +793,6 @@ function addPages() {
       if (aiBtn) {
         aiBtn.addEventListener("click", () => evaluatePageWithAI(i));
       }
-
-      // Hint button: briefly reveal missing anchors (2s)
-      const hintBtn = page.querySelector('[data-anchor-hint]');
-      if (hintBtn) {
-        hintBtn.addEventListener('click', () => {
-          const anchors = pageData?.[i]?.coreAnchors || [];
-          if (!anchors.length) return;
-          const pageEl = document.querySelectorAll('.page')[i];
-          if (!pageEl) return;
-          const userText = pageData?.[i]?.consolidation || '';
-
-          const restore = [];
-          for (const a of anchors) {
-            const cov = computeAnchorCoverage(userText, a);
-            const satisfied = cov >= 0.34 || cov > 0;
-            if (satisfied) continue;
-            const mark = pageEl.querySelector(`mark.core-anchor[data-anchor-id="${CSS.escape(String(a.id || ''))}"]`);
-            if (!mark) continue;
-            restore.push([mark, mark.style.opacity]);
-            mark.style.opacity = '0.85';
-          }
-          setTimeout(() => {
-            for (const [mark, op] of restore) mark.style.opacity = op;
-          }, 2000);
-        });
-      }
       
       // Restore previous rating if exists
       if (pageData[i].rating > 0) {
@@ -1011,12 +826,6 @@ function addPages() {
       }
 
       container.appendChild(page);
-
-      // If anchors already exist for this page, re-apply them after DOM insertion.
-      if (Array.isArray(pageData?.[i]?.coreAnchors) && pageData[i].coreAnchors.length) {
-        applyCoreAnchorsToPage(i, pageData[i].coreAnchors);
-        updateCoreAnchorUI(i, pageData[i].consolidation || '');
-      }
     });
     
     // Check states after rendering
@@ -2048,12 +1857,9 @@ function addPages() {
           diagPanel.style.display = 'none';
           return;
         }
-        const payload = lastAIDiagnostics ? { ...lastAIDiagnostics } : {};
-        if (lastPrepareError) payload.lastPrepareError = lastPrepareError;
-
-        const dump = Object.keys(payload).length
-          ? JSON.stringify(payload, null, 2)
-          : 'No diagnostics captured yet.\n\nTip: run Load Pages (anchors) or an AI eval, then open diagnostics.';
+        const dump = lastAIDiagnostics
+          ? JSON.stringify(lastAIDiagnostics, null, 2)
+          : 'No diagnostics captured yet.\n\nTip: run an AI eval, then open diagnostics.';
         diagText.value = dump;
         diagPanel.style.display = 'block';
         positionPanelAboveButton(diagBtn, diagPanel);
