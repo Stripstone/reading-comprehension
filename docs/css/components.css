@@ -6,6 +6,55 @@
       box-sizing: border-box;
     }
 
+/* =========================
+   Anchors (core idea targets)
+   ========================= */
+
+.page-text .anchor {
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.page-text .anchor.anchor--found {
+  opacity: 1;
+}
+
+.page.anchor-hint-active .page-text .anchor {
+  opacity: 1;
+}
+
+.anchors-ui {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.anchors-counter {
+  padding: 6px 10px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: var(--secondary-bg);
+}
+
+.hint-btn {
+  padding: 6px 10px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: var(--secondary-bg);
+  cursor: pointer;
+}
+
+.hint-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
     body {
       font-family: 'Crimson Pro', serif;
       font-weight: 600;

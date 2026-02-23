@@ -115,6 +115,254 @@
     textEl.innerHTML = out;
   }
 
+  // ===================================
+  // Anchors (core idea targets)
+  // ===================================
+
+  const API_BASE = "https://reading-comprehension-rpwd.vercel.app";
+  const ANCHOR_VERSION = 1;
+  const anchorsInFlight = new Map(); // pageHash -> Promise
+
+  async function sha256HexBrowser(text) {
+    const enc = new TextEncoder();
+    const data = enc.encode(String(text ?? ""));
+    const hash = await crypto.subtle.digest('SHA-256', data);
+    const bytes = Array.from(new Uint8Array(hash));
+    return bytes.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  function normalizeForMatch(s) {
+    return String(s || '')
+      .toLowerCase()
+      .replace(/[\u2018\u2019\u201C\u201D]/g, "'")
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function buildAnchorsHtml(sourceText, anchors) {
+    const src = String(sourceText || '');
+    const list = Array.isArray(anchors) ? anchors : [];
+    if (!list.length) return escapeHtml(src);
+
+    // Compute non-overlapping ranges from first occurrence of each quote.
+    const ranges = [];
+    for (const a of list) {
+      const q = String(a?.quote || '');
+      if (!q) continue;
+      const idx = src.indexOf(q);
+      if (idx === -1) continue;
+      ranges.push({ start: idx, end: idx + q.length, id: String(a?.id || '') });
+    }
+
+    if (!ranges.length) return escapeHtml(src);
+
+    // Prefer longer quotes first when overlaps exist, then earlier start.
+    ranges.sort((a, b) => (b.end - b.start) - (a.end - a.start) || a.start - b.start);
+    const chosen = [];
+    const overlaps = (r1, r2) => !(r1.end <= r2.start || r2.end <= r1.start);
+    for (const r of ranges) {
+      if (chosen.some(c => overlaps(c, r))) continue;
+      chosen.push(r);
+    }
+    chosen.sort((a, b) => a.start - b.start);
+
+    let out = '';
+    let cursor = 0;
+    for (const r of chosen) {
+      if (r.start > cursor) out += escapeHtml(src.slice(cursor, r.start));
+      const segment = src.slice(r.start, r.end);
+      out += `<span class="anchor" data-anchor-id="${escapeHtml(r.id)}">${escapeHtml(segment)}</span>`;
+      cursor = r.end;
+    }
+    if (cursor < src.length) out += escapeHtml(src.slice(cursor));
+    return out;
+  }
+
+  function getAnchorCacheKey(pageHash) {
+    return `anchors:${ANCHOR_VERSION}:${pageHash}`;
+  }
+
+  function readAnchorsFromCache(pageHash) {
+    try {
+      const raw = localStorage.getItem(getAnchorCacheKey(pageHash));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || parsed.anchorVersion !== ANCHOR_VERSION) return null;
+      if (!Array.isArray(parsed.anchors)) return null;
+      return parsed;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function writeAnchorsToCache(pageHash, anchors) {
+    try {
+      const payload = {
+        anchors,
+        anchorVersion: ANCHOR_VERSION,
+        createdAt: Date.now(),
+      };
+      localStorage.setItem(getAnchorCacheKey(pageHash), JSON.stringify(payload));
+    } catch (_) {
+      // ignore quota errors
+    }
+  }
+
+  async function fetchAnchorsForPageText(pageText, pageHash) {
+    const debug = isDebugEnabledFromUrl();
+    const resp = await fetch(`${API_BASE}/api/anchors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pageText, maxAnchors: 5, debug: debug ? 1 : 0 }),
+    });
+    const txt = await resp.text();
+    let data;
+    try { data = JSON.parse(txt); } catch { data = { error: 'Invalid JSON from /api/anchors', detail: txt }; }
+    if (!resp.ok) {
+      const err = new Error(data?.error || 'Anchors API error');
+      err.details = data;
+      throw err;
+    }
+    // Basic schema check
+    if (!Array.isArray(data?.anchors) || !data?.meta?.pageHash) {
+      const err = new Error('Invalid /api/anchors response schema');
+      err.details = data;
+      throw err;
+    }
+    if (String(data.meta.pageHash) !== String(pageHash)) {
+      const err = new Error('Anchors pageHash mismatch');
+      err.details = { expected: pageHash, got: data?.meta?.pageHash };
+      throw err;
+    }
+    return data;
+  }
+
+  async function ensureAnchorsForPageIndex(pageIndex) {
+    const text = String(pages?.[pageIndex] || '');
+    if (!text) return null;
+
+    const pd = pageData?.[pageIndex];
+    if (!pd) return null;
+
+    // If already loaded for this pageHash, reuse.
+    if (pd.pageHash && pd.anchors && pd.anchorVersion === ANCHOR_VERSION) return pd.anchors;
+
+    const pageHash = pd.pageHash || await sha256HexBrowser(text);
+    pd.pageHash = pageHash;
+
+    const cached = readAnchorsFromCache(pageHash);
+    if (cached?.anchors) {
+      pd.anchors = cached.anchors;
+      pd.anchorVersion = cached.anchorVersion;
+      pd.anchorsMeta = { createdAt: cached.createdAt, cacheHit: true };
+      return pd.anchors;
+    }
+
+    // De-dupe concurrent fetches by pageHash.
+    if (anchorsInFlight.has(pageHash)) {
+      await anchorsInFlight.get(pageHash);
+      return pd.anchors || null;
+    }
+
+    const p = (async () => {
+      const data = await fetchAnchorsForPageText(text, pageHash);
+      pd.anchors = data.anchors;
+      pd.anchorVersion = data.meta.anchorVersion;
+      pd.anchorsMeta = { createdAt: Date.now(), cacheHit: false };
+      writeAnchorsToCache(pageHash, data.anchors);
+    })();
+
+    anchorsInFlight.set(pageHash, p);
+    try {
+      await p;
+      return pd.anchors;
+    } finally {
+      anchorsInFlight.delete(pageHash);
+    }
+  }
+
+  function updateAnchorsUIForPage(pageEl, pageIndex, userText) {
+    const pd = pageData?.[pageIndex];
+    if (!pageEl || !pd?.anchors) return;
+
+    const inputNorm = normalizeForMatch(userText);
+    const anchors = pd.anchors;
+    const spans = pageEl.querySelectorAll('.page-text .anchor');
+
+    let found = 0;
+    const byId = new Map(anchors.map(a => [String(a.id), a]));
+    spans.forEach(span => {
+      const id = String(span.getAttribute('data-anchor-id') || '');
+      const a = byId.get(id);
+      if (!a) return;
+      const quoteNorm = normalizeForMatch(a.quote);
+      const quoteMatch = quoteNorm && inputNorm.includes(quoteNorm);
+      const terms = Array.isArray(a.terms) ? a.terms : [];
+      const termsNorm = terms.map(t => normalizeForMatch(t)).filter(Boolean);
+      const termsMatch = termsNorm.length ? termsNorm.every(t => inputNorm.includes(t)) : false;
+      const isMatch = quoteMatch || termsMatch;
+      span.classList.toggle('anchor--found', isMatch);
+      if (isMatch) found++;
+    });
+
+    const counter = pageEl.querySelector('.anchors-counter');
+    if (counter) counter.textContent = `Anchors Found: ${found}/${anchors.length}`;
+  }
+
+  function bindHintButton(pageEl, pageIndex) {
+    const btn = pageEl.querySelector('.hint-btn');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      const pd = pageData?.[pageIndex];
+      if (!pd?.anchors?.length) return;
+
+      // 2s fade-in / 2s fade-out visual override.
+      const spans = pageEl.querySelectorAll('.page-text .anchor');
+      spans.forEach(s => { s.style.transitionDuration = '2s'; });
+      pageEl.classList.add('anchor-hint-active');
+
+      // Hold for 2 seconds, then return to match-based visibility over 2 seconds.
+      setTimeout(() => {
+        pageEl.classList.remove('anchor-hint-active');
+        // After fade-out completes, restore normal transition speed and refresh matches.
+        setTimeout(() => {
+          spans.forEach(s => { s.style.transitionDuration = '0.35s'; });
+          const textarea = pageEl.querySelector('textarea');
+          updateAnchorsUIForPage(pageEl, pageIndex, textarea ? textarea.value : '');
+        }, 2000);
+      }, 2000);
+    });
+  }
+
+  async function hydrateAnchorsIntoPageEl(pageEl, pageIndex) {
+    const text = String(pages?.[pageIndex] || '');
+    if (!pageEl || !text) return;
+    const textEl = pageEl.querySelector('.page-text');
+    if (!textEl) return;
+
+    try {
+      const anchors = await ensureAnchorsForPageIndex(pageIndex);
+      if (!anchors || !anchors.length) return;
+      // Only apply if the text element is still for this page.
+      textEl.innerHTML = buildAnchorsHtml(text, anchors);
+
+      const textarea = pageEl.querySelector('textarea');
+      updateAnchorsUIForPage(pageEl, pageIndex, textarea ? textarea.value : '');
+      const btn = pageEl.querySelector('.hint-btn');
+      if (btn) btn.disabled = false;
+    } catch (e) {
+      const counter = pageEl.querySelector('.anchors-counter');
+      if (counter) counter.textContent = 'Anchors: error';
+      const btn = pageEl.querySelector('.hint-btn');
+      if (btn) btn.disabled = true;
+
+      if (isDebugEnabledFromUrl()) {
+        console.warn('Anchors failed', e);
+      }
+    }
+  }
+
   const sandSound = document.getElementById("sandSound");
   const stoneSound = document.getElementById("stoneSound");
   const rewardSound = document.getElementById("rewardSound");
@@ -602,7 +850,12 @@ function addPages() {
           charCount: 0,
           completedOnTime: true, // Assume true until sandstoned
           isSandstone: false,
-          rating: 0
+          rating: 0,
+          // Anchors
+          pageHash: "",
+          anchors: null,
+          anchorVersion: 0,
+          anchorsMeta: null
         });
       }
     });
@@ -632,7 +885,12 @@ function addPages() {
           charCount: 0,
           completedOnTime: true,
           isSandstone: false,
-          rating: 0
+          rating: 0,
+          // Anchors
+          pageHash: "",
+          anchors: null,
+          anchorVersion: 0,
+          anchorsMeta: null
         });
       }
     });
@@ -669,7 +927,7 @@ function addPages() {
 
       page.innerHTML = `
         <div class="page-header">Page ${i + 1}</div>
-        <div class="page-text">${text}</div>
+        <div class="page-text">${escapeHtml(text)}</div>
         <div class="page-header">Consolidation</div>
 
         <div class="sand-wrapper">
@@ -681,6 +939,10 @@ function addPages() {
           <div class="counter-section">
             <div class="timer">Timer: ${timers[i]} / ${goalTime}</div>
             <div class="char-counter">Characters: <span class="char-count">0</span> / ${goalCharCount}</div>
+            <div class="anchors-ui">
+              <div class="anchors-counter">Anchors Found: 0/0</div>
+              <button type="button" class="hint-btn" disabled>Hint</button>
+            </div>
           </div>
 
           <div class="evaluation-section">
@@ -721,6 +983,9 @@ function addPages() {
         pageData[i].consolidation = e.target.value;
         pageData[i].charCount = count;
         charCountSpan.textContent = Math.min(count, goalCharCount);
+
+        // Anchors: deterministic matching (UI-only; no inference).
+        updateAnchorsUIForPage(page, i, e.target.value);
         
         // Check if all pages have text to unlock compasses
         checkCompassUnlock();
@@ -826,6 +1091,13 @@ function addPages() {
       }
 
       container.appendChild(page);
+
+      // Anchors: bind hint button and hydrate anchors asynchronously (with local cache).
+      bindHintButton(page, i);
+      // Always start with plain text (safe), then wrap quotes once anchors are available.
+      // If this page already has anchors cached in pageData, hydrate will apply immediately.
+      hydrateAnchorsIntoPageEl(page, i);
+
     });
     
     // Check states after rendering

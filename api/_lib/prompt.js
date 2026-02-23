@@ -95,3 +95,21 @@ export function buildFinalSummaryMessages({ title = "", pages = [] } = {}) {
     { role: "user", content: userBlock },
   ];
 }
+
+// Anchors prompt: page-only core idea targets.
+export function buildAnchorsMessages({ pageText = "", maxAnchors = 5 } = {}) {
+  const templateRaw = readPromptTemplate("promptAnchors.txt");
+  const cap = Math.max(1, Math.min(12, Number(maxAnchors) || 5));
+  const promptTemplate = templateRaw.replace(/\{\{MAX_ANCHORS\}\}/g, String(cap));
+
+  const userBlock = [
+    "---PAGE CONTENT---",
+    String(pageText ?? ""),
+    "---",
+  ].join("\n");
+
+  return [
+    { role: "system", content: promptTemplate },
+    { role: "user", content: userBlock },
+  ];
+}
