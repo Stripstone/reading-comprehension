@@ -38,14 +38,15 @@
 /* When a keyword match unlocks an anchor, fully highlight the matched keyword(s) inside the quote.
    This reinforces the "Oh, I found a word" feedback without requiring verbatim phrases. */
 .page-text .anchor .anchor-term-found {
-  background-color: rgba(255, 214, 64, 0.95);
+  /* Keep the same yellow marker family; just make matched terms pop more. */
+  background-color: rgba(255, 241, 118, 0.95);
   border-radius: 3px;
   padding: 0 2px;
 }
 
 .page.anchor-hint-active .page-text .anchor {
   /* Hint: fully reveal all anchors (visual override only) */
-  --anchor-alpha: 0.85;
+  --anchor-alpha: 0.90;
 }
 
 .anchors-ui {

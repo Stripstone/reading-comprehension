@@ -205,7 +205,11 @@
   ]);
 
   function extractEssentialTerms(anchor) {
-    // Terms priority: model-provided terms → derived from quote.
+    // UX rule: ANY keyword should be able to activate an anchor.
+    // So we take a UNION of:
+    // - model-provided terms (often semantic)
+    // - terms derived from the quote itself (often literal)
+    // This prevents cases like "generational" not activating when the model only provided "wealth".
     const rawTerms = Array.isArray(anchor?.terms) ? anchor.terms : [];
     const cleanedFromModel = rawTerms
       .map(t => normalizeForMatch(t))
@@ -214,14 +218,20 @@
       .flatMap(t => t.split(' '))
       .filter(w => w && w.length >= 4 && !ANCHOR_STOPWORDS.has(w));
 
-    let out = Array.from(new Set(cleanedFromModel));
+    const qw = normalizeForMatch(anchor?.quote || '')
+      .split(' ')
+      .filter(w => w && w.length >= 4 && !ANCHOR_STOPWORDS.has(w));
 
-    if (!out.length) {
-      const qw = normalizeForMatch(anchor?.quote || '')
-        .split(' ')
-        .filter(w => w && w.length >= 4 && !ANCHOR_STOPWORDS.has(w));
-      out = Array.from(new Set(qw));
-    }
+    const out = [];
+    const seen = new Set();
+
+    // Keep model terms first (semantic), then add quote terms (literal).
+    [...cleanedFromModel, ...qw].forEach(w => {
+      if (!w) return;
+      if (seen.has(w)) return;
+      seen.add(w);
+      out.push(w);
+    });
 
     // Cap to keep matching stable and avoid overfitting.
     return out.slice(0, 5);
@@ -438,8 +448,11 @@
     // - Visual intensity reflects how many essential keywords are present.
     // - First match should be NOTICEABLE (>= 50% intensity), additional matches strengthen it.
     // - Additionally, the matched keyword(s) inside the anchor quote should be fully highlighted.
-    const ANCHOR_ALPHA_MAX = 0.95;
-    const ANCHOR_ALPHA_FIRST = 0.50;
+    // UX tuning:
+    // - First match should be clearly visible, but not overpowering.
+    // - Additional matches increase intensity.
+    const ANCHOR_ALPHA_MAX = 0.90;
+    const ANCHOR_ALPHA_FIRST = 0.40;
 
     const foundIds = new Set();
     const byId = new Map(anchors.map(a => [String(a.id), a]));
@@ -560,7 +573,7 @@
       // Inline CSS vars beat class rules; explicitly set alpha for hint.
       spans.forEach(s => {
         s.dataset.anchorAlphaPrev = s.style.getPropertyValue('--anchor-alpha') || '';
-        s.style.setProperty('--anchor-alpha', '0.85');
+        s.style.setProperty('--anchor-alpha', '0.90');
       });
       pageEl.classList.add('anchor-hint-active');
 
