@@ -436,8 +436,10 @@
     // Phase 2 UX contract:
     // - Counter unlocks an anchor as soon as ANY essential keyword matches.
     // - Visual intensity reflects how many essential keywords are present.
-    //   (partial highlight is intentional feedback, but does not affect the counter.)
-    const ANCHOR_ALPHA_MAX = 0.85;
+    // - First match should be NOTICEABLE (>= 50% intensity), additional matches strengthen it.
+    // - Additionally, the matched keyword(s) inside the anchor quote should be fully highlighted.
+    const ANCHOR_ALPHA_MAX = 0.95;
+    const ANCHOR_ALPHA_FIRST = 0.50;
 
     const foundIds = new Set();
     const byId = new Map(anchors.map(a => [String(a.id), a]));
@@ -458,9 +460,24 @@
       const counted = matchCount >= 1;
       const ratio = Math.min(1, matchCount / total);
 
-      // Apply progressive alpha. Keep it deterministic and bounded.
-      const alpha = Math.max(0, Math.min(ANCHOR_ALPHA_MAX, ratio * ANCHOR_ALPHA_MAX));
+      // Apply progressive alpha.
+      // UX rule: first match should jump to >= 50% visibility; more matches approach max.
+      let alpha = 0;
+      if (matchCount >= 1) {
+        if (total <= 1) {
+          alpha = ANCHOR_ALPHA_MAX;
+        } else {
+          const extraSteps = Math.min(total, matchCount) - 1;
+          const denom = Math.max(1, total - 1);
+          const extra = (ANCHOR_ALPHA_MAX - ANCHOR_ALPHA_FIRST) * (extraSteps / denom);
+          alpha = Math.min(ANCHOR_ALPHA_MAX, ANCHOR_ALPHA_FIRST + extra);
+        }
+      }
       span.style.setProperty('--anchor-alpha', String(alpha));
+
+      // Fully highlight the matched keyword(s) inside the anchor quote.
+      // This gives the "Oh, I found a word" feedback without changing matching rules.
+      applyMatchedTermHighlight(span, quoteMatch ? essential : matched);
 
       if (counted) foundIds.add(id);
 
@@ -489,6 +506,45 @@
         matchDetails: matchDetails.slice(0, 8)
       });
     }
+  }
+
+  function escapeRegExp(s) {
+    return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function applyMatchedTermHighlight(span, matchedTerms) {
+    if (!span) return;
+    const original = span.dataset.originalText ?? span.textContent;
+    // Always reset to original before applying new markup.
+    span.textContent = original;
+    span.dataset.originalText = original;
+
+    const terms = Array.isArray(matchedTerms)
+      ? matchedTerms.map(t => String(t || '').trim()).filter(Boolean)
+      : [];
+    if (!terms.length) return;
+
+    // Prefer longer terms first to avoid partial overlap issues.
+    terms.sort((a, b) => b.length - a.length);
+    const pattern = terms.map(escapeRegExp).join('|');
+    if (!pattern) return;
+
+    const re = new RegExp(`\\b(${pattern})\\b`, 'gi');
+    const text = original;
+    const parts = text.split(re);
+    if (parts.length <= 1) return;
+
+    // Rebuild with matched segments wrapped.
+    let html = '';
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (i % 2 === 1) {
+        html += `<span class="anchor-term-found">${escapeHtml(part)}</span>`;
+      } else {
+        html += escapeHtml(part);
+      }
+    }
+    span.innerHTML = html;
   }
 
   function bindHintButton(pageEl, pageIndex) {
