@@ -24,18 +24,20 @@
 */
 .page-text .anchor {
   color: inherit;
-  background-color: rgba(255, 241, 118, 0); /* transparent marker */
+  /*
+    Progressive highlight:
+    - JS sets --anchor-alpha based on matched essential keywords (0..ANCHOR_ALPHA_MAX)
+    - Counter increments as soon as ANY essential keyword matches (binary unlock)
+  */
+  background-color: rgba(255, 241, 118, var(--anchor-alpha, 0)); /* transparent marker by default */
   border-radius: 3px;
   padding: 0 2px;
   transition: background-color 0.35s ease;
 }
 
-.page-text .anchor.anchor--found {
-  background-color: rgba(255, 241, 118, 0.85);
-}
-
 .page.anchor-hint-active .page-text .anchor {
-  background-color: rgba(255, 241, 118, 0.85);
+  /* Hint: fully reveal all anchors (visual override only) */
+  --anchor-alpha: 0.85;
 }
 
 .anchors-ui {

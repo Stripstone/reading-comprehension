@@ -193,6 +193,40 @@
       .trim();
   }
 
+  // Deterministic stopword list for anchor term extraction/matching.
+  // Keep intentionally small; we're not doing NLP, just avoiding glue-words.
+  const ANCHOR_STOPWORDS = new Set([
+    'a','an','and','are','as','at','be','been','being','but','by','can','could','did','do','does','doing',
+    'for','from','had','has','have','having','he','her','here','hers','him','his','how','i','if','in','into',
+    'is','it','its','just','like','may','me','more','most','my','no','not','of','off','on','one','or','our',
+    'out','over','people','so','some','such','than','that','the','their','them','then','there','these','they',
+    'this','those','to','too','under','up','us','was','we','were','what','when','where','which','who','why',
+    'will','with','without','you','your'
+  ]);
+
+  function extractEssentialTerms(anchor) {
+    // Terms priority: model-provided terms → derived from quote.
+    const rawTerms = Array.isArray(anchor?.terms) ? anchor.terms : [];
+    const cleanedFromModel = rawTerms
+      .map(t => normalizeForMatch(t))
+      .map(t => t.split(' ').filter(Boolean).join(' '))
+      .filter(Boolean)
+      .flatMap(t => t.split(' '))
+      .filter(w => w && w.length >= 4 && !ANCHOR_STOPWORDS.has(w));
+
+    let out = Array.from(new Set(cleanedFromModel));
+
+    if (!out.length) {
+      const qw = normalizeForMatch(anchor?.quote || '')
+        .split(' ')
+        .filter(w => w && w.length >= 4 && !ANCHOR_STOPWORDS.has(w));
+      out = Array.from(new Set(qw));
+    }
+
+    // Cap to keep matching stable and avoid overfitting.
+    return out.slice(0, 5);
+  }
+
   function quoteChunkMatch(quote, inputNorm) {
     const q = normalizeForMatch(quote);
     if (!q || !inputNorm) return false;
@@ -399,32 +433,62 @@
     const anchors = pd.anchors;
     const spans = pageEl.querySelectorAll('.page-text .anchor');
 
-    let found = 0;
+    // Phase 2 UX contract:
+    // - Counter unlocks an anchor as soon as ANY essential keyword matches.
+    // - Visual intensity reflects how many essential keywords are present.
+    //   (partial highlight is intentional feedback, but does not affect the counter.)
+    const ANCHOR_ALPHA_MAX = 0.85;
+
+    const foundIds = new Set();
     const byId = new Map(anchors.map(a => [String(a.id), a]));
+    const matchDetails = [];
+
     spans.forEach(span => {
       const id = String(span.getAttribute('data-anchor-id') || '');
       const a = byId.get(id);
       if (!a) return;
+
+      const essential = extractEssentialTerms(a);
+      const matched = essential.filter(t => inputNorm.includes(t));
+
+      // If the user effectively quoted the passage (chunk match), treat as fully satisfied.
       const quoteMatch = quoteChunkMatch(a.quote, inputNorm);
-      const terms = Array.isArray(a.terms) ? a.terms : [];
-      let termsNorm = terms.map(t => normalizeForMatch(t)).filter(Boolean);
-      let derivedTerms = false;
-      // Fallback: if the model gave no usable terms, derive a few keywords from the quote.
-      if (!termsNorm.length) {
-        derivedTerms = true;
-        const qw = normalizeForMatch(a.quote).split(" ").filter(w => w.length >= 5);
-        termsNorm = Array.from(new Set(qw)).slice(0, 4);
-      }
-      const presentCount = termsNorm.filter(t => inputNorm.includes(t)).length;
-      // Deterministic rule: if terms came from the model, require ALL; if derived, require at least 2.
-      const termsMatch = termsNorm.length ? (derivedTerms ? presentCount >= 2 : presentCount === termsNorm.length) : false;
-      const isMatch = quoteMatch || termsMatch;
-      span.classList.toggle('anchor--found', isMatch);
-      if (isMatch) found++;
+      const total = Math.max(1, essential.length);
+      const matchCount = quoteMatch ? total : matched.length;
+      const counted = matchCount >= 1;
+      const ratio = Math.min(1, matchCount / total);
+
+      // Apply progressive alpha. Keep it deterministic and bounded.
+      const alpha = Math.max(0, Math.min(ANCHOR_ALPHA_MAX, ratio * ANCHOR_ALPHA_MAX));
+      span.style.setProperty('--anchor-alpha', String(alpha));
+
+      if (counted) foundIds.add(id);
+
+      // Collect match reasoning for debug (only tiny payload).
+      matchDetails.push({
+        id,
+        terms: essential,
+        matchedTerms: quoteMatch ? essential : matched,
+        matchCount,
+        totalTerms: total,
+        counted,
+        completionRatio: Number(ratio.toFixed(2)),
+        matchedBy: quoteMatch ? 'quote' : 'terms'
+      });
     });
 
     const counter = pageEl.querySelector('.anchors-counter');
-    if (counter) counter.textContent = `Anchors Found: ${found}/${anchors.length}`;
+    if (counter) counter.textContent = `Anchors Found: ${foundIds.size}/${anchors.length}`;
+
+    // Surface match reasoning in diagnostics when debug is enabled.
+    if (isDebugEnabledFromUrl()) {
+      setAnchorsDiagnostics(pageEl, pageIndex, {
+        stage: 'matches-updated',
+        found: foundIds.size,
+        // Keep small: only include first 8 anchors worth of details.
+        matchDetails: matchDetails.slice(0, 8)
+      });
+    }
   }
 
   function bindHintButton(pageEl, pageIndex) {
@@ -437,6 +501,11 @@
       // 2s fade-in / 2s fade-out visual override.
       const spans = pageEl.querySelectorAll('.page-text .anchor');
       spans.forEach(s => { s.style.transitionDuration = '2s'; });
+      // Inline CSS vars beat class rules; explicitly set alpha for hint.
+      spans.forEach(s => {
+        s.dataset.anchorAlphaPrev = s.style.getPropertyValue('--anchor-alpha') || '';
+        s.style.setProperty('--anchor-alpha', '0.85');
+      });
       pageEl.classList.add('anchor-hint-active');
 
       // Hold for 2 seconds, then return to match-based visibility over 2 seconds.
@@ -445,6 +514,10 @@
         // After fade-out completes, restore normal transition speed and refresh matches.
         setTimeout(() => {
           spans.forEach(s => { s.style.transitionDuration = '0.35s'; });
+          spans.forEach(s => {
+            // Clear hint override; updateAnchorsUIForPage will re-apply match-based alpha.
+            delete s.dataset.anchorAlphaPrev;
+          });
           const textarea = pageEl.querySelector('textarea');
           updateAnchorsUIForPage(pageEl, pageIndex, textarea ? textarea.value : '');
         }, 2000);
