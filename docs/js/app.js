@@ -235,6 +235,18 @@
       err.details = { expected: pageHash, got: data?.meta?.pageHash };
       throw err;
     }
+
+    // In debug mode, surface diagnostics in the console (minimum viable visibility).
+    // This keeps parity with the "?debug=1" convention without adding new UI yet.
+    if (debug && data?.debug) {
+      try {
+        console.info('[Anchors debug]', {
+          pageHash: data?.meta?.pageHash,
+          anchorVersion: data?.meta?.anchorVersion,
+          debug: data.debug,
+        });
+      } catch (_) {}
+    }
     return data;
   }
 
@@ -346,6 +358,19 @@
       if (!anchors || !anchors.length) return;
       // Only apply if the text element is still for this page.
       textEl.innerHTML = buildAnchorsHtml(text, anchors);
+
+      // If we failed to inject any spans, make it visible in debug.
+      const spanCount = textEl.querySelectorAll('.anchor').length;
+      if (spanCount === 0) {
+        const counter = pageEl.querySelector('.anchors-counter');
+        if (counter) counter.textContent = `Anchors Found: 0/${anchors.length}`;
+        if (isDebugEnabledFromUrl()) {
+          console.warn('[Anchors] No spans injected. Quotes may not match the rendered page text exactly.', {
+            pageIndex,
+            anchorsSample: anchors.slice(0, 3),
+          });
+        }
+      }
 
       const textarea = pageEl.querySelector('textarea');
       updateAnchorsUIForPage(pageEl, pageIndex, textarea ? textarea.value : '');
