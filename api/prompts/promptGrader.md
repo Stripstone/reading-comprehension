@@ -71,7 +71,10 @@ A 1-2 sentence version of the learner’s text that preserves scope, causality, 
 
 If `---ANCHORS---` is provided, consider using those keywords in your **Example of Strong Consolidation**
 
-If a `betterCharLimit` is provided, treat it as a **soft target** for how long your  **Example of Strong Consolidation** should be
+If a `betterCharLimit` is provided, treat it as the **target maximum length** for your **Example of Strong Consolidation**:
+ - Aim to stay within 10% above the limit
+ - Only exceed it if necessary to preserve core mechanisms and conditional accuracy
+ - Prioritize clarity and correctness over rigid adherence
 
 ---
 
