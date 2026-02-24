@@ -493,19 +493,7 @@
 
     anchorsInFlight.set(pageHash, p);
     try {
-      try {
-        await p;
-      } catch (e) {
-        // Ensure page-level diagnostics capture server-side validation errors (422, etc.).
-        setAnchorsDiagnostics(pageElForDiag, pageIndex, {
-          stage: 'fetch-error',
-          pageHash,
-          cacheHit: false,
-          error: String(e?.message || e),
-          errorDetails: e?.details ?? null,
-        });
-        throw e;
-      }
+      await p;
       return pd.anchors;
     } finally {
       anchorsInFlight.delete(pageHash);
@@ -737,12 +725,7 @@
       const btn = pageEl.querySelector('.hint-btn');
       if (btn) btn.disabled = true;
 
-      // Surface structured API/validation details in diagnostics so we never have "ghost" failures.
-      setAnchorsDiagnostics(pageEl, pageIndex, {
-        stage: 'error',
-        error: String(e?.message || e),
-        errorDetails: e?.details ?? null,
-      });
+      setAnchorsDiagnostics(pageEl, pageIndex, { stage: 'error', error: String(e?.message || e), errorDetails: e?.details || null });
 
       if (isDebugEnabledFromUrl()) {
         console.warn('Anchors failed', e);
