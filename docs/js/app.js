@@ -1756,7 +1756,11 @@ function addPages() {
 
     // Prefer anchor-owned better consolidation (from page state or cache)
     // so /api/evaluate can focus on grading instead of re-summarizing.
-    const pageHashForEval = stableHashText(pageTextForRequest);
+    // Use the same stable hash as /api/anchors so we can pull the anchor pack from memory.
+    // Anchors compute pageHash via: await sha256HexBrowser(pageText)
+    const pageHashForEval = (page && page.pageHash)
+      ? page.pageHash
+      : await sha256HexBrowser(pageTextForRequest);
     const cachedAnchorPack = inMemoryAnchorsCache?.[pageHashForEval];
 
     const requestPayload = {
