@@ -120,7 +120,7 @@
   // ===================================
 
   const API_BASE = "https://reading-comprehension-rpwd.vercel.app";
-  const ANCHOR_VERSION = 1;
+  const ANCHOR_VERSION = 2;
   const anchorsInFlight = new Map(); // pageHash -> Promise
 
   // Global anchors diagnostics record surfaced via the 🔧 Diagnostics panel.
@@ -212,7 +212,10 @@
     'do','does','did','doing',
     'get','gets','got','getting',
     'make','makes','made','making',
-    'feel','feels','felt','feeling'
+    'feel','feels','felt','feeling',
+    // common "action" verbs that tend to become unhelpful anchor keywords
+    // (we prefer the nouns/concepts around them)
+    'create','creates','created','creating'
   ]);
 
   // Simple, deterministic base-form mapping for matching.
@@ -228,6 +231,10 @@
     else if (t.length > 3 && t.endsWith('ed')) t = t.slice(0, -2);
     else if (t.length > 3 && t.endsWith('es')) t = t.slice(0, -2);
     else if (t.length > 3 && t.endsWith('s')) t = t.slice(0, -1);
+
+    // light derivational trimming (intentionally a bit aggressive per UX tolerance)
+    // Example: "generational" -> "generation" so user variants like "generation" match.
+    if (t.length > 5 && t.endsWith('al')) t = t.slice(0, -2);
 
     const irregular = {
       taken: 'take',

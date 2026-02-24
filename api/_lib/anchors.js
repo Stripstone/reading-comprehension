@@ -1,7 +1,8 @@
 // api/_lib/anchors.js
 import crypto from "node:crypto";
 
-export const ANCHOR_VERSION = 1;
+// Bump when matching/normalization semantics change so cached anchors refresh.
+export const ANCHOR_VERSION = 2;
 
 // Conservative caps to keep UI stable.
 const MAX_QUOTE_LEN = 220;
@@ -25,7 +26,10 @@ const WEAK_VERBS = new Set([
   'do','does','did','doing',
   'get','gets','got','getting',
   'make','makes','made','making',
-  'feel','feels','felt','feeling'
+  'feel','feels','felt','feeling',
+  // common "action" verbs that tend to become unhelpful anchor keywords
+  // (we prefer the nouns/concepts around them)
+  'create','creates','created','creating'
 ]);
 
 // Intentionally simple and slightly aggressive stemming.
@@ -43,6 +47,10 @@ function baseForm(token) {
   else if (t.length > 3 && t.endsWith('ed')) t = t.slice(0, -2);
   else if (t.length > 3 && t.endsWith('es')) t = t.slice(0, -2);
   else if (t.length > 3 && t.endsWith('s')) t = t.slice(0, -1);
+
+  // light derivational trimming (intentionally a bit aggressive per UX tolerance)
+  // Example: "generational" -> "generation" so user variants like "generation" match.
+  if (t.length > 5 && t.endsWith('al')) t = t.slice(0, -2);
 
   // small irregular map (extendable)
   const irregular = {

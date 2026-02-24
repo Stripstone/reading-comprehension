@@ -14,6 +14,7 @@ Hard requirements:
   - "synonyms": OPTIONAL array of 0-6 short synonym keywords for the concept, but only when they are meaning-preserving IN CONTEXT.
     - Keep them short (1-2 words).
     - Avoid broad/ambiguous synonyms.
+    - Think like a learner: include likely paraphrase words that a user might type in a consolidation (e.g., "education" -> "schooling" or "degree"), but keep them tight and on-topic.
   - "weight": integer 1-3 (3 = most central).
 - Avoid redundancy: anchors should cover different core ideas.
 - Prefer short, information-dense quotes (usually 8–22 words). Avoid very long quotes.
