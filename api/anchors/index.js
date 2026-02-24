@@ -35,101 +35,55 @@ export default async function handler(req, res) {
     const pageHash = sha256Hex(pageText);
     const messages = buildAnchorsMessages({ pageText, maxAnchors });
 
-    
-    async function callGroq(extraSystemNote) {
-      const msgs = extraSystemNote
-        ? [{ role: "system", content: extraSystemNote }, ...messages]
-        : messages;
-      const upstream = await fetch(GROQ_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          messages: msgs,
-          temperature: 0.0,
-        }),
-      });
-      const rawText = await upstream.text();
-      return { upstream, rawText };
+    const upstream = await fetch(GROQ_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages,
+        temperature: 0.2,
+      }),
+    });
+
+    const rawText = await upstream.text();
+    if (!upstream.ok) {
+      return json(res, 502, { error: "Groq API error", detail: rawText });
     }
 
-    const first = await callGroq("");
-    if (!first.upstream.ok) {
-      return json(res, 502, { error: "Groq API error", detail: first.rawText });
-    }
-    const data = JSON.parse(first.rawText);
-    let modelText = data?.choices?.[0]?.message?.content ?? "";
-    let retried = false;
-let anchors;
+    const data = JSON.parse(rawText);
+    const modelText = data?.choices?.[0]?.message?.content ?? "";
+
+    let anchors;
     let pageBetterConsolidation = "";
     let anchorsDebug = null;
-    let validation = { ok: true, retried: false };
-
-    const tryNormalize = (mt) => normalizeAnchorsWithDebug({ pageText, modelText: mt, maxAnchors, debug });
-
+    let validation = { ok: true };
     try {
-      const out = tryNormalize(modelText);
+      const out = normalizeAnchorsWithDebug({ pageText, modelText, maxAnchors, debug });
       anchors = out.anchors;
       pageBetterConsolidation = out.pageBetterConsolidation || "";
       anchorsDebug = out.debug;
-    } catch (e1) {
-      const reason1 = e1?.details?.reason || null;
-
-      // Retry once for common model formatting failures (missing/invalid JSON).
-      if (!retried && (reason1 === "no_json_object" || reason1 === "json_parse_error")) {
-        retried = true;
-        const second = await callGroq("Return ONLY a single JSON object. No markdown, no prose.");
-        if (!second.upstream.ok) {
-          return json(res, 502, { error: "Groq API error", detail: second.rawText });
-        }
-        const data2 = JSON.parse(second.rawText);
-        modelText = data2?.choices?.[0]?.message?.content ?? "";
-
-        try {
-          const out2 = tryNormalize(modelText);
-          anchors = out2.anchors;
-          pageBetterConsolidation = out2.pageBetterConsolidation || "";
-          anchorsDebug = out2.debug;
-          validation = { ok: true, retried: true };
-        } catch (e2) {
-          validation = { ok: false, retried: true, error: String(e2?.message ?? e2), details: e2?.details ?? null };
-          return json(res, 422, {
-            error: "Invalid anchor output",
-            details: validation,
-            meta: { pageHash, anchorVersion: ANCHOR_VERSION },
-            ...(debug
-              ? {
-                  debug: {
-                    pageLength: pageText.length,
-                    pageHash,
-                    rawModelOutput: modelText,
-                  },
-                }
-              : {}),
-          });
-        }
-      } else {
-        validation = { ok: false, retried: false, error: String(e1?.message ?? e1), details: e1?.details ?? null };
-        return json(res, 422, {
-          error: "Invalid anchor output",
-          details: validation,
-          meta: { pageHash, anchorVersion: ANCHOR_VERSION },
-          ...(debug
-            ? {
-                debug: {
-                  pageLength: pageText.length,
-                  pageHash,
-                  rawModelOutput: modelText,
-                },
-              }
-            : {}),
-        });
-      }
+    } catch (e) {
+      validation = { ok: false, error: String(e?.message ?? e), details: e?.details ?? null };
+      return json(res, 422, {
+        error: "Invalid anchor output",
+        details: validation,
+        meta: { pageHash, anchorVersion: ANCHOR_VERSION },
+        ...(debug
+          ? {
+              debug: {
+                pageLength: pageText.length,
+                pageHash,
+                rawModelOutput: modelText,
+              },
+            }
+          : {}),
+      });
     }
-const payload = {
+
+    const payload = {
       anchors,
       pageBetterConsolidation,
       meta: { pageHash, anchorVersion: ANCHOR_VERSION },
