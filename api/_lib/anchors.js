@@ -157,6 +157,44 @@ function stableAnchorId(i) {
   return `a${i + 1}`;
 }
 
+// Diagnostics helper: normalize "candidates" (ranked snippet ideas) without affecting
+// the runtime anchor contract. This must never throw; diagnostics should not break
+// the endpoint.
+function normalizeCandidatesForDebug({ pageText, candidatesArr }) {
+  try {
+    const page = String(pageText ?? "");
+    if (!Array.isArray(candidatesArr)) return null;
+
+    const out = [];
+    for (const c of candidatesArr) {
+      if (!c || typeof c !== "object") continue;
+      const rank = Number(c.rank);
+      const label = typeof c.label === "string" ? c.label.trim() : "";
+      const q0 = normalizeQuote(c.quote ?? c.snippet ?? c.text ?? "");
+      if (!q0) continue;
+      const matched = findQuoteInPage(page, q0);
+      if (!matched) continue;
+      out.push({
+        rank: Number.isFinite(rank) ? rank : null,
+        label: label || null,
+        quote: matched,
+      });
+    }
+
+    // Keep ordering deterministic.
+    out.sort((a, b) => {
+      const ar = a.rank ?? 1e9;
+      const br = b.rank ?? 1e9;
+      if (ar !== br) return ar - br;
+      return a.quote.length - b.quote.length;
+    });
+
+    return out.slice(0, 12);
+  } catch (e) {
+    return { error: String(e?.message ?? e) };
+  }
+}
+
 function rankAndCapTerms({ candidates, freqMap, max = 5 }) {
   const seen = new Set();
   const ordered = [];
