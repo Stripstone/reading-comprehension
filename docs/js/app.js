@@ -120,7 +120,7 @@
   // ===================================
 
   const API_BASE = "https://reading-comprehension-rpwd.vercel.app";
-  const ANCHOR_VERSION = 3;
+  const ANCHOR_VERSION = 4;
   const anchorsInFlight = new Map(); // pageHash -> Promise
 
   // Global anchors diagnostics record surfaced via the 🔧 Diagnostics panel.
@@ -161,6 +161,8 @@
           `cacheHit: ${String(d.cacheHit)}`,
           `api: ${d.api ? `${d.api.url} (${d.api.status})` : ''}`,
           `anchors: ${typeof d.anchorCount === 'number' ? d.anchorCount : ''}`,
+          `anchorVersion: ${typeof d.anchorVersion === 'number' ? d.anchorVersion : ''}`,
+          `betterConsolidationLen: ${typeof d.betterConsolidationLen === 'number' ? d.betterConsolidationLen : ''}`,
           `spansInjected: ${typeof d.spanCount === 'number' ? d.spanCount : ''}`,
           d.error ? `error: ${d.error}` : '',
         ].filter(Boolean);
@@ -360,10 +362,11 @@
     }
   }
 
-  function writeAnchorsToCache(pageHash, anchors) {
+  function writeAnchorsToCache(pageHash, anchors, pageBetterConsolidation) {
     try {
       const payload = {
         anchors,
+        pageBetterConsolidation: pageBetterConsolidation || null,
         anchorVersion: ANCHOR_VERSION,
         createdAt: Date.now(),
       };
@@ -437,13 +440,17 @@
     const cached = readAnchorsFromCache(pageHash);
     if (cached?.anchors) {
       pd.anchors = cached.anchors;
+      pd.pageBetterConsolidation = cached.pageBetterConsolidation || null;
       pd.anchorVersion = cached.anchorVersion;
       pd.anchorsMeta = { createdAt: cached.createdAt, cacheHit: true };
       setAnchorsDiagnostics(pageElForDiag, pageIndex, {
         stage: 'cache-hit',
         pageHash,
         cacheHit: true,
+        anchorVersion: cached.anchorVersion,
         anchorCount: cached.anchors.length,
+        hasPageBetterConsolidation: Boolean(cached.pageBetterConsolidation),
+        betterConsolidationLen: cached.pageBetterConsolidation ? String(cached.pageBetterConsolidation).length : 0,
         api: null,
       });
       if (isDebugEnabledFromUrl()) {
@@ -465,6 +472,7 @@
       const out = await fetchAnchorsForPageText(text, pageHash);
       const data = out.data;
       pd.anchors = data.anchors;
+      pd.pageBetterConsolidation = data.pageBetterConsolidation || null;
       pd.anchorVersion = data.meta.anchorVersion;
       pd.anchorsMeta = { createdAt: Date.now(), cacheHit: false };
       pd.anchorsRawDebug = data?.debug || null;
@@ -472,10 +480,13 @@
         stage: 'fetched',
         pageHash,
         cacheHit: false,
+        anchorVersion: data?.meta?.anchorVersion,
         api: out.api,
         anchorCount: Array.isArray(data.anchors) ? data.anchors.length : null,
+        hasPageBetterConsolidation: Boolean(data.pageBetterConsolidation),
+        betterConsolidationLen: data.pageBetterConsolidation ? String(data.pageBetterConsolidation).length : 0,
       });
-      writeAnchorsToCache(pageHash, data.anchors);
+      writeAnchorsToCache(pageHash, data.anchors, data.pageBetterConsolidation);
     })();
 
     anchorsInFlight.set(pageHash, p);
