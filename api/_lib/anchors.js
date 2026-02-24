@@ -8,6 +8,78 @@ const MAX_QUOTE_LEN = 220;
 const MAX_TERMS = 6;
 const MAX_TERM_LEN = 36;
 
+// Deterministic filtering for anchor term normalization.
+// Goal: prefer core concepts (nouns/ideas) over glue-verbs ("feels", "is", etc.).
+const STOPWORDS = new Set([
+  'a','an','and','are','as','at','be','been','being','but','by','can','could','did','do','does','doing',
+  'for','from','had','has','have','having','he','her','here','hers','him','his','how','i','if','in','into',
+  'is','it','its','just','like','may','me','more','most','my','no','not','of','off','on','one','or','our',
+  'out','over','people','so','some','such','than','that','the','their','them','then','there','these','they',
+  'this','those','to','too','under','up','us','was','we','were','what','when','where','which','who','why',
+  'will','with','without','you','your'
+]);
+
+const WEAK_VERBS = new Set([
+  'be','been','being','is','are','was','were','am',
+  'have','has','had','having',
+  'do','does','did','doing',
+  'get','gets','got','getting',
+  'make','makes','made','making',
+  'feel','feels','felt','feeling'
+]);
+
+// Intentionally simple and slightly aggressive stemming.
+// User explicitly accepts occasional artifacts (e.g., "kitch" for "kitchen").
+function baseForm(token) {
+  let t = String(token ?? '').toLowerCase().trim();
+  if (!t) return '';
+  // keep only alnum
+  t = t.replace(/[^a-z0-9]/g, '');
+  if (!t) return '';
+
+  // basic suffix rules
+  if (t.length > 4 && t.endsWith('ies')) t = t.slice(0, -3) + 'y';
+  else if (t.length > 4 && t.endsWith('ing')) t = t.slice(0, -3);
+  else if (t.length > 3 && t.endsWith('ed')) t = t.slice(0, -2);
+  else if (t.length > 3 && t.endsWith('es')) t = t.slice(0, -2);
+  else if (t.length > 3 && t.endsWith('s')) t = t.slice(0, -1);
+
+  // small irregular map (extendable)
+  const irregular = {
+    taken: 'take',
+    written: 'write',
+    driven: 'drive',
+    given: 'give',
+    seen: 'see',
+    known: 'know',
+  };
+  if (irregular[t]) t = irregular[t];
+
+  return t;
+}
+
+function tokenizeBase(text) {
+  const s = String(text ?? '').toLowerCase();
+  const words = s.split(/[^a-z0-9]+/g).filter(Boolean);
+  const out = [];
+  for (const w of words) {
+    const b = baseForm(w);
+    if (!b) continue;
+    if (b.length < 4) continue;
+    if (STOPWORDS.has(b)) continue;
+    if (WEAK_VERBS.has(b)) continue;
+    out.push(b);
+  }
+  return out;
+}
+
+function buildFreqMap(pageText) {
+  const freq = new Map();
+  const toks = tokenizeBase(pageText);
+  for (const t of toks) freq.set(t, (freq.get(t) || 0) + 1);
+  return freq;
+}
+
 export function sha256Hex(text) {
   const h = crypto.createHash("sha256");
   h.update(String(text ?? ""), "utf8");
@@ -96,11 +168,42 @@ function stableAnchorId(i) {
   return `a${i + 1}`;
 }
 
+function rankAndCapTerms({ candidates, freqMap, max = 5 }) {
+  const seen = new Set();
+  const ordered = [];
+  for (const c of candidates) {
+    const b = baseForm(c);
+    if (!b) continue;
+    if (b.length < 4) continue;
+    if (STOPWORDS.has(b)) continue;
+    if (WEAK_VERBS.has(b)) continue;
+    if (seen.has(b)) continue;
+    seen.add(b);
+    ordered.push({ term: b, freq: freqMap?.get(b) ?? 9999, len: b.length, srcRank: ordered.length });
+  }
+
+  ordered.sort((a, b) => {
+    if (a.freq !== b.freq) return a.freq - b.freq; // prefer rarer
+    if (b.len !== a.len) return b.len - a.len; // then longer
+    return a.srcRank - b.srcRank;
+  });
+
+  return ordered.slice(0, max).map(x => x.term);
+}
+
 // Core contract: LLM proposes, backend normalizes/dedupes/validates.
 // Throws an Error with .details for structured error responses.
 export function normalizeAnchors({ pageText, modelText, maxAnchors = 5 } = {}) {
+  const { anchors } = normalizeAnchorsWithDebug({ pageText, modelText, maxAnchors, debug: false });
+  return anchors;
+}
+
+// Same as normalizeAnchors, but optionally returns detailed normalization info for diagnostics.
+export function normalizeAnchorsWithDebug({ pageText, modelText, maxAnchors = 5, debug = false } = {}) {
   const page = String(pageText ?? "");
   const cap = Math.max(1, Math.min(12, Number(maxAnchors) || 5));
+
+  const freqMap = buildFreqMap(page);
 
   const jsonStr = extractFirstJsonObject(modelText);
   if (!jsonStr) {
@@ -136,6 +239,7 @@ export function normalizeAnchors({ pageText, modelText, maxAnchors = 5 } = {}) {
   const raw = arr.slice(0, Math.max(0, cap * 3)); // allow extra for dedupe
   const seen = new Set();
   const out = [];
+  const debugAnchors = [];
 
   for (let i = 0; i < raw.length; i++) {
     const it = raw[i] ?? {};
@@ -145,15 +249,29 @@ export function normalizeAnchors({ pageText, modelText, maxAnchors = 5 } = {}) {
     const matched = findQuoteInPage(page, quote);
     if (!matched) continue;
 
-    // Terms
-    const termsIn = Array.isArray(it.terms) ? it.terms : [];
-    const terms = [];
-    for (const t of termsIn) {
-      const nt = normalizeTerm(t);
-      if (!nt) continue;
-      if (terms.length >= MAX_TERMS) break;
-      if (!terms.includes(nt)) terms.push(nt);
-    }
+    // Terms and optional synonyms
+    const termsInRaw = Array.isArray(it.terms) ? it.terms : [];
+    const synInRaw = Array.isArray(it.synonyms) ? it.synonyms : [];
+
+    const modelTerms = termsInRaw
+      .map((t) => normalizeTerm(t))
+      .filter(Boolean);
+    const modelSynonyms = synInRaw
+      .map((t) => normalizeTerm(t))
+      .filter(Boolean);
+
+    // Also include literal content words from the quote to avoid missing key words like "generational".
+    const quoteTokens = tokenizeBase(matched);
+
+    const candidates = [];
+    for (const t of modelTerms) candidates.push(...tokenizeBase(t));
+    for (const s of modelSynonyms) candidates.push(...tokenizeBase(s));
+    candidates.push(...quoteTokens);
+
+    const normalizedTerms = rankAndCapTerms({ candidates, freqMap, max: 5 });
+
+    // Keep within caps for UI and transport.
+    const terms = normalizedTerms.slice(0, MAX_TERMS).map((t) => t.slice(0, MAX_TERM_LEN));
 
     // Weight (optional). Keep it small.
     let weight = Number(it.weight);
@@ -172,6 +290,20 @@ export function normalizeAnchors({ pageText, modelText, maxAnchors = 5 } = {}) {
       weight,
       _rank: i, // preserve model rank as a tie-breaker
     });
+
+    if (debug) {
+      // Best-effort reporting of what was kept vs dropped.
+      const finalSet = new Set(terms);
+      const rawTokens = [...new Set(candidates.map((c) => baseForm(c)).filter(Boolean))];
+      const rejected = rawTokens.filter((t) => !finalSet.has(t));
+      debugAnchors.push({
+        quote: matched,
+        modelTerms,
+        modelSynonyms,
+        normalizedTerms: terms,
+        rejectedTermsPreview: rejected.slice(0, 12),
+      });
+    }
   }
 
   if (out.length === 0) {
@@ -197,10 +329,15 @@ export function normalizeAnchors({ pageText, modelText, maxAnchors = 5 } = {}) {
     .slice(0, cap);
 
   // Finalize ids and remove internal fields.
-  return indexed.map((a, i) => ({
+  const anchors = indexed.map((a, i) => ({
     id: stableAnchorId(i),
     quote: a.quote,
     terms: a.terms,
     weight: a.weight,
   }));
+
+  return {
+    anchors,
+    debug: debug ? { normalization: debugAnchors } : null,
+  };
 }

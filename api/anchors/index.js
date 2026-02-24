@@ -1,7 +1,7 @@
 // api/anchors/index.js
 import { buildAnchorsMessages } from "../_lib/prompt.js";
 import { json, withCors, readJsonBody } from "../_lib/http.js";
-import { normalizeAnchors, sha256Hex, ANCHOR_VERSION } from "../_lib/anchors.js";
+import { normalizeAnchorsWithDebug, sha256Hex, ANCHOR_VERSION } from "../_lib/anchors.js";
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
@@ -57,9 +57,12 @@ export default async function handler(req, res) {
     const modelText = data?.choices?.[0]?.message?.content ?? "";
 
     let anchors;
+    let anchorsDebug = null;
     let validation = { ok: true };
     try {
-      anchors = normalizeAnchors({ pageText, modelText, maxAnchors });
+      const out = normalizeAnchorsWithDebug({ pageText, modelText, maxAnchors, debug });
+      anchors = out.anchors;
+      anchorsDebug = out.debug;
     } catch (e) {
       validation = { ok: false, error: String(e?.message ?? e), details: e?.details ?? null };
       return json(res, 422, {
@@ -89,6 +92,7 @@ export default async function handler(req, res) {
         pageHash,
         rawModelOutput: modelText,
         parsedAnchors: anchors,
+        anchorNormalization: anchorsDebug?.normalization ?? null,
         validation,
         cache: { cacheHit: false }, // client-side cache; server does not cache yet
       };

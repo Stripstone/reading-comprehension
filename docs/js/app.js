@@ -204,6 +204,59 @@
     'will','with','without','you','your'
   ]);
 
+  // Weak verbs and helper words that often become "strange" anchor keywords.
+  // We intentionally filter these out for a more satisfying UX.
+  const ANCHOR_WEAK_VERBS = new Set([
+    'be','been','being','is','are','was','were','am',
+    'have','has','had','having',
+    'do','does','did','doing',
+    'get','gets','got','getting',
+    'make','makes','made','making',
+    'feel','feels','felt','feeling'
+  ]);
+
+  // Simple, deterministic base-form mapping for matching.
+  // User explicitly accepts occasional over-stemming artifacts.
+  function baseForm(token) {
+    let t = String(token || '').toLowerCase().trim();
+    if (!t) return '';
+    t = t.replace(/[^a-z0-9]/g, '');
+    if (!t) return '';
+
+    if (t.length > 4 && t.endsWith('ies')) t = t.slice(0, -3) + 'y';
+    else if (t.length > 4 && t.endsWith('ing')) t = t.slice(0, -3);
+    else if (t.length > 3 && t.endsWith('ed')) t = t.slice(0, -2);
+    else if (t.length > 3 && t.endsWith('es')) t = t.slice(0, -2);
+    else if (t.length > 3 && t.endsWith('s')) t = t.slice(0, -1);
+
+    const irregular = {
+      taken: 'take',
+      written: 'write',
+      driven: 'drive',
+      given: 'give',
+      seen: 'see',
+      known: 'know',
+    };
+    if (irregular[t]) t = irregular[t];
+    return t;
+  }
+
+  function tokenizeBase(text) {
+    const s = normalizeForMatch(text);
+    if (!s) return [];
+    const raw = s.split(' ').filter(Boolean);
+    const out = [];
+    for (const w of raw) {
+      const b = baseForm(w);
+      if (!b) continue;
+      if (b.length < 4) continue;
+      if (ANCHOR_STOPWORDS.has(b)) continue;
+      if (ANCHOR_WEAK_VERBS.has(b)) continue;
+      out.push(b);
+    }
+    return out;
+  }
+
   function extractEssentialTerms(anchor) {
     // UX rule: ANY keyword should be able to activate an anchor.
     // So we take a UNION of:
@@ -211,30 +264,19 @@
     // - terms derived from the quote itself (often literal)
     // This prevents cases like "generational" not activating when the model only provided "wealth".
     const rawTerms = Array.isArray(anchor?.terms) ? anchor.terms : [];
-    const cleanedFromModel = rawTerms
-      .map(t => normalizeForMatch(t))
-      .map(t => t.split(' ').filter(Boolean).join(' '))
-      .filter(Boolean)
-      .flatMap(t => t.split(' '))
-      .filter(w => w && w.length >= 4 && !ANCHOR_STOPWORDS.has(w));
-
-    const qw = normalizeForMatch(anchor?.quote || '')
-      .split(' ')
-      .filter(w => w && w.length >= 4 && !ANCHOR_STOPWORDS.has(w));
+    // Terms are already normalized server-side, but we apply baseForm to match user variations.
+    const modelTerms = rawTerms.flatMap(t => tokenizeBase(t));
+    const quoteTerms = tokenizeBase(anchor?.quote || '');
 
     const out = [];
     const seen = new Set();
-
-    // Keep model terms first (semantic), then add quote terms (literal).
-    [...cleanedFromModel, ...qw].forEach(w => {
+    [...modelTerms, ...quoteTerms].forEach(w => {
       if (!w) return;
       if (seen.has(w)) return;
       seen.add(w);
       out.push(w);
     });
-
-    // Cap to keep matching stable and avoid overfitting.
-    return out.slice(0, 5);
+    return out.slice(0, 6);
   }
 
   function quoteChunkMatch(quote, inputNorm) {
@@ -440,6 +482,8 @@
     if (!pageEl || !pd?.anchors) return;
 
     const inputNorm = normalizeForMatch(userText);
+    const userBaseTokens = tokenizeBase(userText);
+    const userBaseSet = new Set(userBaseTokens);
     const anchors = pd.anchors;
     const spans = pageEl.querySelectorAll('.page-text .anchor');
 
@@ -464,7 +508,7 @@
       if (!a) return;
 
       const essential = extractEssentialTerms(a);
-      const matched = essential.filter(t => inputNorm.includes(t));
+      const matched = essential.filter(t => userBaseSet.has(t));
 
       // If the user effectively quoted the passage (chunk match), treat as fully satisfied.
       const quoteMatch = quoteChunkMatch(a.quote, inputNorm);
@@ -499,6 +543,8 @@
         id,
         terms: essential,
         matchedTerms: quoteMatch ? essential : matched,
+        matchedBaseForms: quoteMatch ? essential : matched,
+        userBaseTokensSample: userBaseTokens.slice(0, 18),
         matchCount,
         totalTerms: total,
         counted,
@@ -539,7 +585,21 @@
 
     // Prefer longer terms first to avoid partial overlap issues.
     terms.sort((a, b) => b.length - a.length);
-    const pattern = terms.map(escapeRegExp).join('|');
+
+    // Terms are base-forms; create a forgiving surface pattern for the quote.
+    // This makes "student" highlight "students" when the quote contains that form.
+    const variants = [];
+    for (const t of terms) {
+      const esc = escapeRegExp(t);
+      // Very small set of suffixes. We intentionally allow some over-matching.
+      variants.push(`${esc}(?:s|es|ed|ing)?`);
+      // ies -> y (e.g., studies/study). Best-effort: allow both forms.
+      if (t.endsWith('y')) {
+        variants.push(`${escapeRegExp(t.slice(0, -1))}ies`);
+      }
+    }
+
+    const pattern = variants.join('|');
     if (!pattern) return;
 
     const re = new RegExp(`\\b(${pattern})\\b`, 'gi');
