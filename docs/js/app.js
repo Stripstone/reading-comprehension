@@ -120,7 +120,7 @@
   // ===================================
 
   const API_BASE = "https://reading-comprehension-rpwd.vercel.app";
-  const ANCHOR_VERSION = 4;
+const ANCHOR_VERSION = 5;
   const anchorsInFlight = new Map(); // pageHash -> Promise
 
   // Global anchors diagnostics record surfaced via the 🔧 Diagnostics panel.
@@ -358,7 +358,8 @@
     // Newer cache may include extra fields produced by /api/anchors.
     return {
       ...parsed,
-      pageBetterConsolidation: typeof parsed.pageBetterConsolidation === 'string' ? parsed.pageBetterConsolidation : undefined,
+      // Anchors endpoint no longer emits pageBetterConsolidation (evaluate owns that).
+      pageBetterConsolidation: undefined,
       candidates: Array.isArray(parsed.candidates) ? parsed.candidates : undefined,
     };
     } catch (_) {
@@ -370,7 +371,7 @@ function writeAnchorsToCache(pageHash, payload) {
     try {
     const toStore = {
       anchors: payload?.anchors,
-      pageBetterConsolidation: payload?.pageBetterConsolidation,
+      pageBetterConsolidation: undefined,
       candidates: payload?.candidates,
       anchorVersion: ANCHOR_VERSION,
       createdAt: Date.now(),
@@ -446,7 +447,7 @@ function writeAnchorsToCache(pageHash, payload) {
     // Use cache only if it matches current anchor version
     if (cached?.anchors && cached.anchorVersion === ANCHOR_VERSION) {
       pd.anchors = cached.anchors;
-      pd.pageBetterConsolidation = cached.pageBetterConsolidation;
+      // No pageBetterConsolidation in anchors cache (evaluate owns that).
       pd.anchorCandidates = cached.candidates;
       pd.anchorVersion = cached.anchorVersion;
       pd.anchorsMeta = { createdAt: cached.createdAt, cacheHit: true };
@@ -455,7 +456,7 @@ function writeAnchorsToCache(pageHash, payload) {
         pageHash,
         cacheHit: true,
         anchorCount: cached.anchors.length,
-        pageBetterConsolidation: cached.pageBetterConsolidation || null,
+        pageBetterConsolidation: null,
         candidates: Array.isArray(cached.candidates) ? cached.candidates : null,
         api: null,
       });
@@ -498,7 +499,7 @@ function writeAnchorsToCache(pageHash, payload) {
       const out = await fetchAnchorsForPageText(text, pageHash);
       const data = out.data;
       pd.anchors = data.anchors;
-      pd.pageBetterConsolidation = data.pageBetterConsolidation;
+      // No pageBetterConsolidation in anchors response (evaluate owns that).
       pd.anchorCandidates = data.candidates;
       pd.anchorVersion = data.meta.anchorVersion;
       pd.anchorsMeta = { createdAt: Date.now(), cacheHit: false };
@@ -509,12 +510,12 @@ function writeAnchorsToCache(pageHash, payload) {
         cacheHit: false,
         api: out.api,
         anchorCount: Array.isArray(data.anchors) ? data.anchors.length : null,
-        pageBetterConsolidation: typeof data.pageBetterConsolidation === 'string' ? data.pageBetterConsolidation : null,
+        pageBetterConsolidation: null,
         candidates: Array.isArray(data.candidates) ? data.candidates : null,
       });
       writeAnchorsToCache(pageHash, {
         anchors: data.anchors,
-        pageBetterConsolidation: data.pageBetterConsolidation,
+        pageBetterConsolidation: null,
         candidates: data.candidates,
       });
     })();
@@ -1769,8 +1770,7 @@ function addPages() {
       pageText: pageTextForRequest,
       userText,
       // Optional context coming from /api/anchors. This is stable, page-level, and not user-dependent.
-      pageBetterConsolidation:
-        page?.pageBetterConsolidation || cachedAnchorPack?.pageBetterConsolidation || undefined,
+      // Evaluate generates Better consolidation itself; do not pass any page-level better consolidation from anchors.
       anchors: Array.isArray(page?.anchors) ? page.anchors : undefined,
       betterCharLimit: goalCharCount,
       bulletMaxChars: 110,

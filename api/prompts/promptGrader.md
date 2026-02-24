@@ -85,7 +85,11 @@ Example of Strong Consolidation:
 
 A 1-2 sentence version of the learner’s text that preserves scope, causality, conditional claims, and maximum correctness.
 
-If `---ANCHORS---` is provided, incorporate at least **two anchor concepts** (by paraphrase; do not copy quotes verbatim).
+If `---ANCHORS---` is provided, your **Example of Strong Consolidation** must:
+- incorporate at least **three anchor concepts** (you may paraphrase the *quote*), and
+- include at least **two exact tokens** from the anchors' `terms` / `synonyms` lists (case-insensitive; weave them naturally).
+
+Do not copy anchor quotes verbatim unless doing so is unavoidable for correctness.
 
 yaml
 Copy code

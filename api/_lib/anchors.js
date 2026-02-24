@@ -2,7 +2,8 @@
 import crypto from "node:crypto";
 
 // Bump when matching/normalization semantics change so cached anchors refresh.
-export const ANCHOR_VERSION = 4;
+// v5: anchors endpoint no longer emits pageBetterConsolidation (evaluate owns that).
+export const ANCHOR_VERSION = 5;
 
 // Conservative caps to keep UI stable.
 const MAX_QUOTE_LEN = 220;
@@ -262,22 +263,13 @@ export function normalizeAnchorsWithDebug({ pageText, modelText, maxAnchors = 5,
     throw err;
   }
 
-  // Optional: page-level "better consolidation" (page-only).
-  let pageBetterConsolidation = "";
-  if (typeof parsed?.pageBetterConsolidation === "string") {
-    pageBetterConsolidation = String(parsed.pageBetterConsolidation || "").trim();
-  }
+  // NOTE: Anchors endpoint no longer emits a page-level "better consolidation".
+  // We intentionally ignore any legacy model output field to keep responsibilities clean.
 
   // Optional: ranked candidate snippets (diagnostics only).
   const candidatesArr = Array.isArray(parsed?.candidates) ? parsed.candidates : null;
 
-  // Clamp consolidation length (hard cap) and drop if too short.
-  if (pageBetterConsolidation && pageBetterConsolidation.length > 360) {
-    pageBetterConsolidation = pageBetterConsolidation.slice(0, 360).trim();
-  }
-  if (pageBetterConsolidation && pageBetterConsolidation.length < 10) {
-    pageBetterConsolidation = "";
-  }
+  // (legacy) consolidation intentionally ignored.
 
 
   // Normalize items.
@@ -383,12 +375,12 @@ export function normalizeAnchorsWithDebug({ pageText, modelText, maxAnchors = 5,
 
   return {
     anchors,
-    pageBetterConsolidation,
+    pageBetterConsolidation: null,
     debug: debug
       ? {
           normalization: debugAnchors,
           candidates: normalizeCandidatesForDebug({ pageText: page, candidatesArr }),
-          pageBetterConsolidation: pageBetterConsolidation || null,
+          pageBetterConsolidation: null,
         }
       : null,
   };
