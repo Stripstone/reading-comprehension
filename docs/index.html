@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Reading Comprehension</title>
   <!-- 
     ðŸŽµ BACKGROUND MUSIC SETUP:
@@ -129,9 +130,7 @@
     <div id="textControls" style="display:none; width:100%;">
       <textarea id="bulkInput" placeholder="Paste your full .md or text here..." style="height: 80px;"></textarea>
 
-      <p class="descriptor">
-      Paste all pages at once. Pages will be split automatically using <code>---</code> or <code>## Page X</code>. Lines starting with <code>#</code> or <code>—</code> are excluded.
-    </p>
+      <p class="descriptor">Paste text here and it will be broken into pages automatically.</p>
     </div>
 
 	    <div class="goal-time-row">
@@ -145,10 +144,11 @@
 	      </div>
 
 	      <!-- Replaces legacy "Update Goal & Add Pages" in the same position area -->
-	      <div style="margin-left:auto; display:flex; gap:10px; align-items:center; position:relative;">
+	      <div style="margin-left:auto; display:flex; gap:10px; align-items:center; position:relative; flex-wrap:wrap; justify-content:flex-end;">
 	        <button id="loadBookSelection" type="button">Load Pages</button>
 	        <button id="appendBookSelection" type="button" title="Add pages to the end (do not clear existing pages)">Add Pages</button>
-	        <button type="button" onclick="clearSession()">Clear All Pages</button>
+	        <button type="button" onclick="clearSession()">Clear Session</button>
+	        <button type="button" onclick="resetSession()">Clear All Pages</button>
 	      </div>
 	    </div>
   </div>

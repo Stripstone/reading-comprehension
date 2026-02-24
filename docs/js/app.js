@@ -15,7 +15,74 @@
   ];
   
   let pages = [];
-  let pageData = []; // Stores: { text, consolidation, charCount, completedOnTime, isSandstone, rating }
+  let pageData = [];
+
+const STORAGE_KEY_SESSION = "rc_session_v1";
+const STORAGE_KEY_META = "rc_session_meta_v1"; // small future-proof hook
+
+let _persistTimer = null;
+function schedulePersistSession() {
+  try {
+    if (_persistTimer) clearTimeout(_persistTimer);
+    _persistTimer = setTimeout(() => {
+      _persistTimer = null;
+      persistSessionNow();
+    }, 250);
+  } catch (_) {}
+}
+
+function persistSessionNow() {
+  try {
+    const payload = {
+      v: 1,
+      savedAt: Date.now(),
+      pages: pages.slice(),
+      pageData: pageData.slice()
+    };
+    localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(payload));
+  } catch (e) {
+    // Ignore quota / private mode errors; app should still function.
+  }
+}
+
+function clearPersistedSession() {
+  try { localStorage.removeItem(STORAGE_KEY_SESSION); } catch (_) {}
+  try { localStorage.removeItem(STORAGE_KEY_META); } catch (_) {}
+}
+
+function loadPersistedSessionIfAny() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SESSION);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.v !== 1) return false;
+    if (!Array.isArray(parsed.pages) || !Array.isArray(parsed.pageData)) return false;
+
+    pages = parsed.pages;
+    pageData = parsed.pageData;
+
+    // Defensive: ensure parallel structure
+    if (pages.length !== pageData.length) {
+      // Try to reconcile by truncating to the shortest.
+      const n = Math.min(pages.length, pageData.length);
+      pages = pages.slice(0, n);
+      pageData = pageData.slice(0, n);
+    }
+
+    currentPageIndex = Math.min(currentPageIndex, Math.max(0, pages.length - 1));
+    return pages.length > 0;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Stable-ish text hashing: normalize whitespace to avoid accidental churn.
+async function stableHashText(text) {
+  const normalized = (text || "").replace(/\s+/g, " ").trim();
+  return await sha256HexBrowser(normalized);
+}
+
+ // Stores: { text, consolidation, charCount, completedOnTime, isSandstone, rating }
   let timers = [];
   let intervals = [];
   let lastFocusedPageIndex = -1; // for keyboard navigation
@@ -829,13 +896,27 @@ function writeAnchorsToCache(pageHash, payload) {
   }
 
   function splitIntoPages(raw) {
-    const input = String(raw || "").trim();
+    // Primary UX: users paste normal text (paragraphs separated by blank lines).
+    // We also support legacy delimiters (---, "## Page X") without requiring them.
+    let input = String(raw || "");
+    input = input.replace(/\r\n?/g, "\n").trim();
     if (!input) return [];
+
+    // Normalize "## Page X" into a hard delimiter
+    input = input.replace(/^\s*##\s*Page\s+\d+.*$/gim, "\n\n---\n\n");
+
+    // Split on hard delimiters OR blank-line runs
+    const chunks = input.split(/(?:\n\s*---\s*\n|\n\s*\n+)/g);
+
     const out = [];
-    input.split(/\n---\n|\n## Page\s+\d+/i).forEach(c => {
-      const cleaned = c.split("\n").map(l => l.trim()).filter(l => l && !/^[#—]/.test(l));
-      if (cleaned.length) out.push(cleaned.join(" "));
-    });
+    for (const c of chunks) {
+      const cleaned = c
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l && !/^[#—]/.test(l));
+      if (!cleaned.length) continue;
+      out.push(cleaned.join(" ").replace(/\s+/g, " ").trim());
+    }
     return out;
   }
 
@@ -958,7 +1039,28 @@ function writeAnchorsToCache(pageHash, payload) {
         }
       }
 
-      return pages;
+      
+  // If the user didn't use explicit separators (--- / ## Page X), fall back to a
+  // "paragraph pages" heuristic: blocks separated by one-or-more blank lines.
+  // This matches typical copy/paste behavior (news articles, essays, etc.).
+  const usedExplicitSeparators = /\n\s*---\s*\n/.test(raw) || /^\s*##\s*Page\s+\d+/im.test(raw);
+  if (!usedExplicitSeparators) {
+    const blocks = raw
+      .replace(/\r\n?/g, "\n")
+      .split(/\n\s*\n+/)
+      .map(b => b.trim())
+      .filter(Boolean);
+
+    // If we got multiple blocks, treat each as a page.
+    if (blocks.length > 1) {
+      pages = blocks.map((b, i) => ({
+        title: `Page ${i + 1}`,
+        text: b.replace(/\s+/g, " ").trim()
+      }));
+    }
+  }
+
+  return pages;
     }
 
     function setSelectOptions(selectEl, options, placeholder) {
@@ -1260,7 +1362,8 @@ function addPages() {
     });
 
     document.getElementById("bulkInput").value = "";
-    render();
+    schedulePersistSession();
+  render();
     checkSubmitButton();
   }
 
@@ -1572,8 +1675,40 @@ function addPages() {
     sandSound.pause();
   }
 
+  /**
+   * Clear Session
+   * - Keeps loaded pages.
+   * - Clears learner work (consolidations + AI feedback) for the currently loaded pages.
+   * - By default, keeps anchors (fast reload); toggle if you want to invalidate old anchors.
+   */
   function clearSession() {
-    resetSession({ confirm: true });
+    if (!pageData.length) return;
+
+    const ALSO_CLEAR_ANCHORS = false;
+
+    for (let i = 0; i < pageData.length; i++) {
+      const p = pageData[i];
+      p.consolidation = '';
+      p.charCount = 0;
+      p.completedOnTime = true;
+      p.isSandstone = false;
+      p.rating = 0;
+      p.aiFeedbackRaw = '';
+      p.aiAt = null;
+      p.aiRating = null;
+      p.editedAt = Date.now();
+      if (ALSO_CLEAR_ANCHORS) {
+        p.anchors = null;
+        p.anchorsMeta = null;
+      }
+    }
+
+    if (ALSO_CLEAR_ANCHORS) {
+      try { inMemoryAnchorsCache = Object.create(null); } catch (_) {}
+    }
+
+    schedulePersistSession();
+    render();
   }
 
   // ===================================
@@ -2611,3 +2746,11 @@ function addPages() {
       hideAllPanels();
     });
   })();
+
+// --- Boot: restore local session if present ---
+try {
+  if (loadPersistedSessionIfAny()) {
+    render();
+    updateDiagnostics();
+  }
+} catch (_) {}
