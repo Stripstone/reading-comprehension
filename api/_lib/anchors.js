@@ -2,7 +2,7 @@
 import crypto from "node:crypto";
 
 // Bump when matching/normalization semantics change so cached anchors refresh.
-export const ANCHOR_VERSION = 2;
+export const ANCHOR_VERSION = 3;
 
 // Conservative caps to keep UI stable.
 const MAX_QUOTE_LEN = 220;
@@ -27,42 +27,23 @@ const WEAK_VERBS = new Set([
   'get','gets','got','getting',
   'make','makes','made','making',
   'feel','feels','felt','feeling',
-  // common "action" verbs that tend to become unhelpful anchor keywords
+  // common "action" verbs / helper words that tend to become unhelpful anchor keywords
   // (we prefer the nouns/concepts around them)
-  'create','creates','created','creating'
+  'create','creates','created','creating',
+  'need','needs','needed','needing',
+  'start','starts','started','starting',
+  'earn','earns','earned','earning',
+  'move','moves','moved','moving',
+  'begin','begins','began','beginning',
+  'able','right'
 ]);
 
-// Intentionally simple and slightly aggressive stemming.
-// User explicitly accepts occasional artifacts (e.g., "kitch" for "kitchen").
+// Normalize a token into a stable trigger key.
+// Matching robustness is primarily handled in the UI via "trim variants".
 function baseForm(token) {
   let t = String(token ?? '').toLowerCase().trim();
   if (!t) return '';
-  // keep only alnum
   t = t.replace(/[^a-z0-9]/g, '');
-  if (!t) return '';
-
-  // basic suffix rules
-  if (t.length > 4 && t.endsWith('ies')) t = t.slice(0, -3) + 'y';
-  else if (t.length > 4 && t.endsWith('ing')) t = t.slice(0, -3);
-  else if (t.length > 3 && t.endsWith('ed')) t = t.slice(0, -2);
-  else if (t.length > 3 && t.endsWith('es')) t = t.slice(0, -2);
-  else if (t.length > 3 && t.endsWith('s')) t = t.slice(0, -1);
-
-  // light derivational trimming (intentionally a bit aggressive per UX tolerance)
-  // Example: "generational" -> "generation" so user variants like "generation" match.
-  if (t.length > 5 && t.endsWith('al')) t = t.slice(0, -2);
-
-  // small irregular map (extendable)
-  const irregular = {
-    taken: 'take',
-    written: 'write',
-    driven: 'drive',
-    given: 'give',
-    seen: 'see',
-    known: 'know',
-  };
-  if (irregular[t]) t = irregular[t];
-
   return t;
 }
 

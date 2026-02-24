@@ -120,7 +120,7 @@
   // ===================================
 
   const API_BASE = "https://reading-comprehension-rpwd.vercel.app";
-  const ANCHOR_VERSION = 2;
+  const ANCHOR_VERSION = 3;
   const anchorsInFlight = new Map(); // pageHash -> Promise
 
   // Global anchors diagnostics record surfaced via the 🔧 Diagnostics panel.
@@ -213,39 +213,42 @@
     'get','gets','got','getting',
     'make','makes','made','making',
     'feel','feels','felt','feeling',
-    // common "action" verbs that tend to become unhelpful anchor keywords
+    // common "action" verbs / helper words that tend to become unhelpful anchor keywords
     // (we prefer the nouns/concepts around them)
-    'create','creates','created','creating'
+    'create','creates','created','creating',
+    'need','needs','needed','needing',
+    'start','starts','started','starting',
+    'earn','earns','earned','earning',
+    'move','moves','moved','moving',
+    'begin','begins','began','beginning',
+    'able','right'
   ]);
 
-  // Simple, deterministic base-form mapping for matching.
-  // User explicitly accepts occasional over-stemming artifacts.
+  // Simple normalization into a stable trigger token.
+  // Robustness comes from generating "trim variants" rather than heavy NLP.
   function baseForm(token) {
     let t = String(token || '').toLowerCase().trim();
     if (!t) return '';
     t = t.replace(/[^a-z0-9]/g, '');
     if (!t) return '';
-
-    if (t.length > 4 && t.endsWith('ies')) t = t.slice(0, -3) + 'y';
-    else if (t.length > 4 && t.endsWith('ing')) t = t.slice(0, -3);
-    else if (t.length > 3 && t.endsWith('ed')) t = t.slice(0, -2);
-    else if (t.length > 3 && t.endsWith('es')) t = t.slice(0, -2);
-    else if (t.length > 3 && t.endsWith('s')) t = t.slice(0, -1);
-
-    // light derivational trimming (intentionally a bit aggressive per UX tolerance)
-    // Example: "generational" -> "generation" so user variants like "generation" match.
-    if (t.length > 5 && t.endsWith('al')) t = t.slice(0, -2);
-
-    const irregular = {
-      taken: 'take',
-      written: 'write',
-      driven: 'drive',
-      given: 'give',
-      seen: 'see',
-      known: 'know',
-    };
-    if (irregular[t]) t = irregular[t];
     return t;
+  }
+
+  // Generate shortened forms by dropping 1–4 characters from the end.
+  // Rule:
+  // - If token length < 4 => no trimming.
+  // - Otherwise return token plus t[:-1..-4] as long as length >= minRemain.
+  function trimVariants(token, minRemain = 3) {
+    const t = baseForm(token);
+    if (!t) return [];
+    if (t.length < 4) return [t];
+    const out = [t];
+    for (let k = 1; k <= 4; k++) {
+      const n = t.length - k;
+      if (n < minRemain) continue;
+      out.push(t.slice(0, n));
+    }
+    return out;
   }
 
   function tokenizeBase(text) {
@@ -490,7 +493,13 @@
 
     const inputNorm = normalizeForMatch(userText);
     const userBaseTokens = tokenizeBase(userText);
-    const userBaseSet = new Set(userBaseTokens);
+    // Expand user tokens into trimmed variants for robust matching.
+    // Example: "generational" -> ["generational","generationa","generation","generatio","generati"]
+    // This intentionally does NOT require variants to be "real words"; it's just a deterministic trigger key.
+    const userVariantSet = new Set();
+    for (const t of userBaseTokens) {
+      for (const v of trimVariants(t, 3)) userVariantSet.add(v);
+    }
     const anchors = pd.anchors;
     const spans = pageEl.querySelectorAll('.page-text .anchor');
 
@@ -515,7 +524,12 @@
       if (!a) return;
 
       const essential = extractEssentialTerms(a);
-      const matched = essential.filter(t => userBaseSet.has(t));
+      // A term is considered matched if ANY of its trim variants appears in the userVariantSet.
+      const matched = [];
+      for (const term of essential) {
+        const variants = trimVariants(term, 3);
+        if (variants.some(v => userVariantSet.has(v))) matched.push(term);
+      }
 
       // If the user effectively quoted the passage (chunk match), treat as fully satisfied.
       const quoteMatch = quoteChunkMatch(a.quote, inputNorm);
@@ -551,7 +565,9 @@
         terms: essential,
         matchedTerms: quoteMatch ? essential : matched,
         matchedBaseForms: quoteMatch ? essential : matched,
+        matchedBaseFormsViaTrim: quoteMatch ? essential : matched,
         userBaseTokensSample: userBaseTokens.slice(0, 18),
+        userTrimTokensSample: Array.from(userVariantSet).slice(0, 18),
         matchCount,
         totalTerms: total,
         counted,
@@ -593,17 +609,15 @@
     // Prefer longer terms first to avoid partial overlap issues.
     terms.sort((a, b) => b.length - a.length);
 
-    // Terms are base-forms; create a forgiving surface pattern for the quote.
-    // This makes "student" highlight "students" when the quote contains that form.
+    // Terms are trigger keys; create a forgiving surface pattern for the quote.
+    // We allow up to 4 trailing word characters so:
+    // - "student" highlights "students"
+    // - "generation" highlights "generational"
+    // This is aligned with the trim-variant matching rule.
     const variants = [];
     for (const t of terms) {
       const esc = escapeRegExp(t);
-      // Very small set of suffixes. We intentionally allow some over-matching.
-      variants.push(`${esc}(?:s|es|ed|ing)?`);
-      // ies -> y (e.g., studies/study). Best-effort: allow both forms.
-      if (t.endsWith('y')) {
-        variants.push(`${escapeRegExp(t.slice(0, -1))}ies`);
-      }
+      variants.push(`${esc}\\w{0,4}`);
     }
 
     const pattern = variants.join('|');
