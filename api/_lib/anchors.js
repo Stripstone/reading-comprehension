@@ -2,7 +2,7 @@
 import crypto from "node:crypto";
 
 // Bump when matching/normalization semantics change so cached anchors refresh.
-export const ANCHOR_VERSION = 4;
+export const ANCHOR_VERSION = 5;
 
 // Conservative caps to keep UI stable.
 const MAX_QUOTE_LEN = 220;

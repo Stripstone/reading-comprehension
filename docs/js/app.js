@@ -120,7 +120,7 @@
   // ===================================
 
   const API_BASE = "https://reading-comprehension-rpwd.vercel.app";
-  const ANCHOR_VERSION = 4;
+  const ANCHOR_VERSION = 5;
   const anchorsInFlight = new Map(); // pageHash -> Promise
 
   // Global anchors diagnostics record surfaced via the 🔧 Diagnostics panel.
@@ -356,6 +356,8 @@
       const parsed = JSON.parse(raw);
       if (!parsed || parsed.anchorVersion !== ANCHOR_VERSION) return null;
       if (!Array.isArray(parsed.anchors)) return null;
+      // Require better consolidation for v5+ cache integrity
+      if (typeof parsed.pageBetterConsolidation !== "string" || parsed.pageBetterConsolidation.trim().length < 10) return null;
       return parsed;
     } catch (_) {
       return null;
