@@ -85,14 +85,12 @@ Example of Strong Consolidation:
 
 A 1-2 sentence version of the learner’s text that preserves scope, causality, conditional claims, and maximum correctness.
 
-If `---ANCHORS---` is provided, your **Example of Strong Consolidation** must:
-- incorporate at least **three anchor concepts** (you may paraphrase the *quote*), and
-- include at least **two exact tokens** from the anchors' `terms` / `synonyms` lists (case-insensitive; weave them naturally).
+If `---ANCHORS---` is provided, write your **Example of Strong Consolidation** by **considering the anchors**:
+- Use anchor ideas/keywords when they fit naturally.
+- Prioritize correctness, readability, and preserving the passage’s scope/causality.
 
-Do not copy anchor quotes verbatim unless doing so is unavoidable for correctness.
+If a `betterCharLimit` is provided, treat it as a **soft target**: try to stay near it, but small overages are acceptable when needed for clarity or correctness.
 
-yaml
-Copy code
 
 ---
 
@@ -141,40 +139,3 @@ Copy code
 4. Maintain **clarity, brevity, and focus on improving comprehension**.
 
 ---
-
-### Highlight Snippets (Required)
-
-After you write the **Example of Strong Consolidation**, include a section named exactly:
-
-Highlight Snippets (Ranked Candidates):
-
-Return **up to 5 lines**, where each line is a **ranked candidate** in this exact format:
-
-`R# | CATEGORY | <verbatim substring>`
-
-Where:
-- `R#` is a short reason id like `R1`, `R2`, etc. (you may reuse ids across lines).
-- `CATEGORY` must be one of:
-  - `MECHANISM` (causal link / how something works)
-  - `CONSTRAINT` (condition, limitation, tradeoff)
-  - `GOAL` (thesis, purpose, motivation, target)
-  - `DEFINITION` (key term definition / what something is)
-  - `OUTCOME` (result / consequence)
-  - `FRAMING` (high-level framing that materially affected the score)
-  - `EXAMPLE` (anecdote, illustration, demographic/scene-setting detail)
-
-Purpose: these snippets will be highlighted in the UI (yellow marker) to show the learner what **most directly** explains the score reduction.
-
-Rules:
-- The `<verbatim substring>` must be copied **exactly** from the page content (character-for-character).
-- **Do not** add bullets, numbering, or quotes around the substring.
-- Keep substrings **minimal** (shortest phrase that carries the core idea).
-- Order candidates from **most important** to **least important** for explaining score reduction.
-- Prefer `MECHANISM / CONSTRAINT / GOAL / DEFINITION / OUTCOME` over `FRAMING`, and prefer those over `EXAMPLE`.
-- Minor refinement suggestions should **not** require a highlight unless they **materially affected** the score.
-- Avoid choosing a substring that already appears in the learner consolidation unless it is necessary to explain a score reduction.
-- All candidate substrings must be **distinct** (do not repeat the same substring with different categories, and avoid near-duplicates).
-- If `Overall Score` is below **70%**, return **exactly 5** candidate lines (unless the page is extremely short and fewer exist).
-- If the learner earned a perfect score, return **at most one** candidate line (or the single line `NONE`).
-- If nothing significant is missing: output the single line `NONE`.
-
