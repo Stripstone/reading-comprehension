@@ -33,11 +33,21 @@ function schedulePersistSession() {
 
 function persistSessionNow() {
   try {
+    // Persist only what we need to restore a learner's work.
+    // - DO persist: pages + learner consolidations (+ minimal per-page state)
+    // - DO NOT persist: evaluate output (AI feedback/rating), which can be regenerated.
     const payload = {
       v: 1,
       savedAt: Date.now(),
       pages: pages.slice(),
-      pageData: pageData.slice()
+      pageData: pageData.map(p => ({
+        consolidation: p?.consolidation || "",
+        charCount: p?.charCount || 0,
+        isSandstone: !!p?.isSandstone,
+        completedOnTime: p?.completedOnTime !== false,
+        // Link to cached anchors without duplicating the anchor payload.
+        pageHash: p?.pageHash || ""
+      }))
     };
     localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(payload));
   } catch (e) {
@@ -59,7 +69,25 @@ function loadPersistedSessionIfAny() {
     if (!Array.isArray(parsed.pages) || !Array.isArray(parsed.pageData)) return false;
 
     pages = parsed.pages;
-    pageData = parsed.pageData;
+    const incoming = parsed.pageData;
+
+    // Rehydrate runtime-only fields (AI output is intentionally not persisted).
+    pageData = pages.map((t, idx) => {
+      const saved = incoming[idx] || {};
+      return {
+        text: t,
+        consolidation: saved.consolidation || "",
+        aiFeedbackRaw: "",
+        charCount: saved.charCount || 0,
+        completedOnTime: saved.completedOnTime !== false,
+        isSandstone: !!saved.isSandstone,
+        rating: 0,
+        pageHash: saved.pageHash || "",
+        anchors: null,
+        anchorVersion: 0,
+        anchorsMeta: null
+      };
+    });
 
     // Defensive: ensure parallel structure
     if (pages.length !== pageData.length) {
@@ -86,6 +114,34 @@ async function stableHashText(text) {
   let timers = [];
   let intervals = [];
   let lastFocusedPageIndex = -1; // for keyboard navigation
+
+  function inferCurrentPageIndex() {
+    // 1) Active element within a page
+    const active = document.activeElement;
+    if (active) {
+      const pageEl = active.closest?.(".page");
+      if (pageEl?.dataset?.pageIndex) {
+        const idx = parseInt(pageEl.dataset.pageIndex, 10);
+        if (!Number.isNaN(idx)) return idx;
+      }
+    }
+
+    // 2) Page closest to top of viewport
+    const pageEls = Array.from(document.querySelectorAll(".page"));
+    if (!pageEls.length) return -1;
+    let bestIdx = -1;
+    let bestDist = Infinity;
+    for (const el of pageEls) {
+      const rect = el.getBoundingClientRect();
+      const dist = Math.abs(rect.top);
+      if (dist < bestDist) {
+        bestDist = dist;
+        const idx = parseInt(el.dataset.pageIndex || "-1", 10);
+        if (!Number.isNaN(idx)) bestIdx = idx;
+      }
+    }
+    return bestIdx;
+  }
 
   // When true, the UI is in the "Evaluation" phase (compasses unlocked).
   // In this phase, the Next button should advance pages without focusing the textarea.
@@ -1332,33 +1388,33 @@ function writeAnchorsToCache(pageHash, payload) {
 
 
 function addPages() {
-    const input = document.getElementById("bulkInput").value.trim();
+    const input = document.getElementById("bulkInput").value;
     goalTime = parseInt(document.getElementById("goalTimeInput").value);
     goalCharCount = parseInt(document.getElementById("goalCharInput").value);
-    if (!input) return;
+    if (!input || !input.trim()) return;
 
     // UX rule: whenever user generates new pages, start fresh (no leftover pages)
     if (pages.length > 0) resetSession({ confirm: false });
 
-    input.split(/\n---\n|\n## Page\s+\d+/i).forEach(c => {
-      const cleaned = c.split("\n").map(l => l.trim()).filter(l => l && !/^[# ]/.test(l));
-      if (cleaned.length) {
-        pages.push(cleaned.join(" "));
-        pageData.push({
-          text: cleaned.join(" "),
-          consolidation: "",
-          aiFeedbackRaw: "",
-          charCount: 0,
-          completedOnTime: true, // Assume true until sandstoned
-          isSandstone: false,
-          rating: 0,
-          // Anchors
-          pageHash: "",
-          anchors: null,
-          anchorVersion: 0,
-          anchorsMeta: null
-        });
-      }
+    // Split pasted text into pages using paragraph breaks (blank lines).
+    // Still supports legacy delimiters (--- / "## Page X") if present.
+    const newPages = splitIntoPages(input);
+    newPages.forEach(pageText => {
+      pages.push(pageText);
+      pageData.push({
+        text: pageText,
+        consolidation: "",
+        aiFeedbackRaw: "",
+        charCount: 0,
+        completedOnTime: true, // Assume true until sandstoned
+        isSandstone: false,
+        rating: 0,
+        // Anchors
+        pageHash: "",
+        anchors: null,
+        anchorVersion: 0,
+        anchorsMeta: null
+      });
     });
 
     document.getElementById("bulkInput").value = "";
@@ -1370,31 +1426,28 @@ function addPages() {
   // Append pages to the existing session (does NOT clear pages/timers/ratings).
   // Uses the same splitting rules as addPages().
   function appendPages() {
-    const input = document.getElementById("bulkInput").value.trim();
+    const input = document.getElementById("bulkInput").value;
     goalTime = parseInt(document.getElementById("goalTimeInput").value);
     goalCharCount = parseInt(document.getElementById("goalCharInput").value);
-    if (!input) return;
+    if (!input || !input.trim()) return;
 
-    input.split(/\n---\n|\n## Page\s+\d+/i).forEach(c => {
-      const cleaned = c.split("\n").map(l => l.trim()).filter(l => l && !/^[# ]/.test(l));
-      if (cleaned.length) {
-        const joined = cleaned.join(" ");
-        pages.push(joined);
-        pageData.push({
-          text: joined,
-          consolidation: "",
-          aiFeedbackRaw: "",
-          charCount: 0,
-          completedOnTime: true,
-          isSandstone: false,
-          rating: 0,
-          // Anchors
-          pageHash: "",
-          anchors: null,
-          anchorVersion: 0,
-          anchorsMeta: null
-        });
-      }
+    const newPages = splitIntoPages(input);
+    newPages.forEach(pageText => {
+      pages.push(pageText);
+      pageData.push({
+        text: pageText,
+        consolidation: "",
+        aiFeedbackRaw: "",
+        charCount: 0,
+        completedOnTime: true,
+        isSandstone: false,
+        rating: 0,
+        // Anchors
+        pageHash: "",
+        anchors: null,
+        anchorVersion: 0,
+        anchorsMeta: null
+      });
     });
 
     document.getElementById("bulkInput").value = "";
@@ -1414,6 +1467,7 @@ function addPages() {
     document.getElementById("submitBtn").disabled = true;
     document.getElementById("verdictSection").style.display = "none";
     lastFocusedPageIndex = -1;
+    clearPersistedSession();
     return true;
   }
 
@@ -1494,6 +1548,16 @@ function addPages() {
         
         // Check if all pages have text to unlock compasses
         checkCompassUnlock();
+      });
+
+      // Persist learner work when they leave the field (reduces churn while typing).
+      textarea.addEventListener("blur", () => {
+        schedulePersistSession();
+      });
+
+      // Clicking anywhere on the page should make "Next" advance from that page.
+      page.addEventListener("pointerdown", () => {
+        lastFocusedPageIndex = i;
       });
 
       // Timer events
@@ -1794,6 +1858,12 @@ function addPages() {
     // - Consolidation phase: focus the next editable textarea.
     // - Evaluation phase: DO NOT focus the textarea; scroll to the next page block instead.
     // currentIndex is the page index the user is "on" (0-based). Use -1 to start from the beginning.
+
+    // If no explicit index was provided, try to advance from the page the user was interacting with.
+    if (typeof currentIndex !== "number") {
+      currentIndex = lastFocusedPageIndex;
+      if (currentIndex < 0) currentIndex = inferCurrentPageIndex();
+    }
 
     // Keep phase flag up to date (especially when called from buttons).
     checkCompassUnlock();
