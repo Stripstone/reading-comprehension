@@ -120,7 +120,7 @@
   // ===================================
 
   const API_BASE = "https://reading-comprehension-rpwd.vercel.app";
-  const ANCHOR_VERSION = 3;
+  const ANCHOR_VERSION = 4;
   const anchorsInFlight = new Map(); // pageHash -> Promise
 
   // Global anchors diagnostics record surfaced via the 🔧 Diagnostics panel.
@@ -435,7 +435,8 @@
     setAnchorsDiagnostics(pageElForDiag, pageIndex, { stage: 'pageHash', pageHash, cacheHit: null });
 
     const cached = readAnchorsFromCache(pageHash);
-    if (cached?.anchors) {
+    // Use cache only if it matches current anchor version
+    if (cached?.anchors && cached.anchorVersion === ANCHOR_VERSION) {
       pd.anchors = cached.anchors;
       pd.anchorVersion = cached.anchorVersion;
       pd.anchorsMeta = { createdAt: cached.createdAt, cacheHit: true };
@@ -452,6 +453,26 @@
         } catch (_) {}
       }
       return pd.anchors;
+    }
+
+    if (cached?.anchors && cached.anchorVersion !== ANCHOR_VERSION) {
+      // Cache exists but is stale — force a re-fetch so new server contract can be validated.
+      pd.anchorsMeta = { createdAt: cached.createdAt, cacheHit: false, cacheStale: true, cachedAnchorVersion: cached.anchorVersion, expectedAnchorVersion: ANCHOR_VERSION };
+      setAnchorsDiagnostics(pageElForDiag, pageIndex, {
+        stage: 'cache-stale',
+        pageHash,
+        cacheHit: false,
+        cacheStale: true,
+        cachedAnchorVersion: cached.anchorVersion,
+        expectedAnchorVersion: ANCHOR_VERSION,
+        anchorCount: cached.anchors.length,
+        api: null,
+      });
+      if (isDebugEnabledFromUrl()) {
+        try {
+          console.info("[Anchors] cache stale (will refetch)", { pageHash, cachedAnchorVersion: cached.anchorVersion, expectedAnchorVersion: ANCHOR_VERSION });
+        } catch (_) {}
+      }
     }
 
     // De-dupe concurrent fetches by pageHash.
