@@ -8,6 +8,17 @@ Focus on **strategic, actionable guidance**, not tone, style, or generic reporti
 
 ---
 
+### Optional Reference Context
+
+You may also be given extra, page-level reference context:
+
+- `---PASSAGE REFERENCE CONSOLIDATION---` : a stable summary of the passage (not written by the learner)
+- `---ANCHORS---` : a compact list of important passage quotes + keywords
+
+If these blocks are present, you can consult them to better understand the passage and to judge whether the learner’s consolidation matches the important ideas. However, the passage itself is still the source of truth.
+
+---
+
 ### Key Principles
 
 1. **Atomic Evaluation**

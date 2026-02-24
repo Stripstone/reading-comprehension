@@ -34,8 +34,25 @@ function readPromptTemplate(filename) {
 }
 
 // Backwards compatible: page-level grader prompt.
-export function buildPromptMessages(pageText, userText) {
+// Optional opts allow passing stable page-level guidance (e.g., anchors endpoint output).
+export function buildPromptMessages(pageText, userText, opts = {}) {
   const promptTemplate = readPromptTemplate("promptGrader.md");
+
+  const extras = [];
+  if (typeof opts.pageBetterConsolidation === "string" && opts.pageBetterConsolidation.trim()) {
+    extras.push("---PASSAGE REFERENCE CONSOLIDATION---");
+    extras.push(opts.pageBetterConsolidation.trim());
+    extras.push("");
+  }
+  if (Array.isArray(opts.anchors) && opts.anchors.length) {
+    // Keep compact + stable: quote + terms only.
+    const compactAnchors = opts.anchors
+      .map(a => ({ quote: a?.quote, terms: a?.terms }))
+      .slice(0, 12);
+    extras.push("---ANCHORS---");
+    extras.push(JSON.stringify(compactAnchors));
+    extras.push("");
+  }
 
   // Match your local “template + appended content” behavior
   const userBlock = [
@@ -45,6 +62,7 @@ export function buildPromptMessages(pageText, userText) {
     "---USER CONSOLIDATION---",
     userText,
     "",
+    ...extras,
     "---",
     "",
     "Provide your grading now:",

@@ -354,20 +354,28 @@
       const parsed = JSON.parse(raw);
       if (!parsed || parsed.anchorVersion !== ANCHOR_VERSION) return null;
       if (!Array.isArray(parsed.anchors)) return null;
-      return parsed;
+    // Back-compat: older cache shape was { anchors: [...] }.
+    // Newer cache may include extra fields produced by /api/anchors.
+    return {
+      ...parsed,
+      pageBetterConsolidation: typeof parsed.pageBetterConsolidation === 'string' ? parsed.pageBetterConsolidation : undefined,
+      candidates: Array.isArray(parsed.candidates) ? parsed.candidates : undefined,
+    };
     } catch (_) {
       return null;
     }
   }
 
-  function writeAnchorsToCache(pageHash, anchors) {
+function writeAnchorsToCache(pageHash, payload) {
     try {
-      const payload = {
-        anchors,
-        anchorVersion: ANCHOR_VERSION,
-        createdAt: Date.now(),
-      };
-      localStorage.setItem(getAnchorCacheKey(pageHash), JSON.stringify(payload));
+    const toStore = {
+      anchors: payload?.anchors,
+      pageBetterConsolidation: payload?.pageBetterConsolidation,
+      candidates: payload?.candidates,
+      anchorVersion: ANCHOR_VERSION,
+      createdAt: Date.now(),
+    };
+    localStorage.setItem(getAnchorCacheKey(pageHash), JSON.stringify(toStore));
     } catch (_) {
       // ignore quota errors
     }
@@ -438,6 +446,8 @@
     // Use cache only if it matches current anchor version
     if (cached?.anchors && cached.anchorVersion === ANCHOR_VERSION) {
       pd.anchors = cached.anchors;
+      pd.pageBetterConsolidation = cached.pageBetterConsolidation;
+      pd.anchorCandidates = cached.candidates;
       pd.anchorVersion = cached.anchorVersion;
       pd.anchorsMeta = { createdAt: cached.createdAt, cacheHit: true };
       setAnchorsDiagnostics(pageElForDiag, pageIndex, {
@@ -445,6 +455,8 @@
         pageHash,
         cacheHit: true,
         anchorCount: cached.anchors.length,
+        pageBetterConsolidation: cached.pageBetterConsolidation || null,
+        candidates: Array.isArray(cached.candidates) ? cached.candidates : null,
         api: null,
       });
       if (isDebugEnabledFromUrl()) {
@@ -486,6 +498,8 @@
       const out = await fetchAnchorsForPageText(text, pageHash);
       const data = out.data;
       pd.anchors = data.anchors;
+      pd.pageBetterConsolidation = data.pageBetterConsolidation;
+      pd.anchorCandidates = data.candidates;
       pd.anchorVersion = data.meta.anchorVersion;
       pd.anchorsMeta = { createdAt: Date.now(), cacheHit: false };
       pd.anchorsRawDebug = data?.debug || null;
@@ -495,8 +509,14 @@
         cacheHit: false,
         api: out.api,
         anchorCount: Array.isArray(data.anchors) ? data.anchors.length : null,
+        pageBetterConsolidation: typeof data.pageBetterConsolidation === 'string' ? data.pageBetterConsolidation : null,
+        candidates: Array.isArray(data.candidates) ? data.candidates : null,
       });
-      writeAnchorsToCache(pageHash, data.anchors);
+      writeAnchorsToCache(pageHash, {
+        anchors: data.anchors,
+        pageBetterConsolidation: data.pageBetterConsolidation,
+        candidates: data.candidates,
+      });
     })();
 
     anchorsInFlight.set(pageHash, p);
@@ -1737,6 +1757,9 @@ function addPages() {
     const requestPayload = {
       pageText: pageTextForRequest,
       userText,
+      // Optional context coming from /api/anchors. This is stable, page-level, and not user-dependent.
+      pageBetterConsolidation: page?.pageBetterConsolidation || undefined,
+      anchors: Array.isArray(page?.anchors) ? page.anchors : undefined,
       betterCharLimit: goalCharCount,
       bulletMaxChars: 110,
       debug: debugEnabled ? "1" : undefined
@@ -1795,7 +1818,8 @@ function addPages() {
         debug: data && data.debug ? data.debug : undefined,
         at: new Date().toISOString()
       };
-      displayAIFeedback(pageIndex, data.feedback || "", data?.highlights?.snippets || []);
+      // Passage highlighting is now owned by anchors; evaluation is for rating + analysis only.
+      displayAIFeedback(pageIndex, data.feedback || "", []);
 
       aiBtn.textContent = '▲ AI Evaluate';
       aiBtn.classList.remove('loading');

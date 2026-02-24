@@ -27,6 +27,8 @@ export default async function handler(req, res) {
     const body = await readJsonBody(req);
     const pageText = String(body?.pageText ?? "").trim();
     const userText = String(body?.userText ?? "").trim();
+    const pageBetterConsolidation = typeof body?.pageBetterConsolidation === "string" ? body.pageBetterConsolidation : undefined;
+    const anchors = Array.isArray(body?.anchors) ? body.anchors : undefined;
     const debug = String(body?.debug ?? "").trim() === "1" || body?.debug === true;
 
     if (!pageText || !userText) {
@@ -37,7 +39,7 @@ export default async function handler(req, res) {
       return json(res, 500, { error: "Missing GROQ_API_KEY env var" });
     }
 
-    const messages = buildPromptMessages(pageText, userText);
+    const messages = buildPromptMessages(pageText, userText, { pageBetterConsolidation, anchors });
 
     const upstream = await fetch(GROQ_URL, {
       method: "POST",
@@ -206,70 +208,15 @@ export default async function handler(req, res) {
     const minHighlights = missing; // rating=5 => 0, rating=4 => 1, ...
     const maxAllowed = Math.min(5, missing + 1);
 
-    // Ranking: prefer structural categories, then non-structural; avoid redundancy unless needed.
-    const sortKey = (x) => {
-      const p = CATEGORY_PRIORITY[x.category] ?? 99;
-      return [p, x.rank];
-    };
-
-    const preferred = normalized
-      .filter((x) => x.category !== "EXAMPLE")
-      .sort((a, b) => {
-        const [pa, ra] = sortKey(a);
-        const [pb, rb] = sortKey(b);
-        if (pa !== pb) return pa - pb;
-        return ra - rb;
-      });
-
-    const examples = normalized
-      .filter((x) => x.category === "EXAMPLE")
-      .sort((a, b) => a.rank - b.rank);
-
-    // Helper: push candidates up to cap, optionally skipping redundant.
-    const chosen = [];
-    const already = new Set();
-    const pushFrom = (arr, cap, allowRedundant) => {
-      for (const it of arr) {
-        if (chosen.length >= cap) break;
-        if (already.has(it.snippet)) continue;
-        if (!allowRedundant && it.redundant) continue;
-        chosen.push(it);
-        already.add(it.snippet);
-      }
-    };
-
-    // 1) Fill with non-redundant, structural-preferred up to maxAllowed.
-    pushFrom(preferred, maxAllowed, false);
-
-    // 2) If we are below minHighlights, allow non-redundant EXAMPLE to top up.
-    if (chosen.length < minHighlights) {
-      pushFrom(examples, Math.min(maxAllowed, minHighlights), false);
-    }
-
-    // 3) If still below minHighlights, allow redundant items (last resort) from preferred then examples.
-    if (chosen.length < minHighlights) {
-      pushFrom(preferred, Math.min(maxAllowed, minHighlights), true);
-    }
-    if (chosen.length < minHighlights) {
-      pushFrom(examples, Math.min(maxAllowed, minHighlights), true);
-    }
-
-    // 4) For perfect score, prefer 0 highlights; only include 1 if it's non-redundant.
-    let final = chosen;
-    if (rating === 5) {
-      // Keep at most 1, and only if it wasn't redundant.
-      final = chosen.filter((x) => !x.redundant).slice(0, 1);
-    }
-
-    const clamped = final.map((x) => x.snippet);
+    // NOTE: Passage highlighting has been moved to /api/anchors.
+    // We intentionally do not compute or return highlight snippets here.
 
 
+    // Evaluate is responsible for rating + analysis only.
+    // Passage highlighting is owned by /api/anchors.
     const out = {
       feedback,
-      highlights: {
-        rating,
-        snippets: clamped,
-      },
+      rating,
     };
     if (debug) {
       out.debug = {
