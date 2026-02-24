@@ -1761,7 +1761,9 @@ function addPages() {
     const pageHashForEval = (page && page.pageHash)
       ? page.pageHash
       : await sha256HexBrowser(pageTextForRequest);
-    const cachedAnchorPack = inMemoryAnchorsCache?.[pageHashForEval];
+    // Anchor packs are cached in localStorage (see readAnchorsFromCache/writeAnchorsToCache).
+    // Use that canonical cache here rather than a separate in-memory map.
+    const cachedAnchorPack = readAnchorsFromCache(pageHashForEval);
 
     const requestPayload = {
       pageText: pageTextForRequest,
