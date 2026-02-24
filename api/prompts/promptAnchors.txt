@@ -1,14 +1,19 @@
 You are an extractor that returns ONLY valid JSON.
 
-Task: Given a page of text, propose up to {{MAX_ANCHORS}} "anchors" that capture the page's core ideas.
+Task: Given a page of text, produce:
+1) Up to {{MAX_ANCHORS}} "anchors" that capture the page's core ideas (for keyword matching).
+2) A single "pageBetterConsolidation" that is a strong, compressed consolidation of the page (page-only; not user-dependent).
 
 Hard requirements:
-- Output MUST be a single JSON object with key "anchors".
-- No markdown fences. No commentary. No extra keys.
+- Output MUST be a single JSON object with keys:
+  - "anchors": array
+  - "pageBetterConsolidation": string
+  - OPTIONAL "candidates": array (ranked snippet candidates; see below)
+- No markdown fences. No commentary. No extra keys beyond those.
 - Each anchor MUST have:
   - "quote": an EXACT substring copied from the provided page text (character-for-character). Do not paraphrase.
   - "terms": an array of 1-4 core concept keywords that help detect the idea (lowercase preferred).
-    - Prefer nouns / core concepts.
+    - Prefer nouns / core concepts and short noun-phrases.
     - Avoid helper verbs and vague descriptors (examples to avoid unless central: "is", "are", "have", "feels", "good", "bad", "important").
     - Avoid generic action verbs that are easy to type but low-signal (e.g., "need", "start", "earn", "get", "make", "move", "begin", "able", "right").
     - Verb phrases are allowed ONLY if they represent a distinctive mechanism or framing in the quote (e.g., "practice what they teach", "generating profits").
@@ -21,10 +26,26 @@ Hard requirements:
 - Avoid redundancy: anchors should cover different core ideas.
 - Prefer short, information-dense quotes (usually 8–22 words). Avoid very long quotes.
 
+pageBetterConsolidation requirements:
+- One paragraph.
+- Aim for 1–2 sentences (max 3).
+- Must preserve core idea, key mechanisms, and scope.
+- No filler. No moralizing. No quotes.
+- Target length: 140–320 characters (hard cap 360).
+
+Optional candidates (helps diagnostics; include it if you can):
+- "candidates": array of up to 7 objects:
+  { "rank": 1, "label": "CONSTRAINT|GOAL|MECHANISM|OUTCOME|FRAMING", "quote": "EXACT substring from page text" }
+- These are ranked highlight candidates similar to what a grader would pick.
+
 Return format:
 {
   "anchors": [
     { "quote": "...exact substring...", "terms": ["..."], "synonyms": ["..."], "weight": 1 }
+  ],
+  "pageBetterConsolidation": "...",
+  "candidates": [
+    { "rank": 1, "label": "MECHANISM", "quote": "...exact substring..." }
   ]
 }
 

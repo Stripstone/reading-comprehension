@@ -2,7 +2,7 @@
 import crypto from "node:crypto";
 
 // Bump when matching/normalization semantics change so cached anchors refresh.
-export const ANCHOR_VERSION = 3;
+export const ANCHOR_VERSION = 4;
 
 // Conservative caps to keep UI stable.
 const MAX_QUOTE_LEN = 220;
@@ -224,6 +224,24 @@ export function normalizeAnchorsWithDebug({ pageText, modelText, maxAnchors = 5,
     throw err;
   }
 
+  // Optional: page-level "better consolidation" (page-only).
+  let pageBetterConsolidation = "";
+  if (typeof parsed?.pageBetterConsolidation === "string") {
+    pageBetterConsolidation = String(parsed.pageBetterConsolidation || "").trim();
+  }
+
+  // Optional: ranked candidate snippets (diagnostics only).
+  const candidatesArr = Array.isArray(parsed?.candidates) ? parsed.candidates : null;
+
+  // Clamp consolidation length (hard cap) and drop if too short.
+  if (pageBetterConsolidation && pageBetterConsolidation.length > 360) {
+    pageBetterConsolidation = pageBetterConsolidation.slice(0, 360).trim();
+  }
+  if (pageBetterConsolidation && pageBetterConsolidation.length < 10) {
+    pageBetterConsolidation = "";
+  }
+
+
   // Normalize items.
   const raw = arr.slice(0, Math.max(0, cap * 3)); // allow extra for dedupe
   const seen = new Set();
@@ -327,6 +345,13 @@ export function normalizeAnchorsWithDebug({ pageText, modelText, maxAnchors = 5,
 
   return {
     anchors,
-    debug: debug ? { normalization: debugAnchors } : null,
+    pageBetterConsolidation,
+    debug: debug
+      ? {
+          normalization: debugAnchors,
+          candidates: normalizeCandidatesForDebug({ pageText: page, candidatesArr }),
+          pageBetterConsolidation: pageBetterConsolidation || null,
+        }
+      : null,
   };
 }

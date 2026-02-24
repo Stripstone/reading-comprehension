@@ -57,11 +57,13 @@ export default async function handler(req, res) {
     const modelText = data?.choices?.[0]?.message?.content ?? "";
 
     let anchors;
+    let pageBetterConsolidation = "";
     let anchorsDebug = null;
     let validation = { ok: true };
     try {
       const out = normalizeAnchorsWithDebug({ pageText, modelText, maxAnchors, debug });
       anchors = out.anchors;
+      pageBetterConsolidation = out.pageBetterConsolidation || "";
       anchorsDebug = out.debug;
     } catch (e) {
       validation = { ok: false, error: String(e?.message ?? e), details: e?.details ?? null };
@@ -83,6 +85,7 @@ export default async function handler(req, res) {
 
     const payload = {
       anchors,
+      pageBetterConsolidation,
       meta: { pageHash, anchorVersion: ANCHOR_VERSION },
     };
 
@@ -92,7 +95,9 @@ export default async function handler(req, res) {
         pageHash,
         rawModelOutput: modelText,
         parsedAnchors: anchors,
+        pageBetterConsolidation,
         anchorNormalization: anchorsDebug?.normalization ?? null,
+        candidates: anchorsDebug?.candidates ?? null,
         validation,
         cache: { cacheHit: false }, // client-side cache; server does not cache yet
       };
