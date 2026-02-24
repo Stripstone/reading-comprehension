@@ -44,7 +44,11 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: MODEL,
         messages,
-        temperature: 0.2,
+        // Make JSON compliance as reliable as possible.
+        temperature: 0.0,
+        // Groq OpenAI-compatible API supports response_format; this dramatically
+        // reduces "422 Invalid anchor output" due to non-JSON completions.
+        response_format: { type: "json_object" },
       }),
     });
 
