@@ -1754,11 +1754,17 @@ function addPages() {
     const MAX_DEBUG_CHARS = 900; // small on purpose
     const pageTextForRequest = passageText; // never alter grading input for debugging
 
+    // Prefer anchor-owned better consolidation (from page state or cache)
+    // so /api/evaluate can focus on grading instead of re-summarizing.
+    const pageHashForEval = stableHashText(pageTextForRequest);
+    const cachedAnchorPack = inMemoryAnchorsCache?.[pageHashForEval];
+
     const requestPayload = {
       pageText: pageTextForRequest,
       userText,
       // Optional context coming from /api/anchors. This is stable, page-level, and not user-dependent.
-      pageBetterConsolidation: page?.pageBetterConsolidation || undefined,
+      pageBetterConsolidation:
+        page?.pageBetterConsolidation || cachedAnchorPack?.pageBetterConsolidation || undefined,
       anchors: Array.isArray(page?.anchors) ? page.anchors : undefined,
       betterCharLimit: goalCharCount,
       bulletMaxChars: 110,
@@ -1819,7 +1825,8 @@ function addPages() {
         at: new Date().toISOString()
       };
       // Passage highlighting is now owned by anchors; evaluation is for rating + analysis only.
-      displayAIFeedback(pageIndex, data.feedback || "", []);
+      // Evaluation should not clear existing highlights (anchors own passage highlighting).
+      displayAIFeedback(pageIndex, data.feedback || "", null);
 
       aiBtn.textContent = '▲ AI Evaluate';
       aiBtn.classList.remove('loading');
@@ -1842,20 +1849,25 @@ function addPages() {
     }
   }
 
-  function displayAIFeedback(pageIndex, feedback, highlightSnippets = []) {
+  function displayAIFeedback(pageIndex, feedback, highlightSnippets = null) {
     const feedbackDiv = document.querySelector(`.ai-feedback[data-page="${pageIndex}"]`);
     if (!feedbackDiv) return;
 
     // Persist raw feedback so Final Summary can reuse it later.
     if (pageData?.[pageIndex]) {
       pageData[pageIndex].aiFeedbackRaw = String(feedback || "");
-      pageData[pageIndex].highlightSnippets = Array.isArray(highlightSnippets)
-        ? highlightSnippets.map(s => String(s || '').trim()).filter(Boolean)
-        : [];
+      if (Array.isArray(highlightSnippets)) {
+        pageData[pageIndex].highlightSnippets = highlightSnippets
+          .map(s => String(s || '').trim())
+          .filter(Boolean);
+      }
     }
 
-    // Apply yellow highlights directly on the passage.
-    applyHighlightSnippetsToPage(pageIndex, pageData?.[pageIndex]?.highlightSnippets || []);
+    // Apply yellow highlights ONLY if explicitly provided.
+    // Passing null/undefined preserves existing highlights (anchors).
+    if (Array.isArray(highlightSnippets)) {
+      applyHighlightSnippetsToPage(pageIndex, pageData?.[pageIndex]?.highlightSnippets || []);
+    }
 
     // Robust parsing:
     // - Works with \n or \r\n

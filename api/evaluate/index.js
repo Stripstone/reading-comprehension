@@ -11,6 +11,21 @@ import { json, withCors, readJsonBody } from "../_lib/http.js";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile"; // replacement model per Groq deprecations
 
+function sanitizeUserFacingFeedback(text) {
+  let s = String(text || "");
+  // Safety-net: the prompt should prevent this, but models can drift.
+  // Replace third-person "learner" phrasing with direct second-person.
+  s = s.replace(/\bThe learner's\b/gi, "Your");
+  s = s.replace(/\bthe learner\b/gi, "you");
+  s = s.replace(/\blearner\b/gi, "you");
+  // Reduce overly judgmental phrasing if it slips through.
+  s = s.replace(
+    /\bindicating a lack of understanding of the task\b/gi,
+    "which suggests you may have missed the goal of the task"
+  );
+  return s;
+}
+
 export default async function handler(req, res) {
   const allowed = [
     "https://stripstone.github.io",
@@ -95,6 +110,9 @@ export default async function handler(req, res) {
         }
       }
     }
+
+    // Final user-facing pass: enforce second-person, supportive wording.
+    feedback = sanitizeUserFacingFeedback(feedback);
 
     // Highlights are a first-class feature (not diagnostics): used by the UI to visually
     // mark missed/weak core items directly in the passage text.
