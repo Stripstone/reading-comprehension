@@ -17,8 +17,15 @@
   let pages = [];
   let pageData = [];
 
-const STORAGE_KEY_SESSION = "rc_session_v1";
-const STORAGE_KEY_META = "rc_session_meta_v1"; // small future-proof hook
+// ---- Persistence ----
+// Persist learner work per-page-hash so switching chapters/sources doesn't wipe progress.
+// Also persist the last-opened session so refresh restores the current view.
+const STORAGE_KEY_SESSION = "rc_session_v2";
+const STORAGE_KEY_META = "rc_session_meta_v2"; // small future-proof hook
+
+function getConsolidationCacheKey(pageHash) {
+  return `rc_consolidation_${pageHash}`;
+}
 
 let _persistTimer = null;
 function schedulePersistSession() {
@@ -33,23 +40,24 @@ function schedulePersistSession() {
 
 function persistSessionNow() {
   try {
-    // Persist only what we need to restore a learner's work.
-    // - DO persist: pages + learner consolidations (+ minimal per-page state)
-    // - DO NOT persist: evaluate output (AI feedback/rating), which can be regenerated.
+    // 1) Persist consolidations per pageHash so switching chapters doesn't wipe work.
+    for (const p of (pageData || [])) {
+      const h = p?.pageHash;
+      if (!h) continue;
+      const record = { v: 1, savedAt: Date.now(), consolidation: p?.consolidation || "" };
+      localStorage.setItem(getConsolidationCacheKey(h), JSON.stringify(record));
+    }
+
+    // 2) Persist a lightweight snapshot of the last-opened session for refresh restore.
     const payload = {
-      v: 1,
+      v: 2,
       savedAt: Date.now(),
       pages: pages.slice(),
-      pageData: pageData.map(p => ({
-        consolidation: p?.consolidation || "",
-        charCount: p?.charCount || 0,
-        isSandstone: !!p?.isSandstone,
-        completedOnTime: p?.completedOnTime !== false,
-        // Link to cached anchors without duplicating the anchor payload.
-        pageHash: p?.pageHash || ""
-      }))
+      pageHashes: pageData.map(p => p?.pageHash || ""),
+      consolidations: pageData.map(p => p?.consolidation || "")
     };
     localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(payload));
+    localStorage.setItem(STORAGE_KEY_META, JSON.stringify({ savedAt: payload.savedAt }));
   } catch (e) {
     // Ignore quota / private mode errors; app should still function.
   }
@@ -60,29 +68,50 @@ function clearPersistedSession() {
   try { localStorage.removeItem(STORAGE_KEY_META); } catch (_) {}
 }
 
+function clearPersistedWorkForPageHashes(pageHashes, { clearAnchors = false } = {}) {
+  const hashes = (pageHashes || []).filter(Boolean);
+  for (const h of hashes) {
+    try { localStorage.removeItem(getConsolidationCacheKey(h)); } catch (_) {}
+    if (clearAnchors) {
+      try { localStorage.removeItem(getAnchorCacheKey(h)); } catch (_) {}
+    }
+  }
+}
+
 function loadPersistedSessionIfAny() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_SESSION);
     if (!raw) return false;
     const parsed = JSON.parse(raw);
-    if (!parsed || parsed.v !== 1) return false;
-    if (!Array.isArray(parsed.pages) || !Array.isArray(parsed.pageData)) return false;
+    if (!parsed || parsed.v !== 2) return false;
+    if (!Array.isArray(parsed.pages)) return false;
 
     pages = parsed.pages;
-    const incoming = parsed.pageData;
+    const incomingHashes = Array.isArray(parsed.pageHashes) ? parsed.pageHashes : [];
+    const incomingConsolidations = Array.isArray(parsed.consolidations) ? parsed.consolidations : [];
 
     // Rehydrate runtime-only fields (AI output is intentionally not persisted).
     pageData = pages.map((t, idx) => {
-      const saved = incoming[idx] || {};
+      const pageHash = incomingHashes[idx] || "";
+      let consolidation = incomingConsolidations[idx] || "";
+      if (pageHash) {
+        try {
+          const rawC = localStorage.getItem(getConsolidationCacheKey(pageHash));
+          if (rawC) {
+            const rec = JSON.parse(rawC);
+            if (rec && typeof rec.consolidation === 'string') consolidation = rec.consolidation;
+          }
+        } catch (_) {}
+      }
       return {
         text: t,
-        consolidation: saved.consolidation || "",
+        consolidation,
         aiFeedbackRaw: "",
-        charCount: saved.charCount || 0,
-        completedOnTime: saved.completedOnTime !== false,
-        isSandstone: !!saved.isSandstone,
+        charCount: (consolidation || "").length,
+        completedOnTime: true,
+        isSandstone: false,
         rating: 0,
-        pageHash: saved.pageHash || "",
+        pageHash,
         anchors: null,
         anchorVersion: 0,
         anchorsMeta: null
@@ -961,18 +990,58 @@ function writeAnchorsToCache(pageHash, payload) {
     // Normalize "## Page X" into a hard delimiter
     input = input.replace(/^\s*##\s*Page\s+\d+.*$/gim, "\n\n---\n\n");
 
-    // Split on hard delimiters OR blank-line runs
-    const chunks = input.split(/(?:\n\s*---\s*\n|\n\s*\n+)/g);
+    // Split on explicit hard delimiters first.
+    const hardChunks = input.split(/\n\s*---\s*\n/g);
 
+    // Paragraph splitting (blank lines) + fallback for single-newline paragraphs.
     const out = [];
-    for (const c of chunks) {
-      const cleaned = c
-        .split("\n")
-        .map((l) => l.trim())
-        .filter((l) => l && !/^[#—]/.test(l));
-      if (!cleaned.length) continue;
-      out.push(cleaned.join(" ").replace(/\s+/g, " ").trim());
+
+    const startsNewParagraph = (prevLine, nextLine) => {
+      if (!prevLine || !nextLine) return false;
+      const prevEndsSentence = /[.!?\"”']\s*$/.test(prevLine.trim());
+      const nextStartsPara = /^[A-Z0-9“"'\(\[]/.test(nextLine.trim());
+      return prevEndsSentence && nextStartsPara;
+    };
+
+    for (const hc of hardChunks) {
+      const chunk = String(hc || "").trim();
+      if (!chunk) continue;
+
+      // 1) Normal: blank-line-separated paragraphs.
+      let paras = chunk.split(/\n\s*\n+/g).map(s => s.trim()).filter(Boolean);
+
+      // 2) Fallback: single newlines between paragraphs (common when copying from web).
+      if (paras.length <= 1 && /\n/.test(chunk)) {
+        const lines = chunk.split(/\n+/).map(l => l.trimEnd());
+        const tmp = [];
+        let buf = [];
+        for (let i = 0; i < lines.length; i++) {
+          const line = (lines[i] || "").trim();
+          if (!line) continue;
+          if (/^[#—]/.test(line)) continue;
+          buf.push(line);
+          const next = (lines[i + 1] || "").trim();
+          if (startsNewParagraph(line, next)) {
+            tmp.push(buf.join(" ").replace(/\s+/g, " ").trim());
+            buf = [];
+          }
+        }
+        if (buf.length) tmp.push(buf.join(" ").replace(/\s+/g, " ").trim());
+        if (tmp.length > 1) paras = tmp;
+      }
+
+      for (const p of paras) {
+        const cleaned = p
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l && !/^[#—]/.test(l))
+          .join(" ")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (cleaned) out.push(cleaned);
+      }
     }
+
     return out;
   }
 
@@ -1387,7 +1456,7 @@ function writeAnchorsToCache(pageHash, payload) {
 
 
 
-function addPages() {
+  async function addPages() {
     const input = document.getElementById("bulkInput").value;
     goalTime = parseInt(document.getElementById("goalTimeInput").value);
     goalCharCount = parseInt(document.getElementById("goalCharInput").value);
@@ -1399,64 +1468,88 @@ function addPages() {
     // Split pasted text into pages using paragraph breaks (blank lines).
     // Still supports legacy delimiters (--- / "## Page X") if present.
     const newPages = splitIntoPages(input);
-    newPages.forEach(pageText => {
+    for (const pageText of newPages) {
+      const pageHash = await stableHashText(pageText);
+      let consolidation = "";
+      try {
+        const rawC = localStorage.getItem(getConsolidationCacheKey(pageHash));
+        if (rawC) {
+          const rec = JSON.parse(rawC);
+          if (rec && typeof rec.consolidation === 'string') consolidation = rec.consolidation;
+        }
+      } catch (_) {}
+
       pages.push(pageText);
       pageData.push({
         text: pageText,
-        consolidation: "",
+        consolidation,
         aiFeedbackRaw: "",
-        charCount: 0,
+        charCount: (consolidation || "").length,
         completedOnTime: true, // Assume true until sandstoned
         isSandstone: false,
         rating: 0,
         // Anchors
-        pageHash: "",
+        pageHash,
         anchors: null,
         anchorVersion: 0,
         anchorsMeta: null
       });
-    });
+    }
 
     document.getElementById("bulkInput").value = "";
     schedulePersistSession();
-  render();
+    render();
     checkSubmitButton();
   }
 
   // Append pages to the existing session (does NOT clear pages/timers/ratings).
   // Uses the same splitting rules as addPages().
-  function appendPages() {
+  async function appendPages() {
     const input = document.getElementById("bulkInput").value;
     goalTime = parseInt(document.getElementById("goalTimeInput").value);
     goalCharCount = parseInt(document.getElementById("goalCharInput").value);
     if (!input || !input.trim()) return;
 
     const newPages = splitIntoPages(input);
-    newPages.forEach(pageText => {
+    for (const pageText of newPages) {
+      const pageHash = await stableHashText(pageText);
+      let consolidation = "";
+      try {
+        const rawC = localStorage.getItem(getConsolidationCacheKey(pageHash));
+        if (rawC) {
+          const rec = JSON.parse(rawC);
+          if (rec && typeof rec.consolidation === 'string') consolidation = rec.consolidation;
+        }
+      } catch (_) {}
+
       pages.push(pageText);
       pageData.push({
         text: pageText,
-        consolidation: "",
+        consolidation,
         aiFeedbackRaw: "",
-        charCount: 0,
+        charCount: (consolidation || "").length,
         completedOnTime: true,
         isSandstone: false,
         rating: 0,
         // Anchors
-        pageHash: "",
+        pageHash,
         anchors: null,
         anchorVersion: 0,
         anchorsMeta: null
       });
-    });
+    }
 
     document.getElementById("bulkInput").value = "";
     render();
     checkSubmitButton();
   }
 
-  function resetSession({ confirm = true } = {}) {
+  function resetSession({ confirm = true, clearPersistedWork = false, clearAnchors = false } = {}) {
     if (confirm && !window.confirm("Clear all pages, consolidations, and timers?")) return false;
+
+    if (clearPersistedWork) {
+      clearPersistedWorkForPageHashes(pageData.map(p => p?.pageHash), { clearAnchors });
+    }
     pages = [];
     pageData = [];
     timers = [];
@@ -1480,6 +1573,7 @@ function addPages() {
 
       const page = document.createElement("div");
       page.className = "page";
+      page.dataset.pageIndex = String(i);
 
       page.innerHTML = `
         <div class="page-header">Page ${i + 1}</div>
@@ -1770,6 +1864,9 @@ function addPages() {
     if (ALSO_CLEAR_ANCHORS) {
       try { inMemoryAnchorsCache = Object.create(null); } catch (_) {}
     }
+
+    // Clear persisted learner consolidations for currently loaded pages.
+    clearPersistedWorkForPageHashes(pageData.map(p => p?.pageHash), { clearAnchors: ALSO_CLEAR_ANCHORS });
 
     schedulePersistSession();
     render();
