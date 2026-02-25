@@ -91,9 +91,127 @@
       color: var(--text-primary);
       min-height: 100vh;
       padding: 60px 20px;
+      padding-bottom: 110px; /* room for fixed footer banner */
       position: relative;
       overflow-x: hidden;
     }
+
+/* =========================
+   Instructions modal + support banner
+   ========================= */
+
+.how-it-works-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  padding: 10px 12px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: var(--secondary-bg);
+  color: var(--text-primary);
+  font-family: 'Karla', sans-serif;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.10);
+}
+
+.how-it-works-btn:hover {
+  transform: translateY(-1px);
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+
+.modal {
+  width: min(720px, 96vw);
+  max-height: min(80vh, 820px);
+  overflow: auto;
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  background: var(--card-bg);
+  box-shadow: 0 18px 60px rgba(0,0,0,0.35);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 10px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-header h2 {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.modal-close {
+  padding: 8px 10px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: var(--secondary-bg);
+  cursor: pointer;
+}
+
+.modal-body {
+  padding: 14px 18px 18px 18px;
+  font-family: 'Karla', sans-serif;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.modal-steps {
+  margin-left: 18px;
+}
+
+.modal-steps li {
+  margin: 8px 0;
+}
+
+/* Support footer (static, bottom of page) */
+.support-footer {
+  margin-top: 24px;
+  padding: 14px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border-top: 1px solid rgba(0,0,0,0.08);
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(8px);
+}
+
+.support-text {
+  font-family: 'Karla', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  opacity: 0.92;
+}
+
+.donate-btn {
+  display: inline-block;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 2px solid var(--border);
+  background: var(--secondary-bg);
+  font-family: 'Karla', sans-serif;
+  font-weight: 700;
+  text-decoration: none;
+  color: var(--text-primary);
+}
+
+.donate-btn:hover {
+  transform: translateY(-1px);
+}
 
     /* Fixed gradient background layer */
     body::before {
@@ -1005,10 +1123,11 @@
       pointer-events: none;
     }
 
-    /* Music button (bottom-right fixed) */
+    /* Music button (bottom-right fixed)
+       NOTE: lifted to avoid overlaying the bottom-page support footer. */
     .music-button {
       position: fixed;
-      bottom: 20px;
+      bottom: 96px;
       right: 20px;
       width: 56px;
       height: 56px;
@@ -1141,3 +1260,6 @@
   .page-text { font-size: 16px; line-height: 1.55; }
   textarea { font-size: 16px; }
 }
+
+
+

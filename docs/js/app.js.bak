@@ -1882,7 +1882,7 @@ function writeAnchorsToCache(pageHash, payload) {
             aiBtn.textContent = '▲ AI Evaluate';
             // Rehydrate the formatted view from persisted raw feedback.
             try {
-              displayAIFeedback(i, pageData[i].aiFeedbackRaw, null, feedbackDiv);
+              displayAIFeedback(i, pageData[i].aiFeedbackRaw, null);
             } catch (e) {
               // Fallback: show raw text if formatted renderer fails.
               feedbackDiv.textContent = String(pageData[i].aiFeedbackRaw || '');
@@ -2298,8 +2298,7 @@ function writeAnchorsToCache(pageHash, payload) {
       };
       // Passage highlighting is now owned by anchors; evaluation is for rating + analysis only.
       // Evaluation should not clear existing highlights (anchors own passage highlighting).
-      // IMPORTANT: pass the feedbackDiv so we can render even if the page is mid-render.
-      displayAIFeedback(pageIndex, data.feedback || "", null, feedbackDiv);
+      displayAIFeedback(pageIndex, data.feedback || "", null);
       // Flush immediately so reloads never miss AI feedback.
       try { persistSessionNow(); } catch (_) {}
 
@@ -2336,10 +2335,8 @@ function writeAnchorsToCache(pageHash, payload) {
     }
   }
 
-  function displayAIFeedback(pageIndex, feedback, highlightSnippets = null, feedbackDivOverride = null) {
-    // If called during render, the feedback container may not yet be in the DOM.
-    // Prefer the passed element, otherwise fall back to the canonical selector.
-    const feedbackDiv = feedbackDivOverride || document.querySelector(`.ai-feedback[data-page="${pageIndex}"]`);
+  function displayAIFeedback(pageIndex, feedback, highlightSnippets = null) {
+    const feedbackDiv = document.querySelector(`.ai-feedback[data-page="${pageIndex}"]`);
     if (!feedbackDiv) return;
 
     // Persist raw feedback so Final Summary can reuse it later.
@@ -2844,61 +2841,6 @@ function writeAnchorsToCache(pageHash, payload) {
   initBookImporter();
 
   // ===================================
-  // 📘 How This Works (Instructions Modal)
-  // ===================================
-
-  (function initHowItWorksModal() {
-    const btn = document.getElementById('howItWorksBtn');
-    const modal = document.getElementById('howItWorksModal');
-    const closeBtn = document.getElementById('howItWorksClose');
-    const donateBtn = document.getElementById('donateBtn');
-
-    // Wire donate link from config if present
-    try {
-      if (donateBtn && typeof BUY_ME_A_COFFEE_URL === 'string' && BUY_ME_A_COFFEE_URL.trim()) {
-        donateBtn.href = BUY_ME_A_COFFEE_URL.trim();
-      }
-    } catch (_) {
-      // ignore
-    }
-
-
-    // Support footer is now static at the bottom of the page (no banner logic).
-
-    function openModal() {
-      if (!modal) return;
-      modal.style.display = 'flex';
-      modal.setAttribute('aria-hidden', 'false');
-      // Focus close for accessibility
-      if (closeBtn) closeBtn.focus();
-    }
-
-    function closeModal() {
-      if (!modal) return;
-      modal.style.display = 'none';
-      modal.setAttribute('aria-hidden', 'true');
-      if (btn) btn.focus();
-    }
-
-    if (btn) btn.addEventListener('click', openModal);
-    if (closeBtn) closeBtn.addEventListener('click', closeModal);
-
-    // Click outside modal closes
-    if (modal) {
-      modal.addEventListener('click', (e) => {
-        if (e.target === modal) closeModal();
-      });
-    }
-
-    // ESC closes
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && modal && modal.style.display !== 'none') {
-        closeModal();
-      }
-    });
-  })();
-
-  // ===================================
   // 🛠️ Utility Panels (Volume + Diagnostics)
   // ===================================
 
@@ -3030,8 +2972,7 @@ function writeAnchorsToCache(pageHash, payload) {
       // the diagnostics button will sit directly under the music button.
       // Nudge it left so both are visible.
       diagBtn.style.right = '88px';
-      // Keep fixed buttons above the footer support section at the bottom of the page.
-      diagBtn.style.bottom = '96px';
+      diagBtn.style.bottom = '20px';
 
       if (musicToggleBtn && musicToggleBtn.parentElement) {
         musicToggleBtn.parentElement.insertBefore(diagBtn, musicToggleBtn);
