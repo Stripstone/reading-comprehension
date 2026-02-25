@@ -29,3 +29,8 @@
   const WEIGHT_COMPREHENSION = 55;
   const WEIGHT_DISCIPLINE = 25;
   const WEIGHT_COMPRESSION = 20;
+
+  // ❤️ Support link (optional)
+  // Set this to your Buy Me a Coffee page, e.g. "https://www.buymeacoffee.com/yourname"
+  // If left blank, the Donate button will still render but will do nothing.
+  const BUY_ME_A_COFFEE_URL = "";
