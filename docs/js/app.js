@@ -216,10 +216,10 @@ async function ensurePageHashesAndRehydrate() {
   } catch (_) {}
 }
 
-// Stable-ish text hashing: normalize whitespace to avoid accidental churn.
+// Stable-ish text hashing: must match the canonical pageHash used by anchors + cache keys.
+// Do NOT whitespace-normalize here, or persisted per-page records (rc_consolidation_<hash>) won't rehydrate.
 async function stableHashText(text) {
-  const normalized = (text || "").replace(/\s+/g, " ").trim();
-  return await sha256HexBrowser(normalized);
+  return await sha256HexBrowser(String(text ?? ""));
 }
 
  // Stores: { text, consolidation, charCount, completedOnTime, isSandstone, rating }
