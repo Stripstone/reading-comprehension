@@ -1882,7 +1882,7 @@ function writeAnchorsToCache(pageHash, payload) {
             aiBtn.textContent = '▲ AI Evaluate';
             // Rehydrate the formatted view from persisted raw feedback.
             try {
-              displayAIFeedback(i, pageData[i].aiFeedbackRaw, null, feedbackDiv);
+              displayAIFeedback(i, pageData[i].aiFeedbackRaw, null);
             } catch (e) {
               // Fallback: show raw text if formatted renderer fails.
               feedbackDiv.textContent = String(pageData[i].aiFeedbackRaw || '');
@@ -2335,8 +2335,8 @@ function writeAnchorsToCache(pageHash, payload) {
     }
   }
 
-  function displayAIFeedback(pageIndex, feedback, highlightSnippets = null, feedbackDivOverride = null) {
-    const feedbackDiv = feedbackDivOverride || document.querySelector(`.ai-feedback[data-page=""]`);
+  function displayAIFeedback(pageIndex, feedback, highlightSnippets = null) {
+    const feedbackDiv = document.querySelector(`.ai-feedback[data-page="${pageIndex}"]`);
     if (!feedbackDiv) return;
 
     // Persist raw feedback so Final Summary can reuse it later.
