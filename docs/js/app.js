@@ -164,6 +164,58 @@ function loadPersistedSessionIfAny() {
   }
 }
 
+
+// If a saved session was written before page hashes were computed (e.g. user never generated anchors),
+// the session snapshot may not include pageHashes. In that case, we compute them on boot and then
+// rehydrate per-page persisted work (ratings / AI feedback / panel state) keyed by the hash.
+async function ensurePageHashesAndRehydrate() {
+  try {
+    if (!Array.isArray(pages) || !Array.isArray(pageData) || !pages.length) return;
+    let changed = false;
+
+    for (let idx = 0; idx < pages.length; idx++) {
+      const text = pages[idx] || "";
+      const p = pageData[idx];
+      if (!p) continue;
+
+      if (!p.pageHash) {
+        const h = await stableHashText(text);
+        if (h) {
+          p.pageHash = h;
+          changed = true;
+        }
+      }
+
+      const h = p.pageHash;
+      if (!h) continue;
+
+      // Rehydrate from per-page record if present.
+      try {
+        const rawC = localStorage.getItem(getConsolidationCacheKey(h));
+        if (rawC) {
+          const rec = JSON.parse(rawC);
+          if (rec && typeof rec.consolidation === 'string') p.consolidation = rec.consolidation;
+          const r = Number(rec?.rating || 0);
+          p.rating = Number.isFinite(r) ? r : 0;
+          p.isSandstone = !!rec?.isSandstone;
+          p.aiExpanded = !!rec?.aiExpanded;
+          p.aiFeedbackRaw = typeof rec?.aiFeedbackRaw === 'string' ? rec.aiFeedbackRaw : "";
+          p.aiAt = rec?.aiAt ?? null;
+          p.aiRating = rec?.aiRating ?? null;
+          p.charCount = (p.consolidation || "").length;
+        }
+      } catch (_) {}
+    }
+
+    if (changed) {
+      // Update the session snapshot so future reloads have hashes immediately.
+      persistSessionNow();
+      render();
+      try { updateDiagnostics(); } catch (_) {}
+    }
+  } catch (_) {}
+}
+
 // Stable-ish text hashing: normalize whitespace to avoid accidental churn.
 async function stableHashText(text) {
   const normalized = (text || "").replace(/\s+/g, " ").trim();
@@ -1803,7 +1855,12 @@ function writeAnchorsToCache(pageHash, payload) {
             feedbackDiv.style.display = 'block';
             aiBtn.textContent = '▲ AI Evaluate';
             // Rehydrate the formatted view from persisted raw feedback.
-            displayAIFeedback(i, pageData[i].aiFeedbackRaw, null);
+            try {
+              displayAIFeedback(i, pageData[i].aiFeedbackRaw, null);
+            } catch (e) {
+              // Fallback: show raw text if formatted renderer fails.
+              feedbackDiv.textContent = String(pageData[i].aiFeedbackRaw || '');
+            }
           } else {
             feedbackDiv.style.display = 'none';
             aiBtn.textContent = '▼ AI Evaluate';
@@ -1924,47 +1981,20 @@ function writeAnchorsToCache(pageHash, payload) {
     sandSound.pause();
   }
 
-  /**
-   * Clear Session
-   * - Keeps loaded pages.
-   * - Clears learner work (consolidations + AI feedback) for the currently loaded pages.
-   * - By default, keeps anchors (fast reload); toggle if you want to invalidate old anchors.
+    /**
+   * Clear Session (single reset button)
+   * - Clears user-facing state: loaded pages + learner work.
+   * - Keeps anchors (anchors are version-gated and backend-owned).
    */
   function clearSession() {
-    if (!pageData.length) return;
-
-    const ALSO_CLEAR_ANCHORS = false;
-
-    for (let i = 0; i < pageData.length; i++) {
-      const p = pageData[i];
-      p.consolidation = '';
-      p.charCount = 0;
-      p.completedOnTime = true;
-      p.isSandstone = false;
-      p.rating = 0;
-      p.aiExpanded = false;
-      p.aiFeedbackRaw = '';
-      p.aiAt = null;
-      p.aiRating = null;
-      p.editedAt = Date.now();
-      if (ALSO_CLEAR_ANCHORS) {
-        p.anchors = null;
-        p.anchorsMeta = null;
-      }
+    const ok = resetSession({ confirm: true, clearPersistedWork: true, clearAnchors: false });
+    if (ok) {
+      render();
+      try { updateDiagnostics(); } catch (_) {}
     }
-
-    if (ALSO_CLEAR_ANCHORS) {
-      try { inMemoryAnchorsCache = Object.create(null); } catch (_) {}
-    }
-
-    // Clear persisted learner consolidations for currently loaded pages.
-    clearPersistedWorkForPageHashes(pageData.map(p => p?.pageHash), { clearAnchors: ALSO_CLEAR_ANCHORS });
-
-    schedulePersistSession();
-    render();
   }
 
-  // ===================================
+// ===================================
   // 🧭 COMPASS & SUBMISSION LOGIC
   // ===================================
   
@@ -2236,6 +2266,8 @@ function writeAnchorsToCache(pageHash, payload) {
       // Passage highlighting is now owned by anchors; evaluation is for rating + analysis only.
       // Evaluation should not clear existing highlights (anchors own passage highlighting).
       displayAIFeedback(pageIndex, data.feedback || "", null);
+      // Flush immediately so reloads never miss AI feedback.
+      try { persistSessionNow(); } catch (_) {}
 
       aiBtn.textContent = '▲ AI Evaluate';
       aiBtn.classList.remove('loading');
@@ -3033,5 +3065,7 @@ try {
   if (loadPersistedSessionIfAny()) {
     render();
     updateDiagnostics();
+    // Ensure we can rehydrate per-page saved work even if the session snapshot lacked hashes.
+    ensurePageHashesAndRehydrate();
   }
 } catch (_) {}
