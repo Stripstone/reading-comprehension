@@ -2298,7 +2298,8 @@ function writeAnchorsToCache(pageHash, payload) {
       };
       // Passage highlighting is now owned by anchors; evaluation is for rating + analysis only.
       // Evaluation should not clear existing highlights (anchors own passage highlighting).
-      displayAIFeedback(pageIndex, data.feedback || "", null);
+      // IMPORTANT: pass the feedbackDiv so we can render even if the page is mid-render.
+      displayAIFeedback(pageIndex, data.feedback || "", null, feedbackDiv);
       // Flush immediately so reloads never miss AI feedback.
       try { persistSessionNow(); } catch (_) {}
 
@@ -2336,7 +2337,9 @@ function writeAnchorsToCache(pageHash, payload) {
   }
 
   function displayAIFeedback(pageIndex, feedback, highlightSnippets = null, feedbackDivOverride = null) {
-    const feedbackDiv = feedbackDivOverride || document.querySelector(`.ai-feedback[data-page=""]`);
+    // If called during render, the feedback container may not yet be in the DOM.
+    // Prefer the passed element, otherwise fall back to the canonical selector.
+    const feedbackDiv = feedbackDivOverride || document.querySelector(`.ai-feedback[data-page="${pageIndex}"]`);
     if (!feedbackDiv) return;
 
     // Persist raw feedback so Final Summary can reuse it later.
