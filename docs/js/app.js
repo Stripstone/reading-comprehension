@@ -44,7 +44,21 @@ function persistSessionNow() {
     for (const p of (pageData || [])) {
       const h = p?.pageHash;
       if (!h) continue;
-      const record = { v: 1, savedAt: Date.now(), consolidation: p?.consolidation || "" };
+      // v2: persist evaluation-stage inputs too (compass rating + sandstone) and any
+      // returned AI feedback so refresh does not wipe the evaluation phase.
+      const record = {
+        v: 2,
+        savedAt: Date.now(),
+        consolidation: p?.consolidation || "",
+        rating: Number(p?.rating || 0) || 0,
+        isSandstone: !!p?.isSandstone,
+        // Whether the AI feedback panel is currently expanded for this page.
+        // This is purely a UI convenience so users can return and still see the memory.
+        aiExpanded: !!p?.aiExpanded,
+        aiFeedbackRaw: typeof p?.aiFeedbackRaw === 'string' ? p.aiFeedbackRaw : "",
+        aiAt: p?.aiAt ?? null,
+        aiRating: p?.aiRating ?? null,
+      };
       localStorage.setItem(getConsolidationCacheKey(h), JSON.stringify(record));
     }
 
@@ -94,23 +108,40 @@ function loadPersistedSessionIfAny() {
     pageData = pages.map((t, idx) => {
       const pageHash = incomingHashes[idx] || "";
       let consolidation = incomingConsolidations[idx] || "";
+      let rating = 0;
+      let isSandstone = false;
+      let aiExpanded = false;
+      let aiFeedbackRaw = "";
+      let aiAt = null;
+      let aiRating = null;
       if (pageHash) {
         try {
           const rawC = localStorage.getItem(getConsolidationCacheKey(pageHash));
           if (rawC) {
             const rec = JSON.parse(rawC);
             if (rec && typeof rec.consolidation === 'string') consolidation = rec.consolidation;
+            // Back-compat: v1 stored only consolidation.
+            const r = Number(rec?.rating || 0);
+            rating = Number.isFinite(r) ? r : 0;
+            isSandstone = !!rec?.isSandstone;
+            aiExpanded = !!rec?.aiExpanded;
+            aiFeedbackRaw = typeof rec?.aiFeedbackRaw === 'string' ? rec.aiFeedbackRaw : "";
+            aiAt = rec?.aiAt ?? null;
+            aiRating = rec?.aiRating ?? null;
           }
         } catch (_) {}
       }
       return {
         text: t,
         consolidation,
-        aiFeedbackRaw: "",
+        aiExpanded,
+        aiFeedbackRaw,
+        aiAt,
+        aiRating,
         charCount: (consolidation || "").length,
         completedOnTime: true,
-        isSandstone: false,
-        rating: 0,
+        isSandstone,
+        rating,
         pageHash,
         anchors: null,
         anchorVersion: 0,
@@ -1109,6 +1140,10 @@ function writeAnchorsToCache(pageHash, payload) {
       const isBook = sourceSel.value === "book";
       bookControls.style.display = isBook ? "flex" : "none";
       if (textControls) textControls.style.display = isBook ? "none" : "block";
+
+      // UX: "Add Pages" only makes sense for ad-hoc Text input.
+      // For Books, allowing out-of-order appends adds confusion with no value.
+      if (appendBtn) appendBtn.style.display = isBook ? "none" : "inline-block";
     }
 
     function countExplicitH1(text) {
@@ -1471,11 +1506,24 @@ function writeAnchorsToCache(pageHash, payload) {
     for (const pageText of newPages) {
       const pageHash = await stableHashText(pageText);
       let consolidation = "";
+      let rating = 0;
+      let isSandstone = false;
+      let aiExpanded = false;
+      let aiFeedbackRaw = "";
+      let aiAt = null;
+      let aiRating = null;
       try {
         const rawC = localStorage.getItem(getConsolidationCacheKey(pageHash));
         if (rawC) {
           const rec = JSON.parse(rawC);
           if (rec && typeof rec.consolidation === 'string') consolidation = rec.consolidation;
+          const r = Number(rec?.rating || 0);
+          rating = Number.isFinite(r) ? r : 0;
+          isSandstone = !!rec?.isSandstone;
+          aiExpanded = !!rec?.aiExpanded;
+          aiFeedbackRaw = typeof rec?.aiFeedbackRaw === 'string' ? rec.aiFeedbackRaw : "";
+          aiAt = rec?.aiAt ?? null;
+          aiRating = rec?.aiRating ?? null;
         }
       } catch (_) {}
 
@@ -1483,11 +1531,14 @@ function writeAnchorsToCache(pageHash, payload) {
       pageData.push({
         text: pageText,
         consolidation,
-        aiFeedbackRaw: "",
+        aiExpanded,
+        aiFeedbackRaw,
+        aiAt,
+        aiRating,
         charCount: (consolidation || "").length,
         completedOnTime: true, // Assume true until sandstoned
-        isSandstone: false,
-        rating: 0,
+        isSandstone,
+        rating,
         // Anchors
         pageHash,
         anchors: null,
@@ -1514,11 +1565,24 @@ function writeAnchorsToCache(pageHash, payload) {
     for (const pageText of newPages) {
       const pageHash = await stableHashText(pageText);
       let consolidation = "";
+      let rating = 0;
+      let isSandstone = false;
+      let aiExpanded = false;
+      let aiFeedbackRaw = "";
+      let aiAt = null;
+      let aiRating = null;
       try {
         const rawC = localStorage.getItem(getConsolidationCacheKey(pageHash));
         if (rawC) {
           const rec = JSON.parse(rawC);
           if (rec && typeof rec.consolidation === 'string') consolidation = rec.consolidation;
+          const r = Number(rec?.rating || 0);
+          rating = Number.isFinite(r) ? r : 0;
+          isSandstone = !!rec?.isSandstone;
+          aiExpanded = !!rec?.aiExpanded;
+          aiFeedbackRaw = typeof rec?.aiFeedbackRaw === 'string' ? rec.aiFeedbackRaw : "";
+          aiAt = rec?.aiAt ?? null;
+          aiRating = rec?.aiRating ?? null;
         }
       } catch (_) {}
 
@@ -1526,11 +1590,14 @@ function writeAnchorsToCache(pageHash, payload) {
       pageData.push({
         text: pageText,
         consolidation,
-        aiFeedbackRaw: "",
+        aiExpanded,
+        aiFeedbackRaw,
+        aiAt,
+        aiRating,
         charCount: (consolidation || "").length,
         completedOnTime: true,
-        isSandstone: false,
-        rating: 0,
+        isSandstone,
+        rating,
         // Anchors
         pageHash,
         anchors: null,
@@ -1560,6 +1627,7 @@ function writeAnchorsToCache(pageHash, payload) {
     document.getElementById("submitBtn").disabled = true;
     document.getElementById("verdictSection").style.display = "none";
     lastFocusedPageIndex = -1;
+    evaluationPhase = false;
     clearPersistedSession();
     return true;
   }
@@ -1721,6 +1789,27 @@ function writeAnchorsToCache(pageHash, payload) {
       if (aiBtn) {
         aiBtn.addEventListener("click", () => evaluatePageWithAI(i));
       }
+
+      // Restore AI panel visibility + content if it was previously opened.
+      // (User-facing state; persisted per pageHash.)
+      const feedbackDiv = page.querySelector(`.ai-feedback[data-page="${i}"]`);
+      if (aiBtn && feedbackDiv) {
+        const hasFeedback = String(pageData[i]?.aiFeedbackRaw || '').trim().length > 0;
+        if (hasFeedback) {
+          // Ensure the button is available if there is saved feedback.
+          aiBtn.style.display = 'block';
+          // If the panel is expanded, show it and rebuild the formatted UI.
+          if (pageData[i]?.aiExpanded) {
+            feedbackDiv.style.display = 'block';
+            aiBtn.textContent = '▲ AI Evaluate';
+            // Rehydrate the formatted view from persisted raw feedback.
+            displayAIFeedback(i, pageData[i].aiFeedbackRaw, null);
+          } else {
+            feedbackDiv.style.display = 'none';
+            aiBtn.textContent = '▼ AI Evaluate';
+          }
+        }
+      }
       
       // Restore previous rating if exists
       if (pageData[i].rating > 0) {
@@ -1816,6 +1905,7 @@ function writeAnchorsToCache(pageHash, payload) {
         // Mark page as sandstoned and failed timing
         pageData[i].isSandstone = true;
         pageData[i].completedOnTime = false;
+        pageData[i].editedAt = Date.now();
         
         // Block compasses on this page permanently
         const starsDiv = wrapper.closest(".page").querySelector(".evaluation-section .stars");
@@ -1823,6 +1913,7 @@ function writeAnchorsToCache(pageHash, payload) {
         starsDiv.style.opacity = "0.15";
         
         checkSubmitButton();
+        schedulePersistSession();
       }
     }, 1000);
   }
@@ -1851,6 +1942,7 @@ function writeAnchorsToCache(pageHash, payload) {
       p.completedOnTime = true;
       p.isSandstone = false;
       p.rating = 0;
+      p.aiExpanded = false;
       p.aiFeedbackRaw = '';
       p.aiAt = null;
       p.aiRating = null;
@@ -2037,6 +2129,10 @@ function writeAnchorsToCache(pageHash, payload) {
     if (feedbackDiv.style.display === 'block') {
       feedbackDiv.style.display = 'none';
       aiBtn.textContent = '▼ AI Evaluate';
+      if (pageData?.[pageIndex]) {
+        pageData[pageIndex].aiExpanded = false;
+        schedulePersistSession();
+      }
       return;
     }
 
@@ -2044,6 +2140,11 @@ function writeAnchorsToCache(pageHash, payload) {
     aiBtn.classList.add('loading');
     feedbackDiv.style.display = 'block';
     feedbackDiv.innerHTML = '<div style="text-align: center; opacity: 0.6;">Analyzing...</div>';
+
+    if (pageData?.[pageIndex]) {
+      pageData[pageIndex].aiExpanded = true;
+      schedulePersistSession();
+    }
 
     const page = pageData[pageIndex];
     const pageElement = document.querySelectorAll('.page')[pageIndex];
@@ -2154,6 +2255,11 @@ function writeAnchorsToCache(pageHash, payload) {
         '<div style="color: #8B2500;">Error getting AI feedback. Check console and verify AI Host is running.</div>';
       aiBtn.textContent = '▼ AI Evaluate';
       aiBtn.classList.remove('loading');
+
+      if (pageData?.[pageIndex]) {
+        pageData[pageIndex].aiExpanded = false;
+        schedulePersistSession();
+      }
     }
   }
 
@@ -2164,11 +2270,16 @@ function writeAnchorsToCache(pageHash, payload) {
     // Persist raw feedback so Final Summary can reuse it later.
     if (pageData?.[pageIndex]) {
       pageData[pageIndex].aiFeedbackRaw = String(feedback || "");
+      pageData[pageIndex].aiAt = Date.now();
+      // If we are displaying feedback, we consider the panel open.
+      // (Toggling closed is handled in evaluatePageWithAI.)
+      if (pageData[pageIndex].aiExpanded !== false) pageData[pageIndex].aiExpanded = true;
       if (Array.isArray(highlightSnippets)) {
         pageData[pageIndex].highlightSnippets = highlightSnippets
           .map(s => String(s || '').trim())
           .filter(Boolean);
       }
+      schedulePersistSession();
     }
 
     // Apply yellow highlights ONLY if explicitly provided.
@@ -2274,6 +2385,9 @@ function writeAnchorsToCache(pageHash, payload) {
 
   function setRating(pageIndex, value, stars) {
     pageData[pageIndex].rating = value;
+    pageData[pageIndex].editedAt = Date.now();
+    // Persist immediately-ish so refresh doesn't wipe compass work.
+    schedulePersistSession();
     
     // Play compass click sound
     if (!allSoundsMuted) {
