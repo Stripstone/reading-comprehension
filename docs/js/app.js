@@ -354,7 +354,33 @@ async function stableHashText(text) {
   // Anchors (core idea targets)
   // ===================================
 
-  const API_BASE = "https://reading-comprehension-rpwd.vercel.app";
+  // API base:
+  // - On Vercel (static+API together) we can use relative paths.
+  // - On GitHub Pages (static only) we need an absolute Vercel URL.
+  // Override precedence:
+  //   1) ?api=https://your-vercel.app
+  //   2) localStorage rc_api_base
+  //   3) default fallback
+  const DEFAULT_API_BASE = "https://reading-comprehension-rpwd.vercel.app";
+  function resolveApiBase() {
+    try {
+      const qs = new URLSearchParams(window.location.search);
+      const fromQs = (qs.get('api') || '').trim();
+      if (fromQs) return fromQs.replace(/\/$/, '');
+      const fromLs = (localStorage.getItem('rc_api_base') || '').trim();
+      if (fromLs) return fromLs.replace(/\/$/, '');
+      // If we're already on a host that should serve /api (e.g., Vercel), prefer relative.
+      if (window.location.hostname.endsWith('vercel.app')) return "";
+      return DEFAULT_API_BASE;
+    } catch (_) {
+      return DEFAULT_API_BASE;
+    }
+  }
+  const API_BASE = resolveApiBase();
+  function apiUrl(path) {
+    // path should start with '/'
+    return API_BASE ? (API_BASE + path) : path;
+  }
 const ANCHOR_VERSION = 5;
   const anchorsInFlight = new Map(); // pageHash -> Promise
 
@@ -1986,13 +2012,20 @@ function writeAnchorsToCache(pageHash, payload) {
    * - Clears user-facing state: loaded pages + learner work.
    * - Keeps anchors (anchors are version-gated and backend-owned).
    */
-  function clearSession() {
+  // Single user-facing reset: clears the currently loaded pages and any work tied to them.
+  // Keeps anchors (they are version-gated and backend-owned).
+  function clearPages() {
     const ok = resetSession({ confirm: true, clearPersistedWork: true, clearAnchors: false });
     if (ok) {
+      // Belt-and-suspenders: ensure any pending debounced save can't resurrect state.
+      try { persistSessionNow(); } catch (_) {}
       render();
       try { updateDiagnostics(); } catch (_) {}
     }
   }
+
+  // Back-compat alias (older HTML/button wiring)
+  function clearSession() { return clearPages(); }
 
 // ===================================
   // 🧭 COMPASS & SUBMISSION LOGIC
@@ -2232,7 +2265,7 @@ function writeAnchorsToCache(pageHash, payload) {
     if (!requestPayload.debug) delete requestPayload.debug;
 
     try {
-      const response = await fetch("https://reading-comprehension-rpwd.vercel.app/api/evaluate", {
+      const response = await fetch(apiUrl("/api/evaluate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestPayload)
@@ -2283,8 +2316,15 @@ function writeAnchorsToCache(pageHash, payload) {
           at: new Date().toISOString()
         };
       }
+      const diag = lastAIDiagnostics || null;
+      const status = diag && typeof diag.status === 'number' ? diag.status : 0;
+      const msg = String(error?.message || error || '').slice(0, 240);
       feedbackDiv.innerHTML =
-        '<div style="color: #8B2500;">Error getting AI feedback. Check console and verify AI Host is running.</div>';
+        `<div style="color:#8B2500;">
+          <div><b>AI Evaluate failed</b>${status ? ` (HTTP ${status})` : ''}.</div>
+          <div style="opacity:0.85; font-size:13px; margin-top:6px;">${escapeHtml(msg || 'Unknown error')}</div>
+          <div style="opacity:0.7; font-size:12px; margin-top:6px;">Tip: open DevTools → Network and look for <code>/api/evaluate</code>. (If you're on GitHub Pages, set <code>?api=</code> to your Vercel deployment.)</div>
+        </div>`;
       aiBtn.textContent = '▼ AI Evaluate';
       aiBtn.classList.remove('loading');
 
@@ -2688,7 +2728,7 @@ function writeAnchorsToCache(pageHash, payload) {
     const requestPayload = { title: "", pages: pagesPayload };
 
     try {
-      const response = await fetch("https://reading-comprehension-rpwd.vercel.app/api/summary", {
+      const response = await fetch(apiUrl("/api/summary"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestPayload)
