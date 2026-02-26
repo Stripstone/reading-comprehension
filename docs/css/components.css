@@ -90,130 +90,127 @@
       font-weight: 600;
       color: var(--text-primary);
       min-height: 100vh;
-            display: flex;
-      flex-direction: column;
-padding: 60px 20px;
-      padding-bottom: 60px; /* normal document footer */
+      padding: 60px 20px;
       position: relative;
       overflow-x: hidden;
     }
 
-/* =========================
+    /* =========================
    Instructions modal + support banner
    ========================= */
 
-.how-it-works-btn {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  padding: 10px 12px;
-  border: 2px solid var(--border);
-  border-radius: 10px;
-  background: var(--secondary-bg);
-  color: var(--text-primary);
-  font-family: 'Karla', sans-serif;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.10);
-}
+    .how-it-works-btn {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      padding: 10px 12px;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      background: var(--secondary-bg);
+      color: var(--text-primary);
+      font-family: 'Karla', sans-serif;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.10);
+    }
 
-.how-it-works-btn:hover {
-  transform: translateY(-1px);
-}
+    .how-it-works-btn:hover {
+      transform: translateY(-1px);
+    }
 
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.45);
-  z-index: 2000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 18px;
-}
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+    }
 
-.modal {
-  width: min(720px, 96vw);
-  max-height: min(80vh, 820px);
-  overflow: auto;
-  border: 2px solid var(--border);
-  border-radius: 14px;
-  background: var(--card-bg);
-  box-shadow: 0 18px 60px rgba(0,0,0,0.35);
-}
+    .modal {
+      width: min(720px, 96vw);
+      max-height: min(80vh, 820px);
+      overflow: auto;
+      border: 2px solid var(--border);
+      border-radius: 14px;
+      background: var(--card-bg);
+      box-shadow: 0 18px 60px rgba(0,0,0,0.35);
+    }
 
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 16px 18px 10px 18px;
-  border-bottom: 1px solid var(--border);
-}
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 18px 10px 18px;
+      border-bottom: 1px solid var(--border);
+    }
 
-.modal-header h2 {
-  font-size: 20px;
-  font-weight: 800;
-}
+    .modal-header h2 {
+      font-size: 20px;
+      font-weight: 800;
+    }
 
-.modal-close {
-  padding: 8px 10px;
-  border: 2px solid var(--border);
-  border-radius: 10px;
-  background: var(--secondary-bg);
-  cursor: pointer;
-}
+    .modal-close {
+      padding: 8px 10px;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      background: var(--secondary-bg);
+      cursor: pointer;
+    }
 
-.modal-body {
-  padding: 14px 18px 18px 18px;
-  font-family: 'Karla', sans-serif;
-  font-weight: 500;
-  line-height: 1.45;
-}
+    .modal-body {
+      padding: 14px 18px 18px 18px;
+      font-family: 'Karla', sans-serif;
+      font-weight: 500;
+      line-height: 1.45;
+    }
 
-.modal-steps {
-  margin-left: 18px;
-}
+    .modal-steps {
+      margin-left: 18px;
+    }
 
-.modal-steps li {
-  margin: 8px 0;
-}
+    .modal-steps li {
+      margin: 8px 0;
+    }
 
-/* Support footer (static, bottom of page) */
-.support-footer {
-  margin-top: auto;
-  padding: 10px 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
+    /* Support footer (static, bottom of page) */
+    .support-footer {
+      margin-top: auto;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
 
-  border-top: 1px solid var(--border);
-  background: var(--card-bg);
-}
+      border-top: 1px solid var(--border);
+      background: var(--card-bg);
+    }
 
-.support-text {
-  font-family: 'Karla', sans-serif;
-  font-size: 14px;
-  font-weight: 600;
-  opacity: 0.92;
-}
+    .support-text {
+      font-family: 'Karla', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      opacity: 0.92;
+    }
 
-.donate-btn {
-  display: inline-block;
-  padding: 8px 12px;
-  border-radius: 10px;
-  border: 2px solid var(--border);
-  background: var(--secondary-bg);
-  font-family: 'Karla', sans-serif;
-  font-weight: 700;
-  text-decoration: none;
-  color: var(--text-primary);
-}
+    .donate-btn {
+      display: inline-block;
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: 2px solid var(--border);
+      background: var(--secondary-bg);
+      font-family: 'Karla', sans-serif;
+      font-weight: 700;
+      text-decoration: none;
+      color: var(--text-primary);
+    }
 
-.donate-btn:hover {
-  transform: translateY(-1px);
-}
+    .donate-btn:hover {
+      transform: translateY(-1px);
+    }
 
     /* Fixed gradient background layer */
     body::before {
@@ -261,8 +258,7 @@ padding: 60px 20px;
       margin: 0 auto;
       position: relative;
       z-index: 1;
-            flex: 1 0 auto;
-animation: fadeIn 0.6s ease-out;
+      animation: fadeIn 0.6s ease-out;
     }
 
     @keyframes fadeIn {
@@ -1126,11 +1122,10 @@ animation: fadeIn 0.6s ease-out;
       pointer-events: none;
     }
 
-    /* Music button (bottom-right fixed)
-       NOTE: lifted to avoid overlaying the bottom-page support footer. */
+    /* Music button (bottom-right fixed) */
     .music-button {
       position: fixed;
-      bottom: 96px;
+      bottom: 20px;
       right: 20px;
       width: 56px;
       height: 56px;
@@ -1265,21 +1260,68 @@ animation: fadeIn 0.6s ease-out;
 }
 
 
-
-
-
-.support-text {
-  font-size: 14px;
-  color: var(--text-secondary);
+/* ===============================
+   Support Footer (Fixed Bottom)
+   =============================== */
+:root {
+  --support-footer-height: 72px;
 }
 
-.donate-link {
-  display: inline-flex;
+#supportFooter {
+  /* Hard-pin to the viewport edges (no "floating" margins). */
+  position: fixed;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw;
+  max-width: none;
+  margin: 0 !important;
+  padding: 0;
+
+  /* Match the app chrome and visually "frame" the bottom edge. */
+  background: var(--secondary-bg);
+  border-top: 2px solid var(--border);
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 0;
+  box-shadow: none;
+
+  z-index: 500; /* below modals, above background */
+}
+
+.support-footer-inner {
+  height: var(--support-footer-height);
+  display: flex;
   align-items: center;
+  justify-content: center;
+  gap: 14px;
+  /* Full-width bar, but keep a little breathing room + space for the bottom-right toggle. */
+  padding: 10px 96px 10px 20px;
+  box-sizing: border-box;
 }
 
-.donate-img {
-  height: 32px;
+.support-footer-text {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.75);
+  white-space: nowrap;
+}
+
+.support-footer-button img {
+  height: 42px;
   width: auto;
   display: block;
+}
+
+/* Prevent footer from covering content */
+body {
+  padding-bottom: calc(var(--support-footer-height) + 12px);
+}
+
+@media (max-width: 520px) {
+  .support-footer-inner {
+    justify-content: flex-start;
+    padding-right: 86px;
+  }
+  .support-footer-text { white-space: normal; }
 }
