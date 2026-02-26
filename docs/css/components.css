@@ -1151,7 +1151,7 @@
 }
 
 #supportFooter {
-  position: fixed;
+  position: normal;
   left: 0;
   right: 0;
   bottom: 0;
