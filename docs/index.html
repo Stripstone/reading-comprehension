@@ -84,11 +84,6 @@
   <h1>Reading Comprehension</h1>
 
   <div class="top-controls">
-    <!-- Top-right help button -->
-    <button id="howItWorksBtn" class="how-it-works-btn" type="button" title="Instructions">
-      📘 How This Works
-    </button>
-
     <div class="import-row" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin-bottom:12px; position:relative; z-index:1;">
       <div class="input-group" style="min-width: 160px;">
         <label class="input-label">Source</label>
@@ -152,8 +147,9 @@
 	      <div style="margin-left:auto; display:flex; gap:10px; align-items:center; position:relative; flex-wrap:wrap; justify-content:flex-end;">
 	        <button id="loadBookSelection" type="button">Load Pages</button>
 	        <button id="appendBookSelection" type="button" title="Add pages to the end (do not clear existing pages)">Add Pages</button>
-	        <button type="button" onclick="clearPages()">Clear Pages</button>
-</div>
+	        <button type="button" onclick="clearSession()">Clear Session</button>
+	        <button type="button" onclick="resetSession({ confirm: true, clearPersistedWork: true, clearAnchors: true }); render();">Clear All Pages</button>
+	      </div>
 	    </div>
   </div>
 
@@ -191,42 +187,22 @@
   
 </div>
 
-<!-- How This Works Modal -->
-<div id="howItWorksModal" class="modal-overlay" style="display:none;" aria-hidden="true">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="howItWorksTitle">
-    <div class="modal-header">
-      <h2 id="howItWorksTitle">📘 How This Works</h2>
-      <button id="howItWorksClose" class="modal-close" type="button" aria-label="Close">✕</button>
-    </div>
-    <div class="modal-body">
-      <p style="margin-bottom:10px; opacity:0.9;">This tool is a simple loop: read → compress → honestly rate → (optional) AI check.</p>
-
-      <ol class="modal-steps">
-        <li><strong>Load pages</strong> from a book chapter (or paste text).</li>
-        <li><strong>Read the passage</strong>. Anchors highlight as your consolidation includes key terms.</li>
-        <li><strong>Write a consolidation</strong> (short summary) under the page.</li>
-        <li><strong>Hit the compass rating</strong> (1–5) to honestly score your understanding.</li>
-        <li><strong>Optional:</strong> Click <em>AI Evaluate</em> for feedback on your consolidation.</li>
-        <li><strong>Next</strong> moves you forward page-by-page.</li>
-      </ol>
-
-      <p style="margin-top:12px; font-size: 13px; opacity:0.8;">
-        Tip: Your work saves locally on this device.
-      </p>
-    </div>
-  </div>
-</div>
-
-<!-- Footer support section (static at bottom of page) -->
-<div id="supportFooter" class="support-footer" role="contentinfo" aria-live="polite">
-  <span class="support-text">❤️ If this helped you, consider supporting the project.</span>
-  <a id="donateBtn" class="donate-btn" href="#" target="_blank" rel="noopener">Buy Me a Coffee</a>
-</div>
 <script src="js/audio.js"></script>
 <script src="js/embers.js"></script>
 <script src="js/config.js"></script>
 <script src="assets/books/embedded_books.js"></script>
 <script src="js/app.js"></script>
+
+
+  <!-- Support Footer -->
+  <footer id="supportFooter" aria-label="Support this project">
+    <div class="support-footer-inner">
+      <span class="support-footer-text">❤️ If this helped you, consider supporting the project</span>
+      <a class="support-footer-button" href="https://www.buymeacoffee.com/tristonb" target="_blank" rel="noopener noreferrer">
+        <img alt="Buy me a coffee" src="https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=%E2%98%95&slug=tristonb&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff" />
+      </a>
+    </div>
+  </footer>
 
 </body>
 </html>
