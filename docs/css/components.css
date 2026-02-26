@@ -224,14 +224,11 @@
       z-index: -2;
     }
 
-    /* Scrollable paper texture overlay */
+    /* Paper texture overlay (fixed to viewport so it never "cuts off" while scrolling) */
     body::after {
       content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      position: fixed;
+      inset: 0;
       background-image: var(--paper-texture);
       background-size: auto;
       background-position: center;
@@ -1261,43 +1258,38 @@
 
 
 /* ===============================
-   Support Footer (Fixed Bottom)
+   Support Footer (True Page Footer)
    =============================== */
 :root {
   --support-footer-height: 72px;
+  --page-pad-x: 20px; /* keep in sync with body padding */
 }
 
+/* A real footer: sits at the end of the document and only appears when you scroll to the bottom. */
 #supportFooter {
-  /* Hard-pin to the viewport edges (no "floating" margins). */
-  position: fixed;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  width: 100vw;
-  max-width: none;
-  margin: 0 !important;
+  position: static;
+
+  /* Remove side margins created by body padding so it frames the viewport edges. */
+  width: calc(100% + (2 * var(--page-pad-x)));
+  margin-left: calc(-1 * var(--page-pad-x));
+  margin-right: calc(-1 * var(--page-pad-x));
+
+  margin-top: 24px;
   padding: 0;
 
-  /* Match the app chrome and visually "frame" the bottom edge. */
   background: var(--secondary-bg);
   border-top: 2px solid var(--border);
-  border-left: 0;
-  border-right: 0;
-  border-bottom: 0;
   border-radius: 0;
   box-shadow: none;
-
-  z-index: 500; /* below modals, above background */
 }
 
 .support-footer-inner {
-  height: var(--support-footer-height);
+  min-height: var(--support-footer-height);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 14px;
-  /* Full-width bar, but keep a little breathing room + space for the bottom-right toggle. */
-  padding: 10px 96px 10px 20px;
+  padding: 10px 20px;
   box-sizing: border-box;
 }
 
@@ -1313,15 +1305,12 @@
   display: block;
 }
 
-/* Prevent footer from covering content */
+/* Undo any fixed-footer compensation */
 body {
-  padding-bottom: calc(var(--support-footer-height) + 12px);
+  padding-bottom: 0;
 }
 
 @media (max-width: 520px) {
-  .support-footer-inner {
-    justify-content: flex-start;
-    padding-right: 86px;
-  }
+  .support-footer-inner { justify-content: flex-start; }
   .support-footer-text { white-space: normal; }
 }
