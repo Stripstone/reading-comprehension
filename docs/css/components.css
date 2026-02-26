@@ -91,7 +91,6 @@
       color: var(--text-primary);
       min-height: 100vh;
       padding: 60px 20px;
-      padding-bottom: 110px; /* room for fixed footer banner */
       position: relative;
       overflow-x: hidden;
     }
@@ -177,43 +176,7 @@
   margin: 8px 0;
 }
 
-/* Support footer (static, bottom of page) */
-.support-footer {
-  margin-top: 24px;
-  padding: 14px 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  border-top: 1px solid rgba(0,0,0,0.08);
-  background: rgba(255, 255, 255, 0.55);
-  backdrop-filter: blur(8px);
-}
-
-.support-text {
-  font-family: 'Karla', sans-serif;
-  font-size: 14px;
-  font-weight: 600;
-  opacity: 0.92;
-}
-
-.donate-btn {
-  display: inline-block;
-  padding: 8px 12px;
-  border-radius: 10px;
-  border: 2px solid var(--border);
-  background: var(--secondary-bg);
-  font-family: 'Karla', sans-serif;
-  font-weight: 700;
-  text-decoration: none;
-  color: var(--text-primary);
-}
-
-.donate-btn:hover {
-  transform: translateY(-1px);
-}
-
-    /* Fixed gradient background layer */
+/* Fixed gradient background layer */
     body::before {
       content: '';
       position: fixed;
@@ -1263,3 +1226,36 @@
 
 
 
+
+
+/* ============================= */
+/* Minimal static footer (true footer) */
+/* ============================= */
+
+.app-footer{
+  margin-top: 24px;
+  background: var(--card-bg);
+  border-top: 1px solid var(--border);
+  padding: 12px 16px;
+}
+
+.footer-inner{
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.footer-text{
+  font-family: 'Karla', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.footer-donate img{
+  height: 28px;
+  display: block;
+}
