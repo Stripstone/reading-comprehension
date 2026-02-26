@@ -6,6 +6,13 @@
       box-sizing: border-box;
     }
 
+/* Sticky footer layout (true page footer):
+   - If content is shorter than viewport, footer sits at the bottom.
+   - If content is taller, footer is only visible when you scroll to the end. */
+html, body {
+  height: 100%;
+}
+
 /* =========================
    Anchors (core idea targets)
    ========================= */
@@ -93,7 +100,16 @@
       padding: 60px 20px;
       position: relative;
       overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
     }
+
+/* Let the main app content take remaining height so the footer can sit on the bottom
+   when the page is shorter than the viewport. */
+.container {
+  flex: 1 0 auto;
+  padding-bottom: 40px; /* add breathing room */
+}
 
     /* =========================
    Instructions modal + support banner
@@ -1243,6 +1259,16 @@
         justify-content: space-between;
         width: 100%;
       }
+
+      .how-it-works-btn {
+        position: static;
+        width: 100%;
+        margin-bottom: 12px;
+      }
+
+      .top-controls {
+        padding-top: 20px; /* remove need for reserved button space */
+      }
     }
 
 
@@ -1274,7 +1300,73 @@
   margin-left: calc(-1 * var(--page-pad-x));
   margin-right: calc(-1 * var(--page-pad-x));
 
-  margin-top: 24px;
+  /* Push footer to the bottom when content is short (requires body:flex). */
+  margin-top: auto;
+
+  background: #e8e4dd; /* matches control panel tone */
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 0;
+  box-shadow: none;
+  padding: 14px 0;
+}
+
+.support-footer-inner {
+  min-height: var(--support-footer-height);
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 20px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.support-footer-icon {
+  font-size: 1.6rem;
+  line-height: 1;
+  transform: translateY(1px); /* optical centering */
+}
+
+.support-footer-text {
+  font-family: 'Crimson Pro', serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: var(--text-primary);
+}
+
+.support-footer-button img {
+  height: 38px;
+  width: auto;
+  display: block;
+}
+
+/* Undo any fixed-footer compensation */
+body {
+  padding-bottom: 0;
+}
+
+@media (max-width: 520px) {
+  .support-footer-inner {
+    justify-content: flex-start;
+  }
+}
+
+/* A real footer: sits at the end of the document and only appears when you scroll to the bottom. */
+#supportFooter {
+  position: static;
+
+  /* Remove side margins created by body padding so it frames the viewport edges. */
+  width: calc(100% + (2 * var(--page-pad-x)));
+  margin-left: calc(-1 * var(--page-pad-x));
+  margin-right: calc(-1 * var(--page-pad-x));
+
+  /* Push footer to the bottom when content is short (requires body:flex). */
+  margin-top: auto;
   padding: 0;
 
   background: var(--secondary-bg);
@@ -1293,12 +1385,6 @@
   box-sizing: border-box;
 }
 
-.support-footer-text {
-  font-size: 14px;
-  color: rgba(0, 0, 0, 0.75);
-  white-space: nowrap;
-}
-
 .support-footer-button img {
   height: 42px;
   width: auto;
@@ -1312,5 +1398,4 @@ body {
 
 @media (max-width: 520px) {
   .support-footer-inner { justify-content: flex-start; }
-  .support-footer-text { white-space: normal; }
 }
