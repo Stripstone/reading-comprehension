@@ -3168,3 +3168,61 @@ try {
     ensurePageHashesAndRehydrate();
   }
 } catch (_) {}
+// ===================================
+// Footer-aware music button position
+// (updates on scroll AND on content size changes)
+// ===================================
+(function () {
+  const musicBtn = document.getElementById("musicToggle");
+  if (!musicBtn) return;
+
+  const SNAP_THRESHOLD = 140; // px
+
+  function updateMusicOffset() {
+    const doc = document.documentElement;
+
+    const scrollBottom = window.scrollY + window.innerHeight;
+    const docBottom = doc.scrollHeight;
+
+    const nearBottom = (docBottom - scrollBottom) <= SNAP_THRESHOLD;
+
+    musicBtn.style.bottom = nearBottom
+      ? `calc(var(--support-footer-height) + 20px)`
+      : `20px`;
+  }
+
+  // Throttle to one update per frame (prevents observer spam)
+  let raf = 0;
+  function scheduleUpdate() {
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      updateMusicOffset();
+    });
+  }
+
+  // Initial
+  scheduleUpdate();
+
+  // Scroll/resize
+  window.addEventListener("scroll", scheduleUpdate, { passive: true });
+  window.addEventListener("resize", scheduleUpdate);
+  window.addEventListener("load", scheduleUpdate);
+
+  // Content-size changes (load pages / clear pages / render())
+  const pagesEl = document.getElementById("pages");
+  const footerEl = document.getElementById("supportFooter");
+
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(scheduleUpdate);
+    if (pagesEl) ro.observe(pagesEl);
+    ro.observe(document.body);
+    if (footerEl) ro.observe(footerEl);
+  }
+
+  // Optional: DOM mutations (covers cases where size changes without a resize)
+  if (pagesEl && window.MutationObserver) {
+    const mo = new MutationObserver(scheduleUpdate);
+    mo.observe(pagesEl, { childList: true, subtree: true, characterData: true });
+  }
+})();

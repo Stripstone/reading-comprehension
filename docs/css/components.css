@@ -9,8 +9,12 @@
 /* Sticky footer layout (true page footer):
    - If content is shorter than viewport, footer sits at the bottom.
    - If content is taller, footer is only visible when you scroll to the end. */
-html, body {
-  height: 100%;
+html { height: 100%; }
+
+body {
+  min-height: 100vh; /* allow page to grow with content */
+  display: flex;
+  flex-direction: column;
 }
 
 /* =========================
@@ -100,8 +104,8 @@ html, body {
       padding: 60px 20px;
       position: relative;
       overflow-x: hidden;
-  display: flex;
-  flex-direction: column;
+      display: flex;
+      flex-direction: column;
     }
 
 /* Let the main app content take remaining height so the footer can sit on the bottom
@@ -240,19 +244,28 @@ html, body {
       z-index: -2;
     }
 
-    /* Paper texture overlay (fixed to viewport so it never "cuts off" while scrolling) */
+    /* Scrollable paper texture overlay */
     body::after {
-      content: '';
-      position: fixed;
+      content: "";
+      position: absolute;
       inset: 0;
+      pointer-events: none;
+
       background-image: var(--paper-texture);
+
+      /* controls the zoom */
       background-size: auto;
-      background-position: center;
+
+      /* allow tiling */
       background-repeat: repeat;
+
+      /* prevents center seam artifacts */
+      background-position: 50% 120px;
+
       opacity: var(--paper-texture-opacity);
       filter: brightness(var(--paper-texture-brightness));
+
       z-index: -1;
-      pointer-events: none;
     }
 
     /* Canvas for fire embers - behind everything */
@@ -1147,7 +1160,7 @@ html, body {
     /* Music button (bottom-right fixed) */
     .music-button {
       position: fixed;
-      bottom: calc(var(--support-footer-height) + 20px);
+      bottom: 20px;
       right: 20px;
       width: 56px;
       height: 56px;
@@ -1341,6 +1354,7 @@ html, body {
   margin-left: calc(-1 * var(--page-pad-x));
   margin-right: calc(-1 * var(--page-pad-x));
 
+  --page-pad-x: 20px; /* keep in sync with body padding */
   /* Push footer to the bottom when content is short (requires body:flex). */
   margin-top: auto;
 
