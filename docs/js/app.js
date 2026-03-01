@@ -285,28 +285,31 @@ async function stableHashText(text) {
   // -----------------------------------
   // Passage highlighting (first-class feature)
   // -----------------------------------
-  // ===================================
-// TEXT TO SPEECH (Browser Web Speech API)
-// ===================================
+// ==============================
+// TEXT TO SPEECH
+//  - Preferred: Amazon Polly via /api/tts (consistent neural voice)
+//  - Fallback: Browser SpeechSynthesis (free)
+// ==============================
 
-const TTS_STATE = { activeKey: null };
+const TTS_STATE = {
+  activeKey: null,
+  audio: null,
+  abort: null,
+};
 
-function ttsSupported() {
+function browserTtsSupported() {
   return typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
 }
 
-function ttsStop() {
-  if (!ttsSupported()) return;
+function browserTtsStop() {
+  if (!browserTtsSupported()) return;
   window.speechSynthesis.cancel();
-  TTS_STATE.activeKey = null;
 }
 
-function pickVoice() {
+function browserPickVoice() {
   try {
     const voices = window.speechSynthesis.getVoices() || [];
-    // Prefer common high-quality voices when available, otherwise fall back.
     return (
-      voices.find(v => /Google US English/i.test(v.name)) ||
       voices.find(v => /Google/i.test(v.name) && /en/i.test(v.lang)) ||
       voices.find(v => /Microsoft/i.test(v.name) && /en/i.test(v.lang)) ||
       voices.find(v => (v.lang || "").toLowerCase().startsWith("en")) ||
@@ -318,8 +321,53 @@ function pickVoice() {
   }
 }
 
-function ttsSpeakQueue(key, parts) {
-  if (!ttsSupported()) {
+function ttsStop() {
+  // Stop any in-flight fetch
+  if (TTS_STATE.abort) {
+    try { TTS_STATE.abort.abort(); } catch (_) {}
+    TTS_STATE.abort = null;
+  }
+  // Stop any audio playback
+  if (TTS_STATE.audio) {
+    try {
+      TTS_STATE.audio.pause();
+      TTS_STATE.audio.src = "";
+    } catch (_) {}
+    TTS_STATE.audio = null;
+  }
+  // Stop browser fallback
+  browserTtsStop();
+  TTS_STATE.activeKey = null;
+}
+
+async function pollyFetchUrl(text) {
+  const controller = new AbortController();
+  TTS_STATE.abort = controller;
+
+  const payload = {
+    text,
+    // Use neutral narrator defaults; server can override via env.
+    voiceId: "Joanna",
+    engine: "neural",
+  };
+
+  const res = await fetch("/api/tts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: controller.signal,
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.url) {
+    const msg = data?.error ? `${data.error}${data.detail ? `: ${data.detail}` : ""}` : "TTS request failed";
+    throw new Error(msg);
+  }
+  return data.url;
+}
+
+function browserSpeakQueue(key, parts) {
+  if (!browserTtsSupported()) {
     alert("Text-to-speech is not supported in this browser.");
     return;
   }
@@ -327,7 +375,7 @@ function ttsSpeakQueue(key, parts) {
   const queue = (parts || []).map(t => String(t || "").trim()).filter(Boolean);
   if (!queue.length) return;
 
-  // Toggle behavior: clicking the same action stops playback.
+  // Toggle behavior
   if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
     if (TTS_STATE.activeKey === key) {
       ttsStop();
@@ -337,39 +385,68 @@ function ttsSpeakQueue(key, parts) {
   }
 
   TTS_STATE.activeKey = key;
-
   let idx = 0;
-  const voice = pickVoice();
+  const voice = browserPickVoice();
 
   const speakNext = () => {
     if (idx >= queue.length) {
       TTS_STATE.activeKey = null;
       return;
     }
-
     const utter = new SpeechSynthesisUtterance(queue[idx]);
     utter.lang = "en-US";
     utter.rate = 1;
     utter.pitch = 1;
     if (voice) utter.voice = voice;
-
-    utter.onend = () => {
-      idx += 1;
-      speakNext();
-    };
-    utter.onerror = () => {
-      TTS_STATE.activeKey = null;
-    };
-
+    utter.onend = () => { idx += 1; speakNext(); };
+    utter.onerror = () => { TTS_STATE.activeKey = null; };
     window.speechSynthesis.speak(utter);
   };
 
   speakNext();
 }
 
+async function ttsSpeakQueue(key, parts) {
+  const queue = (parts || []).map(t => String(t || "").trim()).filter(Boolean);
+  if (!queue.length) return;
+
+  // Toggle behavior: clicking the same action stops playback.
+  if (TTS_STATE.activeKey === key && TTS_STATE.audio && !TTS_STATE.audio.paused) {
+    ttsStop();
+    return;
+  }
+  if (TTS_STATE.activeKey && TTS_STATE.activeKey !== key) {
+    ttsStop();
+  }
+  TTS_STATE.activeKey = key;
+
+  // Preferred path: Polly via /api/tts. If it fails, fall back to browser voices.
+  try {
+    for (let i = 0; i < queue.length; i++) {
+      const url = await pollyFetchUrl(queue[i]);
+      if (TTS_STATE.activeKey !== key) return; // cancelled mid-flight
+
+      // Play URL (sequential)
+      await new Promise((resolve, reject) => {
+        const audio = new Audio(url);
+        TTS_STATE.audio = audio;
+        audio.onended = () => resolve();
+        audio.onerror = () => reject(new Error("Audio playback failed"));
+        audio.play().catch(reject);
+      });
+    }
+    TTS_STATE.activeKey = null;
+  } catch (err) {
+    // If Polly isn't configured yet, don't spam alerts; just fall back.
+    console.warn("Polly TTS unavailable, falling back to browser TTS:", err);
+    ttsStop();
+    browserSpeakQueue(key, queue);
+  }
+}
+
 // Some browsers load voices asynchronously.
-if (ttsSupported()) {
-  window.speechSynthesis.onvoiceschanged = () => { /* no-op; pickVoice() will see updated list */ };
+if (browserTtsSupported()) {
+  window.speechSynthesis.onvoiceschanged = () => { /* no-op */ };
 }
 
 function escapeHtml(str) {
@@ -1810,10 +1887,11 @@ function writeAnchorsToCache(pageHash, payload) {
 
       page.innerHTML = `
         <div class="page-header">Page ${i + 1}</div>
+        <div class="page-text">${escapeHtml(text)}</div>
+
         <div class="page-actions">
           <button type="button" class="top-btn tts-btn" data-tts="page" data-page="${i}">🔊 Read page</button>
         </div>
-        <div class="page-text">${escapeHtml(text)}</div>
 
         <div class="anchors-row">
           <div class="anchors-ui anchors-ui--right">
