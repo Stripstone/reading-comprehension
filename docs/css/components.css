@@ -790,6 +790,31 @@ body {
       letter-spacing: 0.5px;
     }
 
+    /* ===============================
+       🔊 TTS controls
+    ================================ */
+
+    .page-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin: 6px 0 10px;
+    }
+
+    .better-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .better-text {
+      /* Keep the quote readable even with italic container */
+      font-style: italic;
+    }
+
+
     .ai-actions {
       display: flex;
       justify-content: center;
@@ -1453,4 +1478,71 @@ body {
 
 @media (max-width: 520px) {
   .support-footer-inner { justify-content: flex-start; }
+}
+
+/* =========================================
+   Mobile: more real-estate (stronger zoom-out)
+   ========================================= */
+
+@media (max-width: 520px) {
+  html {
+    zoom: 0.90;
+  }
+}
+
+/* iOS Safari fallback */
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 520px) {
+    body {
+      transform: scale(0.88);
+      transform-origin: top center;
+      width: calc(100% / 0.88);
+    }
+  }
+}
+
+/* tighten spacing slightly so the zoom feels intentional */
+@media (max-width: 520px) {
+  body { padding: 40px 12px; }
+  .top-controls, .page { padding: 14px; margin: 16px 0; }
+  h1 { font-size: 2.1rem; }
+}
+
+@media (max-width: 520px) {
+  button { padding: 14px 16px; }
+  textarea { min-height: 110px; }
+}
+
+/* ==============================
+   Mobile overflow clamp (book select)
+   ============================== */
+
+/* Let flex children actually shrink instead of expanding the layout */
+.top-controls,
+.top-controls * {
+  min-width: 0;
+}
+
+/* Any selects/inputs inside cards must never exceed the card width */
+.top-controls select,
+.top-controls input,
+.top-controls textarea,
+.top-controls button {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Long book titles in a select should not widen the page */
+.top-controls select {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* If the row holding the select is a flex row, make it shrinkable too */
+#pageControls,
+.goal-time-row,
+.info-row {
+  min-width: 0;
 }

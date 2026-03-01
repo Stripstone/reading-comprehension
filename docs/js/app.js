@@ -285,7 +285,94 @@ async function stableHashText(text) {
   // -----------------------------------
   // Passage highlighting (first-class feature)
   // -----------------------------------
-  function escapeHtml(str) {
+  // ===================================
+// TEXT TO SPEECH (Browser Web Speech API)
+// ===================================
+
+const TTS_STATE = { activeKey: null };
+
+function ttsSupported() {
+  return typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+}
+
+function ttsStop() {
+  if (!ttsSupported()) return;
+  window.speechSynthesis.cancel();
+  TTS_STATE.activeKey = null;
+}
+
+function pickVoice() {
+  try {
+    const voices = window.speechSynthesis.getVoices() || [];
+    // Prefer common high-quality voices when available, otherwise fall back.
+    return (
+      voices.find(v => /Google US English/i.test(v.name)) ||
+      voices.find(v => /Google/i.test(v.name) && /en/i.test(v.lang)) ||
+      voices.find(v => /Microsoft/i.test(v.name) && /en/i.test(v.lang)) ||
+      voices.find(v => (v.lang || "").toLowerCase().startsWith("en")) ||
+      voices[0] ||
+      null
+    );
+  } catch {
+    return null;
+  }
+}
+
+function ttsSpeakQueue(key, parts) {
+  if (!ttsSupported()) {
+    alert("Text-to-speech is not supported in this browser.");
+    return;
+  }
+
+  const queue = (parts || []).map(t => String(t || "").trim()).filter(Boolean);
+  if (!queue.length) return;
+
+  // Toggle behavior: clicking the same action stops playback.
+  if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+    if (TTS_STATE.activeKey === key) {
+      ttsStop();
+      return;
+    }
+    ttsStop();
+  }
+
+  TTS_STATE.activeKey = key;
+
+  let idx = 0;
+  const voice = pickVoice();
+
+  const speakNext = () => {
+    if (idx >= queue.length) {
+      TTS_STATE.activeKey = null;
+      return;
+    }
+
+    const utter = new SpeechSynthesisUtterance(queue[idx]);
+    utter.lang = "en-US";
+    utter.rate = 1;
+    utter.pitch = 1;
+    if (voice) utter.voice = voice;
+
+    utter.onend = () => {
+      idx += 1;
+      speakNext();
+    };
+    utter.onerror = () => {
+      TTS_STATE.activeKey = null;
+    };
+
+    window.speechSynthesis.speak(utter);
+  };
+
+  speakNext();
+}
+
+// Some browsers load voices asynchronously.
+if (ttsSupported()) {
+  window.speechSynthesis.onvoiceschanged = () => { /* no-op; pickVoice() will see updated list */ };
+}
+
+function escapeHtml(str) {
     return String(str || '')
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
@@ -1723,6 +1810,9 @@ function writeAnchorsToCache(pageHash, payload) {
 
       page.innerHTML = `
         <div class="page-header">Page ${i + 1}</div>
+        <div class="page-actions">
+          <button type="button" class="top-btn tts-btn" data-tts="page" data-page="${i}">🔊 Read page</button>
+        </div>
         <div class="page-text">${escapeHtml(text)}</div>
 
         <div class="anchors-row">
@@ -1772,6 +1862,15 @@ function writeAnchorsToCache(pageHash, payload) {
       const wrapper = page.querySelector(".sand-wrapper");
       const charCountSpan = page.querySelector(".char-count");
       const starsDiv = page.querySelector(".evaluation-section .stars");
+
+      // TTS: Read page text
+      const ttsPageBtn = page.querySelector('.tts-btn[data-tts="page"]');
+      if (ttsPageBtn) {
+        ttsPageBtn.addEventListener("click", () => {
+          ttsSpeakQueue(`page-${i}`, [text]);
+        });
+      }
+
 
       // Character tracking
       textarea.value = pageData[i].consolidation || "";
@@ -2410,6 +2509,13 @@ function writeAnchorsToCache(pageHash, payload) {
       betterExample = rawLines[3].replace(/^"+/, "").replace(/"+$/, "").trim();
     }
 
+    // Store parsed strings for optional features (e.g., TTS)
+    if (pageData?.[pageIndex]) {
+      pageData[pageIndex].aiAnalysisText = analysis || "";
+      pageData[pageIndex].aiBetterText = betterExample || "";
+      schedulePersistSession();
+    }
+
     // Build HTML
     let html = '';
 
@@ -2423,8 +2529,11 @@ function writeAnchorsToCache(pageHash, payload) {
 
     if (betterExample) {
       html += `<div class="better-example">
-        <div class="better-label">Better consolidation:</div>
-        "${betterExample}"
+        <div class="better-header">
+          <div class="better-label">Better consolidation:</div>
+          <button type="button" class="top-btn tts-btn tts-better" data-tts="better" data-page="${pageIndex}">🔊 Read</button>
+        </div>
+        <div class="better-text">"${betterExample}"</div>
       </div>`;
     }
 
@@ -2435,6 +2544,16 @@ function writeAnchorsToCache(pageHash, payload) {
     html += `<button class="next-after-ai-btn" onclick="goToNext(${pageIndex})">Next Page →</button>`;
     html += `</div>`;
     feedbackDiv.innerHTML = html;
+
+    // TTS: Read feedback statement (analysis) then better consolidation
+    const ttsBetterBtn = feedbackDiv.querySelector('.tts-btn[data-tts="better"]');
+    if (ttsBetterBtn) {
+      ttsBetterBtn.addEventListener("click", () => {
+        const a = pageData?.[pageIndex]?.aiAnalysisText || analysis || "";
+        const b = pageData?.[pageIndex]?.aiBetterText || betterExample || "";
+        ttsSpeakQueue(`better-${pageIndex}`, [a, b]);
+      });
+    }
 
     // In case the compass unlock happens after AI renders, keep button state synced.
     updateUseRatingButtons(pageIndex);
