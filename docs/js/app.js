@@ -3406,6 +3406,7 @@ function writeAnchorsToCache(pageHash, payload) {
     let diagPanel = null;
     let diagCloseBtn = null;
     let diagText = null;
+    let diagClearCacheBtn = null;
     let diagCopyBtn = null;
 
     // URL flag: show diagnostics when debug is present/truthy.
@@ -3555,6 +3556,7 @@ function writeAnchorsToCache(pageHash, payload) {
         </div>
         <textarea id="diagText" readonly style="width:100%; height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 12px; padding: 10px;"></textarea>
         <div style="display:flex; gap:10px; margin-top:10px; justify-content:flex-end;">
+          <button type="button" id="diagClearCacheBtn" title="Clears all local cache/state for clean testing">Delete cache</button>
           <button type="button" id="diagCopyBtn">Copy</button>
         </div>
       `;
@@ -3562,6 +3564,7 @@ function writeAnchorsToCache(pageHash, payload) {
 
       diagCloseBtn = diagPanel.querySelector('#diagCloseBtn');
       diagText = diagPanel.querySelector('#diagText');
+      diagClearCacheBtn = diagPanel.querySelector('#diagClearCacheBtn');
       diagCopyBtn = diagPanel.querySelector('#diagCopyBtn');
 
       function positionPanelAboveButton(btn, panel) {
@@ -3612,6 +3615,32 @@ function writeAnchorsToCache(pageHash, payload) {
       });
 
       if (diagCloseBtn) diagCloseBtn.addEventListener('click', () => setDiagVisible(false));
+      if (diagClearCacheBtn) {
+        diagClearCacheBtn.addEventListener('click', async () => {
+          const ok = window.confirm(
+            'Delete cache?\n\nThis clears ALL local browser storage for this app (including saved work) and reloads the page.'
+          );
+          if (!ok) return;
+
+          try { localStorage.clear(); } catch (_) {}
+          try { sessionStorage.clear(); } catch (_) {}
+
+          // Best-effort: clear Service Worker Cache Storage if present.
+          try {
+            if (window.caches && caches.keys) {
+              const keys = await caches.keys();
+              await Promise.all(keys.map((k) => caches.delete(k)));
+            }
+          } catch (_) {}
+
+          // Reload for a clean boot.
+          try {
+            window.location.reload();
+          } catch (_) {
+            window.location.href = window.location.href;
+          }
+        });
+      }
       if (diagCopyBtn && diagText) {
         diagCopyBtn.addEventListener('click', async () => {
           try {
