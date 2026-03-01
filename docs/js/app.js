@@ -437,7 +437,8 @@ function ttsStartHighlightLoop(audio) {
       // Fade in the new sentence highlight.
       if (idx >= 0 && TTS_STATE.highlightSpans[idx]) {
         const cur = TTS_STATE.highlightSpans[idx];
-        cur.style.setProperty('--tts-alpha', '0.55');
+        // Make the active sentence highlight fully readable (avoid washed-out opacity).
+        cur.style.setProperty('--tts-alpha', '1');
       }
 
       lastIdx = idx;
@@ -3014,7 +3015,7 @@ function writeAnchorsToCache(pageHash, payload) {
     }
     
     // 2. Discipline Score (25 pts) - completed on time with gradient penalty for insufficient length
-    // Full credit if >= 90% of goal, proportional penalty if below
+    // Full credit if >= (1 - COMPRESSION_TOLERANCE) of goal, proportional penalty if below
     const minChars = Math.floor(goalCharCount * (1 - COMPRESSION_TOLERANCE));
     let disciplineScore = 0;
     
@@ -3023,7 +3024,7 @@ function writeAnchorsToCache(pageHash, payload) {
         // Sandstoned: no points
         disciplineScore += 0;
       } else if (p.charCount >= minChars) {
-        // Met 90% threshold: full points
+        // Met minimum-length threshold: full points
         disciplineScore += WEIGHT_DISCIPLINE;
       } else {
         // Below threshold: proportional credit (0 to minChars range)
@@ -3123,9 +3124,9 @@ function writeAnchorsToCache(pageHash, payload) {
       <div class="explanation-section">
         <p><strong>Comprehension (${scores.comprehension}/${WEIGHT_COMPREHENSION}):</strong> Your honest self-assessment of how well you understood the material's core ideas, accuracy, and engagement.</p>
         
-        <p><strong>Discipline (${scores.discipline}/${WEIGHT_DISCIPLINE}):</strong> Completed before time runs out. Full credit at 90%+ of character goal (${Math.floor(goalCharCount * (1 - COMPRESSION_TOLERANCE))}+ chars). Below that, credit scales proportionally down to zero.</p>
+        <p><strong>Discipline (${scores.discipline}/${WEIGHT_DISCIPLINE}):</strong> Completed before time runs out. Full credit at ${Math.round((1 - COMPRESSION_TOLERANCE) * 100)}%+ of character goal (${Math.floor(goalCharCount * (1 - COMPRESSION_TOLERANCE))}+ chars). Below that, credit scales proportionally down to zero.</p>
         
-        <p><strong>Compression (${scores.compression}/${WEIGHT_COMPRESSION}):</strong> Writing concise summaries that capture meaning without being too brief or verbose. Sweet spot: ${Math.floor(goalCharCount * (1 - COMPRESSION_TOLERANCE))}-${Math.ceil(goalCharCount * (1 + COMPRESSION_TOLERANCE))} characters (90-110% of goal).</p>
+        <p><strong>Compression (${scores.compression}/${WEIGHT_COMPRESSION}):</strong> Writing concise summaries that capture meaning without being too brief or verbose. Sweet spot: ${Math.floor(goalCharCount * (1 - COMPRESSION_TOLERANCE))}-${Math.ceil(goalCharCount * (1 + COMPRESSION_TOLERANCE))} characters (${Math.round((1 - COMPRESSION_TOLERANCE) * 100)}-${Math.round((1 + COMPRESSION_TOLERANCE) * 100)}% of goal).</p>
       </div>
 
       ${advice ? `<div class="next-tier-advice">
@@ -3306,7 +3307,7 @@ function writeAnchorsToCache(pageHash, payload) {
   
   function getNextTierAdvice(currentTier) {
     const advice = {
-      'Fragmented': 'Focus on writing substantial consolidations (90%+ of your character goal) before time runs out. Discipline means both beating the timer AND writing enough to capture the core idea.',
+      'Fragmented': `Focus on writing substantial consolidations (${Math.round((1 - COMPRESSION_TOLERANCE) * 100)}%+ of your character goal) before time runs out. Discipline means both beating the timer AND writing enough to capture the core idea.`,
       'Developing': 'Build consistency by finishing every page on time and within the character goal. Be honest in your self-evaluations to identify gaps.',
       'Competent': 'Capture the main mechanisms and causal relationships in each passage, not just surface-level facts. This depth will raise your comprehension score.',
       'Proficient': 'Perfect your compression hit the sweet spot every time and consistently rate yourself 5/5 when you have truly mastered the material.',

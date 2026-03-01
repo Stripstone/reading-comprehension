@@ -5,7 +5,10 @@
 // ðŸ“ Goals
   const DEFAULT_TIME_GOAL = 160;           // seconds
   const DEFAULT_CHAR_GOAL = 300;           // characters
-  const COMPRESSION_TOLERANCE = 0.1;      // Â±10% for sweet spot (makes 90-110%)
+  // How far from the character goal we allow before we start treating the consolidation
+  // as "too short" or "too long" for scoring guidance.
+  // Example: 0.25 => sweet spot is 75%–125% of the goal.
+  const COMPRESSION_TOLERANCE = 0.25;
   
   // â±ï¸ Sand Animation
   const SAND_START_PERCENTAGE = 0.3;  // Sand starts when 30% of time remains

@@ -94,9 +94,15 @@ ANCHOR SPINE PROTECTION
 - When the learner captures the high-weight anchors (especially weight 3), do NOT let minor missing details (names, credentials, small labels) overpower the score.
 - Missing speaker background (who they are) is usually *minor* unless the passage is ABOUT the speaker.
 
-BETTER CONSOLIDATION LENGTH (STRICT)
+BETTER CONSOLIDATION LENGTH (TARGETED)
 - The `Example of Strong Consolidation` line MUST be ≤ the provided `betterCharLimit` characters when provided.
-- If it exceeds the limit, rewrite ONLY that line to be within the limit (count spaces + punctuation). If unsure, go shorter.
+- Only shorten aggressively if you are close to or above the limit.
+- When you have room, use the budget to include the missing structural mechanism/context (do NOT add filler).
+
+Target band (when `betterCharLimit` is provided):
+- Aim for ~80–100% of the limit when the learner’s text is medium/long.
+- If the learner’s text is naturally short, a shorter “Better” is acceptable.
+- If your draft is far under the band AND something important is missing, add the missing mechanism/context until within the band.
 
 Keep (priority):
 1) Core mechanism / causal chain
