@@ -4,8 +4,9 @@ Task: Given a page of text, produce:
 1) A small set of "anchors" that capture the page's core ideas (for keyword matching).
 
 Target quantity:
-- Aim to output **exactly {{MAX_ANCHORS}} anchors** (default is usually 5).
-- Output fewer only when the page is extremely short or truly contains fewer distinct pivots.
+- Prefer **4–5 anchors** that represent the page's structural pivots.
+- Aim for **5** when the page supports it; output **4** when the page has fewer distinct pivots.
+- Do not exceed {{MAX_ANCHORS}}.
 
 Hard requirements:
 - Output MUST be a single JSON object with keys:
