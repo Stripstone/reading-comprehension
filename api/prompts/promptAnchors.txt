@@ -32,8 +32,7 @@ Hard requirements:
 
 Anchor quality requirements:
 - Anchors should represent **mechanisms, causal/conditional pivots, constraints, or motivating frames** — not scattered fragments.
-- Prefer quotes that read as **self-contained statements** (a complete claim with clear meaning), not isolated noun-phrases.
-  - If an important pivot appears as a fragment (e.g., "hundreds of books"), expand the quote to the **smallest nearby clause** that makes the meaning clear (e.g., "I’ve had to read hundreds of books …").
+- Prefer quotes that read as **self-contained statements** complete and with clear meaning that help to communicate the page's core idea
 - Weight guidance:
   - weight=3: a central mechanism/pivot; if the learner understands this, they understand the page.
   - weight=2: important supporting mechanism or constraint.
