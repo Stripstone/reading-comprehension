@@ -232,6 +232,9 @@ export function normalizeAnchorsWithDebug({ pageText, modelText, maxAnchors = 5,
   const cap = Math.max(1, Math.min(12, Number(maxAnchors) || 5));
 
   const freqMap = buildFreqMap(page);
+  // For "no filler" enforcement: only allow final trigger terms that actually occur in the page.
+  // (Models may propose extra conceptual terms; we keep them only if grounded in page text.)
+  const pageTokenSet = new Set(Array.from(freqMap.keys()));
 
   const jsonStr = extractFirstJsonObject(modelText);
   if (!jsonStr) {
@@ -301,8 +304,14 @@ export function normalizeAnchorsWithDebug({ pageText, modelText, maxAnchors = 5,
     const quoteTokens = tokenizeBase(matched);
 
     const candidates = [];
-    for (const t of modelTerms) candidates.push(...tokenizeBase(t));
-    for (const s of modelSynonyms) candidates.push(...tokenizeBase(s));
+    // Ground model-proposed terms/synonyms: only keep tokens that appear somewhere in the page.
+    // This prevents invented filler like "comprehension" unless it exists in the source text.
+    for (const t of modelTerms) {
+      for (const tok of tokenizeBase(t)) if (pageTokenSet.has(tok)) candidates.push(tok);
+    }
+    for (const s of modelSynonyms) {
+      for (const tok of tokenizeBase(s)) if (pageTokenSet.has(tok)) candidates.push(tok);
+    }
     candidates.push(...quoteTokens);
 
     const normalizedTerms = rankAndCapTerms({ candidates, freqMap, max: 5 });
