@@ -295,7 +295,151 @@ const TTS_STATE = {
   activeKey: null,
   audio: null,
   abort: null,
+  // sentence highlight state (page read)
+  highlightPageKey: null,
+  highlightPageEl: null,
+  highlightOriginalHTML: null,
+  highlightRAF: null,
+  highlightSpans: null,
+  highlightMarks: null,
+  highlightEnds: null,
 };
+
+function optsForKeySentenceMarks(key) {
+  // Only sentence-highlight during "Read page" (page-<index>) actions.
+  return typeof key === "string" && key.startsWith("page-");
+}
+
+// Convert Polly byte offsets (UTF-8) to JS string indices
+function utf8ByteOffsetToJsIndex(str, byteOffset) {
+  const enc = new TextEncoder();
+  let bytes = 0;
+  for (let i = 0; i < str.length; i++) {
+    const cp = str.codePointAt(i);
+    const ch = String.fromCodePoint(cp);
+    bytes += enc.encode(ch).length;
+    if (bytes > byteOffset) return i;
+    if (cp > 0xFFFF) i++; // surrogate pair
+  }
+  return str.length;
+}
+
+function escapeHTML(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function ttsClearSentenceHighlight() {
+  if (TTS_STATE.highlightRAF) {
+    cancelAnimationFrame(TTS_STATE.highlightRAF);
+    TTS_STATE.highlightRAF = null;
+  }
+  if (TTS_STATE.highlightPageEl && TTS_STATE.highlightOriginalHTML != null) {
+    TTS_STATE.highlightPageEl.innerHTML = TTS_STATE.highlightOriginalHTML;
+  }
+  TTS_STATE.highlightPageKey = null;
+  TTS_STATE.highlightPageEl = null;
+  TTS_STATE.highlightOriginalHTML = null;
+  TTS_STATE.highlightSpans = null;
+  TTS_STATE.highlightMarks = null;
+  TTS_STATE.highlightEnds = null;
+}
+
+function ttsMaybePrepareSentenceHighlight(key, rawText, marks) {
+  // Only for page reads, and only if we got marks.
+  if (!optsForKeySentenceMarks(key)) return;
+  if (!Array.isArray(marks) || !marks.length) return;
+
+  const pageIndex = Number(String(key).slice(5));
+  if (!Number.isFinite(pageIndex)) return;
+
+  const pageEl = document.querySelector(`.page[data-page="${pageIndex}"]`);
+  if (!pageEl) return;
+  const textEl = pageEl.querySelector(".page-text");
+  if (!textEl) return;
+
+  // Reset any prior highlighting
+  ttsClearSentenceHighlight();
+
+  const text = String(rawText || textEl.textContent || "");
+  const spansHtml = [];
+  const spansMeta = [];
+
+  // Convert Polly marks into JS index ranges
+  const ranges = marks.map(m => {
+    const start = utf8ByteOffsetToJsIndex(text, m.start);
+    const end = utf8ByteOffsetToJsIndex(text, m.end);
+    return { time: Number(m.time) || 0, start, end };
+  }).filter(r => r.end > r.start);
+
+  if (!ranges.length) return;
+
+  // Build HTML with sentence spans
+  let cursor = 0;
+  for (let i = 0; i < ranges.length; i++) {
+    const r = ranges[i];
+    if (r.start > cursor) {
+      spansHtml.push(escapeHTML(text.slice(cursor, r.start)));
+    }
+    const sentence = text.slice(r.start, r.end);
+    spansHtml.push(`<span class="tts-sentence" data-tts-sent="${i}">${escapeHTML(sentence)}</span>`);
+    spansMeta.push(r);
+    cursor = r.end;
+  }
+  if (cursor < text.length) spansHtml.push(escapeHTML(text.slice(cursor)));
+
+  TTS_STATE.highlightPageKey = key;
+  TTS_STATE.highlightPageEl = textEl;
+  TTS_STATE.highlightOriginalHTML = textEl.innerHTML;
+  TTS_STATE.highlightMarks = spansMeta;
+
+  // Precompute sentence end times (next sentence start, or Infinity)
+  const ends = spansMeta.map((r, i) => (i + 1 < spansMeta.length ? spansMeta[i + 1].time : Infinity));
+  TTS_STATE.highlightEnds = ends;
+
+  textEl.innerHTML = spansHtml.join("");
+  TTS_STATE.highlightSpans = Array.from(textEl.querySelectorAll(".tts-sentence"));
+}
+
+function ttsStartHighlightLoop(audio) {
+  if (!audio || !TTS_STATE.highlightSpans || !TTS_STATE.highlightMarks) return;
+
+  let lastIdx = -1;
+  const tick = () => {
+    if (!TTS_STATE.audio || TTS_STATE.audio !== audio) return;
+    if (!TTS_STATE.highlightSpans || !TTS_STATE.highlightMarks) return;
+    const t = audio.currentTime * 1000;
+
+    // Find current sentence by time
+    let idx = -1;
+    const marks = TTS_STATE.highlightMarks;
+    const ends = TTS_STATE.highlightEnds || [];
+    for (let i = 0; i < marks.length; i++) {
+      const start = marks[i].time;
+      const end = ends[i] ?? Infinity;
+      if (t >= start && t < end) { idx = i; break; }
+    }
+
+    if (idx !== lastIdx) {
+      if (lastIdx >= 0 && TTS_STATE.highlightSpans[lastIdx]) {
+        TTS_STATE.highlightSpans[lastIdx].classList.remove("tts-sentence--active");
+      }
+      if (idx >= 0 && TTS_STATE.highlightSpans[idx]) {
+        TTS_STATE.highlightSpans[idx].classList.add("tts-sentence--active");
+      }
+      lastIdx = idx;
+    }
+
+    TTS_STATE.highlightRAF = requestAnimationFrame(tick);
+  };
+
+  if (TTS_STATE.highlightRAF) cancelAnimationFrame(TTS_STATE.highlightRAF);
+  TTS_STATE.highlightRAF = requestAnimationFrame(tick);
+}
 
 function browserTtsSupported() {
   return typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
@@ -337,12 +481,11 @@ function ttsStop() {
   }
   // Stop browser fallback
   browserTtsStop();
-  // Restore any sentence-wrapped page text
-  restorePageTextAfterHighlight();
+  ttsClearSentenceHighlight();
   TTS_STATE.activeKey = null;
 }
 
-async function pollyFetch(text, opts = null) {
+async function pollyFetchUrl(text, opts = {}) {
   const controller = new AbortController();
   TTS_STATE.abort = controller;
 
@@ -352,10 +495,7 @@ async function pollyFetch(text, opts = null) {
   // to take effect so changing env vars changes the narrator without being
   // overridden by the client.
   const payload = { text };
-  if (opts && typeof opts === "object") {
-    if (opts.speechMarks) payload.speechMarks = String(opts.speechMarks);
-    if (opts.debug) payload.debug = opts.debug;
-  }
+  if (opts && opts.sentenceMarks) payload.speechMarks = "sentence";
 
   // Developer override: if you set localStorage.tts_nocache = "1",
   // the server will regenerate audio even if an S3 object already exists.
@@ -390,72 +530,7 @@ async function pollyFetch(text, opts = null) {
       : `TTS request failed (${res.status})${detail ? `: ${detail}` : ""}`;
     throw new Error(msg);
   }
-  return data;
-}
-
-function getPageTextEl(pageIndex) {
-  const pageEl = document.querySelectorAll('.page')[pageIndex];
-  if (!pageEl) return null;
-  return pageEl.querySelector('.page-text');
-}
-
-function ensureSentenceWrapped(pageIndex, sourceText, sentenceMarks) {
-  const textEl = getPageTextEl(pageIndex);
-  if (!textEl) return null;
-
-  // Save current HTML so we can restore on stop.
-  if (!TTS_STATE.pageHighlight || TTS_STATE.pageHighlight.pageIndex !== pageIndex) {
-    TTS_STATE.pageHighlight = {
-      pageIndex,
-      originalHtml: textEl.innerHTML,
-    };
-  }
-
-  const marks = Array.isArray(sentenceMarks) ? sentenceMarks : [];
-  const sentences = marks
-    .filter(m => (m?.type || '').toLowerCase() === 'sentence' && Number.isFinite(m?.start) && Number.isFinite(m?.end))
-    .sort((a, b) => (a.start - b.start));
-
-  if (!sentences.length) return null;
-
-  const src = String(sourceText || '');
-  let html = '';
-  let cursor = 0;
-
-  for (let i = 0; i < sentences.length; i++) {
-    const s = Math.max(0, Math.min(src.length, sentences[i].start));
-    const e = Math.max(0, Math.min(src.length, sentences[i].end));
-    if (e <= s) continue;
-
-    if (cursor < s) html += escapeHtml(src.slice(cursor, s));
-    const chunk = src.slice(s, e);
-    html += `<span class="tts-sentence" data-tts-sentence="${i}">${escapeHtml(chunk)}</span>`;
-    cursor = e;
-  }
-  if (cursor < src.length) html += escapeHtml(src.slice(cursor));
-
-  textEl.innerHTML = html;
-  return { sentences };
-}
-
-function setActiveSentence(pageIndex, sentenceIdx) {
-  const textEl = getPageTextEl(pageIndex);
-  if (!textEl) return;
-  const all = textEl.querySelectorAll('.tts-sentence');
-  all.forEach(el => el.classList.remove('tts-sentence--active'));
-  if (sentenceIdx == null) return;
-  const el = textEl.querySelector(`.tts-sentence[data-tts-sentence="${sentenceIdx}"]`);
-  if (el) el.classList.add('tts-sentence--active');
-}
-
-function restorePageTextAfterHighlight() {
-  const ph = TTS_STATE.pageHighlight;
-  if (!ph) return;
-  const textEl = getPageTextEl(ph.pageIndex);
-  if (textEl && typeof ph.originalHtml === 'string') {
-    textEl.innerHTML = ph.originalHtml;
-  }
-  TTS_STATE.pageHighlight = null;
+  return { url: data.url, sentenceMarks: Array.isArray(data.sentenceMarks) ? data.sentenceMarks : null };
 }
 
 function browserSpeakQueue(key, parts) {
@@ -517,15 +592,19 @@ async function ttsSpeakQueue(key, parts) {
   // Preferred path: Polly via /api/tts. If it fails, fall back to browser voices.
   try {
     for (let i = 0; i < queue.length; i++) {
-      const data = await pollyFetch(queue[i]);
-      const url = data.url;
+      const wantMarks = (i === 0 && optsForKeySentenceMarks(key));
+      const tts = await pollyFetchUrl(queue[i], { sentenceMarks: wantMarks });
+      const url = tts.url;
+      if (wantMarks) ttsMaybePrepareSentenceHighlight(key, queue[i], tts.sentenceMarks);
       if (TTS_STATE.activeKey !== key) return; // cancelled mid-flight
 
       // Play URL (sequential)
       await new Promise((resolve, reject) => {
         const audio = new Audio(url);
         TTS_STATE.audio = audio;
-        audio.onended = () => resolve();
+        // Start sentence highlight loop if prepared for this action.
+        ttsStartHighlightLoop(audio);
+        audio.onended = () => { ttsClearSentenceHighlight(); resolve(); };
         audio.onerror = () => reject(new Error("Audio playback failed"));
         audio.play().catch(reject);
       });
@@ -536,76 +615,6 @@ async function ttsSpeakQueue(key, parts) {
     console.warn("Polly TTS unavailable, falling back to browser TTS:", err);
     ttsStop();
     browserSpeakQueue(key, queue);
-  }
-}
-
-// Page-level TTS with sentence highlighting (Polly speech marks).
-// Highlights exact sentence boundaries and fades in/out via CSS transitions.
-async function ttsSpeakPageWithSentenceHighlight(pageIndex, pageText) {
-  const key = `page-${pageIndex}`;
-
-  // Toggle behavior
-  if (TTS_STATE.activeKey === key) {
-    ttsStop();
-    return;
-  }
-  if (TTS_STATE.activeKey && TTS_STATE.activeKey !== key) ttsStop();
-  TTS_STATE.activeKey = key;
-
-  const text = String(pageText || '').trim();
-  if (!text) return;
-
-  try {
-    const data = await pollyFetch(text, { speechMarks: 'sentence' });
-    if (TTS_STATE.activeKey !== key) return;
-
-    let marks = [];
-    if (data.marksUrl) {
-      const marksRes = await fetch(data.marksUrl);
-      if (marksRes.ok) marks = await marksRes.json().catch(() => []);
-    }
-
-    const wrapped = ensureSentenceWrapped(pageIndex, text, marks);
-    let sentences = (wrapped?.sentences || []).filter(s => Number.isFinite(s?.time));
-    sentences = sentences.sort((a, b) => (a.time - b.time));
-
-    await new Promise((resolve, reject) => {
-      const audio = new Audio(data.url);
-      TTS_STATE.audio = audio;
-
-      const getActiveIdx = (ms) => {
-        if (!sentences.length) return null;
-        if (ms < sentences[0].time) return null;
-        let idx = 0;
-        while (idx + 1 < sentences.length && ms >= sentences[idx + 1].time) idx++;
-        return idx;
-      };
-
-      const tick = () => {
-        if (TTS_STATE.activeKey !== key) return;
-        const ms = (audio.currentTime || 0) * 1000;
-        setActiveSentence(pageIndex, getActiveIdx(ms));
-      };
-
-      audio.addEventListener('timeupdate', tick);
-      audio.addEventListener('playing', tick);
-      audio.onended = () => {
-        setActiveSentence(pageIndex, null);
-        resolve();
-      };
-      audio.onerror = () => reject(new Error('Audio playback failed'));
-      audio.play().catch(reject);
-    });
-
-    if (TTS_STATE.activeKey === key) {
-      TTS_STATE.activeKey = null;
-      restorePageTextAfterHighlight();
-    }
-  } catch (err) {
-    console.warn('Polly TTS unavailable for sentence highlight, falling back to browser TTS:', err);
-    restorePageTextAfterHighlight();
-    ttsStop();
-    browserSpeakQueue(key, [text]);
   }
 }
 
@@ -2122,7 +2131,7 @@ function writeAnchorsToCache(pageHash, payload) {
       const ttsPageBtn = page.querySelector('.tts-btn[data-tts="page"]');
       if (ttsPageBtn) {
         ttsPageBtn.addEventListener("click", () => {
-          ttsSpeakPageWithSentenceHighlight(i, text);
+          ttsSpeakQueue(`page-${i}`, [text]);
         });
       }
 

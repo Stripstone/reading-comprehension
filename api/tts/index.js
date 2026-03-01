@@ -6,12 +6,9 @@
 //   - key (string, optional)         // caller-provided stable key (e.g., pageHash)
 //   - voiceId (string, optional)     // defaults to POLLY_VOICE_ID or Joanna
 //   - engine (string, optional)      // 'neural' or 'standard' (defaults to POLLY_ENGINE or neural)
-//   - speechMarks (string, optional) // "sentence" to return sentence timing marks (recommended for highlighting)
-//   - nocache (boolean, optional)    // force regeneration even if cached
 //
 // Response JSON:
 //   - url (string)  // presigned URL for the mp3
-//   - marksUrl (string, optional) // presigned URL for speech marks json
 //   - cacheHit (boolean)
 //   - objectKey (string, debug only)
 
@@ -46,21 +43,29 @@ async function streamToBuffer(stream) {
   return Buffer.concat(chunks);
 }
 
-function parseSpeechMarksNdjson(buf) {
-  // Polly returns NDJSON (one JSON object per line) for speech marks.
-  // We normalize into a JSON array for simpler client use.
-  const text = Buffer.isBuffer(buf) ? buf.toString("utf8") : String(buf || "");
-  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  const out = [];
+function parseSpeechMarksLines(buf) {
+  // Polly returns newline-delimited JSON objects
+  const text = buf.toString("utf8").trim();
+  if (!text) return [];
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  const marks = [];
   for (const line of lines) {
     try {
       const obj = JSON.parse(line);
-      out.push(obj);
-    } catch (_) {
-      // ignore malformed line
-    }
+      // We only care about sentence marks in this feature
+      if (obj && obj.type === "sentence") {
+        marks.push({
+          time: Number(obj.time) || 0,
+          start: Number(obj.start) || 0,
+          end: Number(obj.end) || 0,
+          value: String(obj.value || ""),
+        });
+      }
+    } catch (_) {}
   }
-  return out;
+  // Ensure sorted by time
+  marks.sort((a,b)=>a.time-b.time);
+  return marks;
 }
 
 export default async function handler(req, res) {
@@ -79,7 +84,10 @@ export default async function handler(req, res) {
     const body = await readJsonBody(req);
     const text = String(body?.text ?? "").trim();
     const debug = String(body?.debug ?? "").trim() === "1" || body?.debug === true;
-    const nocache = body?.nocache === true || String(body?.nocache ?? "").trim() === "1";
+    const nocache = body?.nocache === true || String(body?.nocache ?? "").trim() === "1";    const speechMarks = String(body?.speechMarks ?? "").trim().toLowerCase();
+    const wantSentenceMarks = speechMarks === "sentence" || speechMarks === "1" || body?.speechMarks === true;
+
+
 
     if (!text) {
       return json(res, 400, { error: "Missing text" });
@@ -105,9 +113,6 @@ export default async function handler(req, res) {
     const engineRaw = String(body?.engine || requiredEnv("POLLY_ENGINE") || "neural").trim().toLowerCase();
     const engine = engineRaw === "standard" ? "standard" : "neural";
 
-    const speechMarks = String(body?.speechMarks || "").trim().toLowerCase();
-    const wantSentenceMarks = speechMarks === "sentence";
-
     const prefix = toSafePrefix(requiredEnv("AWS_S3_PREFIX"));
     const identity = JSON.stringify({ voiceId, engine, text });
     const hash = sha256Hex(identity);
@@ -128,7 +133,10 @@ export default async function handler(req, res) {
       }
     }
 
+    // Sentence speech-marks cache check (optional)
     let marksCacheHit = false;
+    let sentenceMarks = null;
+
     if (wantSentenceMarks && !nocache) {
       try {
         await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: marksKey }));
@@ -138,7 +146,7 @@ export default async function handler(req, res) {
       }
     }
 
-    if (!cacheHit) {
+if (!cacheHit) {
       const cmd = new SynthesizeSpeechCommand({
         OutputFormat: "mp3",
         Text: text,
@@ -164,32 +172,51 @@ export default async function handler(req, res) {
       );
     }
 
-    if (wantSentenceMarks && !marksCacheHit) {
-      const marksCmd = new SynthesizeSpeechCommand({
-        OutputFormat: "json",
-        Text: text,
-        VoiceId: voiceId,
-        Engine: engine,
-        TextType: "text",
-        SpeechMarkTypes: ["sentence"],
-      });
-      const marksOut = await polly.send(marksCmd);
-      if (!marksOut?.AudioStream) {
-        return json(res, 502, { error: "Polly speech marks failed" });
-      }
-      const marksBuf = await streamToBuffer(marksOut.AudioStream);
-      const marks = parseSpeechMarksNdjson(marksBuf);
+// If sentence marks are requested, generate or load them (and cache in S3).
+    if (wantSentenceMarks) {
+      try {
+        if (!marksCacheHit) {
+          const marksCmd = new SynthesizeSpeechCommand({
+            OutputFormat: "json",
+            Text: text,
+            VoiceId: voiceId,
+            Engine: engine,
+            TextType: "text",
+            SpeechMarkTypes: ["sentence"],
+          });
 
-      await s3.send(
-        new PutObjectCommand({
-          Bucket: bucket,
-          Key: marksKey,
-          Body: Buffer.from(JSON.stringify(marks), "utf8"),
-          ContentType: "application/json; charset=utf-8",
-          CacheControl: "public, max-age=31536000, immutable",
-        })
-      );
-      marksCacheHit = false;
+          const marksOut = await polly.send(marksCmd);
+          if (marksOut?.AudioStream) {
+            const marksBuf = await streamToBuffer(marksOut.AudioStream);
+            sentenceMarks = parseSpeechMarksLines(marksBuf);
+
+            // Cache marks for replay/highlighting.
+            await s3.send(
+              new PutObjectCommand({
+                Bucket: bucket,
+                Key: marksKey,
+                Body: Buffer.from(JSON.stringify(sentenceMarks), "utf8"),
+                ContentType: "application/json; charset=utf-8",
+                CacheControl: "public, max-age=31536000, immutable",
+              })
+            );
+          } else {
+            sentenceMarks = [];
+          }
+        } else {
+          // Load cached marks
+          const got = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: marksKey }));
+          const buf = got?.Body ? await streamToBuffer(got.Body) : Buffer.from("[]");
+          try {
+            sentenceMarks = JSON.parse(buf.toString("utf8"));
+          } catch (_) {
+            sentenceMarks = [];
+          }
+        }
+      } catch (e) {
+        // Do not fail TTS audio if marks fail; just omit marks.
+        sentenceMarks = null;
+      }
     }
 
     // Short-lived presigned URL (client can replay while it lasts; S3 caching still applies).
@@ -199,19 +226,9 @@ export default async function handler(req, res) {
       { expiresIn: 60 * 60 } // 1 hour
     );
 
-    let marksUrl = "";
-    if (wantSentenceMarks) {
-      marksUrl = await getSignedUrl(
-        s3,
-        new GetObjectCommand({ Bucket: bucket, Key: marksKey }),
-        { expiresIn: 60 * 60 }
-      );
-    }
-
-    const payload = { url, cacheHit };
-    if (wantSentenceMarks) payload.marksUrl = marksUrl;
-    if (wantSentenceMarks) payload.marksCacheHit = !!marksCacheHit;
-    if (debug) payload.debug = { voiceId, engine, objectKey, marksKey, textLength: text.length, nocache, wantSentenceMarks };
+        const payload = { url, cacheHit };
+    if (wantSentenceMarks && Array.isArray(sentenceMarks)) payload.sentenceMarks = sentenceMarks;
+    if (debug) payload.debug = { voiceId, engine, objectKey, marksKey, textLength: text.length, nocache, wantSentenceMarks, marksCount: Array.isArray(sentenceMarks)? sentenceMarks.length : 0 };
     return json(res, 200, payload);
   } catch (err) {
     return json(res, 500, { error: "Server error", detail: String(err) });

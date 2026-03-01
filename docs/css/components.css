@@ -96,23 +96,6 @@ body {
   cursor: not-allowed;
 }
 
-/* =========================
-   TTS sentence highlight
-   - Applied during Polly playback using sentence speech marks.
-   - Uses a soft fade-in/out similar to Hint (transitioned marker alpha).
-   ========================= */
-
-.page-text .tts-sentence {
-  background-color: rgba(255, 241, 118, 0);
-  border-radius: 4px;
-  padding: 0 2px;
-  transition: background-color 0.35s ease;
-}
-
-.page-text .tts-sentence.tts-sentence--active {
-  background-color: rgba(255, 241, 118, 0.55);
-}
-
     body {
       font-family: 'Crimson Pro', serif;
       font-weight: 600;
@@ -1562,4 +1545,22 @@ body {
 .goal-time-row,
 .info-row {
   min-width: 0;
+}
+
+/* ==============================
+   TTS sentence highlight
+   - fades in for current sentence
+   - fades out when sentence ends
+   ============================== */
+
+.tts-sentence {
+  border-radius: 6px;
+  padding: 0 2px;
+  transition: opacity 220ms ease, background-color 220ms ease;
+  opacity: 0.94;
+}
+
+.tts-sentence--active {
+  opacity: 1;
+  background-color: rgba(255, 230, 120, 0.25);
 }
