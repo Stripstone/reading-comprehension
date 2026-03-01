@@ -427,12 +427,19 @@ function ttsStartHighlightLoop(audio) {
     }
 
     if (idx !== lastIdx) {
+      // Copy Anchors "hint" mechanics: drive a CSS var alpha per span.
+      // Fade out the previous sentence highlight.
       if (lastIdx >= 0 && TTS_STATE.highlightSpans[lastIdx]) {
-        TTS_STATE.highlightSpans[lastIdx].classList.remove("tts-sentence--active");
+        const prev = TTS_STATE.highlightSpans[lastIdx];
+        prev.style.setProperty('--tts-alpha', '0');
       }
+
+      // Fade in the new sentence highlight.
       if (idx >= 0 && TTS_STATE.highlightSpans[idx]) {
-        TTS_STATE.highlightSpans[idx].classList.add("tts-sentence--active");
+        const cur = TTS_STATE.highlightSpans[idx];
+        cur.style.setProperty('--tts-alpha', '0.55');
       }
+
       lastIdx = idx;
     }
 
