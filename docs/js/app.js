@@ -982,31 +982,11 @@ const ANCHOR_VERSION = 6;
     return out.slice(0, 6);
   }
 function shouldCountAnchor(anchor, quoteMatch, matchedTerms, matchCount, totalTerms) {
-    // Quote match counts as found.
+    // Keep "Found" meaningful: an anchor only counts when it is fully met.
+    // (Matching is still typo-tolerant via token normalization/trim logic.)
     if (quoteMatch) return true;
-
-    const weight = Number(anchor?.weight ?? 1);
-    const ratio = totalTerms > 0 ? (matchCount / totalTerms) : 0;
-
-    // High-signal terms are the ones that tend to carry the "mechanism" or key detail.
-    const HIGH = new Set(["hundred","hundreds","percent","wpm","spreeder","triforce","monologue","tracker","insight","insights"]);
-    const hasHigh = Array.isArray(anchor?.terms) && anchor.terms.some(t => HIGH.has(String(t).toLowerCase()));
-    const matchedHigh = Array.isArray(matchedTerms) && matchedTerms.some(t => HIGH.has(String(t).toLowerCase()));
-
-    // Progressive strictness:
-    // - weight 3: require strong completion (or at least one high-signal term)
-    // - weight 2: require moderate completion
-    // - weight 1: allow a single meaningful hit
-    if (weight >= 3) {
-      if (hasHigh && !matchedHigh) return false;
-      return ratio >= 0.8 || matchCount >= Math.min(3, totalTerms);
-    }
-    if (weight === 2) {
-      if (hasHigh && !matchedHigh) return false;
-      return ratio >= 0.6 || matchCount >= Math.min(2, totalTerms);
-    }
-    // weight 1
-    return matchCount >= 1;
+    if (!totalTerms) return false;
+    return matchCount >= totalTerms;
   }
 
 function quoteChunkMatch(quote, inputNorm) {

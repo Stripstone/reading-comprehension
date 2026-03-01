@@ -32,6 +32,7 @@ Hard requirements:
 
 Anchor quality requirements:
 - Anchors should represent **mechanisms, causal/conditional pivots, constraints, or motivating frames** — not scattered fragments.
+- Prefer **high-signal context pivots** (credentials, quantities, proper nouns, named methods/tools) over generic framing (e.g., "hours reading", "every day") when choosing between candidates.
 - Weight guidance:
   - weight=3: a central mechanism/pivot; if the learner understands this, they understand the page.
   - weight=2: important supporting mechanism or constraint.
