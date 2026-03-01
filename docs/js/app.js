@@ -2148,7 +2148,7 @@ function writeAnchorsToCache(pageHash, payload) {
   }
 
   function resetSession({ confirm = true, clearPersistedWork = false, clearAnchors = false } = {}) {
-    if (confirm && !window.confirm("Clear all pages, consolidations, and timers?")) return false;
+    if (confirm && !window.confirm("Clear loaded pages and remove your consolidations and feedback?")) return false;
 
     if (clearPersistedWork) {
       clearPersistedWorkForPageHashes(pageData.map(p => p?.pageHash), { clearAnchors });
