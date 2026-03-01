@@ -1554,27 +1554,13 @@ body {
    ============================== */
 
 .tts-sentence {
-  position: relative;
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 0 2px;
-}
-
-/* Highlight layer (true 0 → 100% opacity fade)
-   We fade an overlay instead of the text itself to preserve readability. */
-.tts-sentence::before {
-  content: "";
-  position: absolute;
-  inset: -2px -2px;
-  border-radius: 8px;
-  background: rgba(255, 230, 120, 0.55);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 220ms ease;
+  transition: opacity 220ms ease, background-color 220ms ease;
+  opacity: 0.94;
 }
 
 .tts-sentence--active {
-}
-
-.tts-sentence--active::before {
   opacity: 1;
+  background-color: rgba(255, 230, 120, 0.25);
 }
