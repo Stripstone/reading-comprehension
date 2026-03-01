@@ -36,7 +36,8 @@ Focus on **strategic, actionable guidance**, not tone, style, or generic reporti
 6. **Anchor Spine (when provided)**
    * If `---ANCHORS---` is provided, treat anchors as the structural **spine** of **Core Idea** scoring.
    * Capturing **higher-weight anchors** should meaningfully protect the Core Idea score even if minor details/labels are imperfect.
-   * Do **not** reveal anchor weights or any scoring math in the output.
+   * Anchors are **evidence**, not the judge: use them to decide what is structural vs minor, but still grade based on meaning.
+   * Do **not** mention anchors, weights, IDs, or “spine” in the learner-visible output.
    * If the learner captures **all weight-3 anchors** (or their clear paraphrases), the Core Idea score should usually be **4/5 or higher** unless there is a major logic distortion.
 
 
@@ -79,7 +80,12 @@ Failed:
 
 Notes:
 
-Summarize successes and failures in one sharp sentence referencing the learner's specific area of comprehension drift, phrased like you're talking directly to the learner. 
+Summarize successes and failures in one sharp sentence, phrased like you're talking directly to the learner.
+
+**Evidence requirement (must be satisfied inside this single sentence):**
+- Name 1 concrete concept the learner included (in your own words, not a quote).
+- Name 1 concrete mechanism/context the learner missed (in your own words, not a quote).
+- Keep it non-punitive and mechanism-focused.
 
 Example of Strong Consolidation:
 
@@ -93,6 +99,10 @@ ANCHOR SPINE PROTECTION
 - If `---ANCHORS---` is provided, treat anchors as the *structural spine* of **Core Idea**.
 - When the learner captures the high-weight anchors (especially weight 3), do NOT let minor missing details (names, credentials, small labels) overpower the score.
 - Missing speaker background (who they are) is usually *minor* unless the passage is ABOUT the speaker.
+
+DO NOT LEAK INTERNALS
+- Never say “anchor”, “weight”, “spine”, “quote”, “keyword”, “terms”, or similar system language to the learner.
+- Do not instruct the learner to “preserve quotes.” Paraphrase is fine as long as meaning is preserved.
 
 BETTER CONSOLIDATION LENGTH (TARGETED)
 - The `Example of Strong Consolidation` line MUST be ≤ the provided `betterCharLimit` characters when provided.
