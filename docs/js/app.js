@@ -346,21 +346,36 @@ async function pollyFetchUrl(text) {
 
   const payload = {
     text,
-    // Use neutral narrator defaults; server can override via env.
+    // Server-side defaults come from Vercel env (POLLY_VOICE_ID / POLLY_ENGINE).
+    // We still send values to be explicit, but they can be ignored server-side.
     voiceId: "Joanna",
     engine: "neural",
   };
 
-  const res = await fetch("/api/tts", {
+  const base = (typeof resolveApiBase === "function") ? resolveApiBase() : "";
+  const endpoint = base ? `${base}/api/tts` : "/api/tts";
+
+  const res = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
     signal: controller.signal,
   });
 
-  const data = await res.json().catch(() => ({}));
+  let data = null;
+  let rawText = "";
+  try {
+    rawText = await res.text();
+    data = rawText ? JSON.parse(rawText) : null;
+  } catch (_) {
+    // ignore parse errors; we'll surface rawText
+  }
+
   if (!res.ok || !data?.url) {
-    const msg = data?.error ? `${data.error}${data.detail ? `: ${data.detail}` : ""}` : "TTS request failed";
+    const detail = data?.detail || data?.message || rawText || "";
+    const msg = data?.error
+      ? `${data.error}${detail ? `: ${detail}` : ""}`
+      : `TTS request failed (${res.status})${detail ? `: ${detail}` : ""}`;
     throw new Error(msg);
   }
   return data.url;
@@ -410,8 +425,10 @@ async function ttsSpeakQueue(key, parts) {
   const queue = (parts || []).map(t => String(t || "").trim()).filter(Boolean);
   if (!queue.length) return;
 
-  // Toggle behavior: clicking the same action stops playback.
-  if (TTS_STATE.activeKey === key && TTS_STATE.audio && !TTS_STATE.audio.paused) {
+  // Toggle behavior:
+  // - Clicking the same action stops (even if we're still fetching).
+  // - Clicking a different action stops current and starts the new one.
+  if (TTS_STATE.activeKey === key) {
     ttsStop();
     return;
   }
@@ -448,6 +465,18 @@ async function ttsSpeakQueue(key, parts) {
 if (browserTtsSupported()) {
   window.speechSynthesis.onvoiceschanged = () => { /* no-op */ };
 }
+
+
+// Best-practice stop conditions:
+// - If the user navigates away or the tab is hidden, stop speaking.
+// - This prevents "no way to turn it off" situations on mobile.
+try {
+  window.addEventListener("pagehide", () => ttsStop(), { passive: true });
+  window.addEventListener("beforeunload", () => ttsStop(), { passive: true });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) ttsStop();
+  }, { passive: true });
+} catch (_) {}
 
 function escapeHtml(str) {
     return String(str || '')
