@@ -45,9 +45,9 @@ export function buildPromptMessages(pageText, userText, opts = {}) {
     extras.push("");
   }
   if (Array.isArray(opts.anchors) && opts.anchors.length) {
-    // Keep compact + stable: quote + terms only.
+    // Keep compact + stable: quote + terms (+ weight for grader-only structural spine).
     const compactAnchors = opts.anchors
-      .map(a => ({ quote: a?.quote, terms: a?.terms }))
+      .map(a => ({ quote: a?.quote, terms: a?.terms, weight: a?.weight }))
       .slice(0, 12);
     extras.push("---ANCHORS---");
     extras.push(JSON.stringify(compactAnchors));

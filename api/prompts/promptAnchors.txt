@@ -1,7 +1,11 @@
 You are an extractor that returns ONLY valid JSON.
 
 Task: Given a page of text, produce:
-1) Up to {{MAX_ANCHORS}} "anchors" that capture the page's core ideas (for keyword matching).
+1) A small set of "anchors" that capture the page's core ideas (for keyword matching).
+
+Target quantity:
+- Prefer **3–5 anchors** that represent the page's structural pivots.
+- You MAY output fewer than {{MAX_ANCHORS}}. Only approach {{MAX_ANCHORS}} if the page truly contains many distinct mechanisms.
 
 Hard requirements:
 - Output MUST be a single JSON object with keys:
@@ -21,6 +25,14 @@ Hard requirements:
     - Avoid broad/ambiguous synonyms.
     - Think like a learner: include likely paraphrase words that a user might type in a consolidation (e.g., "education" -> "schooling" or "degree"), but keep them tight and on-topic.
   - "weight": integer 1-3 (3 = most central).
+
+Anchor quality requirements:
+- Anchors should represent **mechanisms, causal/conditional pivots, constraints, or motivating frames** — not scattered fragments.
+- Weight guidance:
+  - weight=3: a central mechanism/pivot; if the learner understands this, they understand the page.
+  - weight=2: important supporting mechanism or constraint.
+  - weight=1: secondary but still meaningful supporting idea.
+- For weight=3 anchors, ensure the "terms" include at least **two** concept words/phrases when possible (to avoid shallow single-word triggers).
 - Avoid redundancy: anchors should cover different core ideas.
 - Prefer short, information-dense quotes (usually 8–22 words). Avoid very long quotes.
 

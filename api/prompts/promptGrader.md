@@ -33,6 +33,19 @@ Focus on **strategic, actionable guidance**, not tone, style, or generic reporti
    * Tie **Compression** and **Engagement** to primary divergences.
    * Feedback should guide **actionable comprehension improvement**, not just sentence fixes.
 
+6. **Anchor Spine (when provided)**
+   * If `---ANCHORS---` is provided, treat anchors as the structural **spine** of **Core Idea** scoring.
+   * Capturing **higher-weight anchors** should meaningfully protect the Core Idea score even if minor details/labels are imperfect.
+   * Do **not** reveal anchor weights or any scoring math in the output.
+
+7. **Emotional Safety in Accuracy Enforcement**
+   * Penalize **distortions of meaning** (broken causality, flipped conditionals, invented claims), not harmless slips.
+   * If the mechanism is intact, treat small lexical errors (typos, slightly wrong names/labels) as **neutral** unless they change meaning.
+
+8. **Gap-First Feedback**
+   * Prefer **gap-detection** over error lists: identify the **single missing mechanism** that would most increase the score band.
+   * Avoid stylistic nitpicks unless they directly cause comprehension drift.
+
 ---
 
 ### Per-Page Evaluation — Output Structure
@@ -71,6 +84,8 @@ A 1-2 sentence version of the learner’s text that preserves scope, causality, 
 
 If `---ANCHORS---` is provided, consider using those keywords in your **Example of Strong Consolidation**
 
+If `---ANCHORS---` is provided, you may also use them to decide what is **structural vs minor** for scoring and feedback (without exposing weights or math).
+
 If a `betterCharLimit` is provided, treat it as the **target maximum length** for your **Example of Strong Consolidation**:
  - Aim to stay within 10% above the limit
  - Only exceed it if necessary to preserve core mechanisms and conditional accuracy
@@ -86,6 +101,7 @@ If a `betterCharLimit` is provided, treat it as the **target maximum length** fo
    * Multiple successes raise the score proportionally.
 3. Overall Score = arithmetic mean of the four criteria.
 3a. If the Overall Score is 84% or higher, frame improvements in the “Failed” and “Notes” sections as optional refinements rather than deficiencies, without implying error where none exists. Otherwise, follow the standard grading behavior defined above without refinement framing.
+3b. If the Overall Score is below 70%, prioritize **structural clarification** in “Failed” and “Notes” (the missing mechanism) before any style/wording improvements.
 4. **PASS threshold:** 70% or higher indicates acceptable performance.
 5. Document in **Notes** why a score was assigned, referencing successes and failures.
 
@@ -93,10 +109,10 @@ If a `betterCharLimit` is provided, treat it as the **target maximum length** fo
 
 ### Grading Criteria
 
-* **Core Idea** → Captures the passage’s main mechanisms, scope, and intended meaning in reasonable detail. No vague or one-phrase summaries.
-* **Accuracy** → Preserves conditional statements, causal links, and factual correctness.
+* **Core Idea** → Captures the passage’s main mechanisms, scope, and intended meaning in reasonable detail. No vague or one-phrase summaries. If anchors are provided, capturing the higher-weight anchors should strongly protect this score.
+* **Accuracy** → Preserves conditional statements, causal links, and factual correctness. Penalize meaning distortions; do not punish harmless typos/label slips when the mechanism remains correct.
 * **Compression** → Condenses the passage effectively with reasonable detail and without losing meaning or adding unnecessary detail.
-* **Engagement** → Shows textually ground reasoning, insight, or actionable interpretation of the passage.
+* **Engagement** → Earned when the learner connects a mechanism to an implication, condition, or consequence grounded in the passage (not personality or vibe).
 
 ---
 
@@ -112,6 +128,7 @@ If a `betterCharLimit` is provided, treat it as the **target maximum length** fo
 
 * Must be **generated from the learner’s input**, not a reference example.
 * Models the **highest achievable degree of correctness** while preserving scope, causality, and conditional claims.
+* Preserve the learner’s **syntax and sentence rhythm** where possible; subtly upgrade clarity/correctness rather than replacing their voice.
 
 ---
 
