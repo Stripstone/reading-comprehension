@@ -344,13 +344,19 @@ async function pollyFetchUrl(text) {
   const controller = new AbortController();
   TTS_STATE.abort = controller;
 
-  const payload = {
-    text,
-    // Server-side defaults come from Vercel env (POLLY_VOICE_ID / POLLY_ENGINE).
-    // We still send values to be explicit, but they can be ignored server-side.
-    voiceId: "Joanna",
-    engine: "neural",
-  };
+  // IMPORTANT:
+  // Do NOT hardcode voice/engine here.
+  // We want the server-side defaults (Vercel env: POLLY_VOICE_ID / POLLY_ENGINE)
+  // to take effect so changing env vars changes the narrator without being
+  // overridden by the client.
+  const payload = { text };
+
+  // Developer override: if you set localStorage.tts_nocache = "1",
+  // the server will regenerate audio even if an S3 object already exists.
+  // (Useful while auditioning voices.)
+  try {
+    if (localStorage.getItem("tts_nocache") === "1") payload.nocache = true;
+  } catch (_) {}
 
   const base = (typeof resolveApiBase === "function") ? resolveApiBase() : "";
   const endpoint = base ? `${base}/api/tts` : "/api/tts";
@@ -437,11 +443,7 @@ async function ttsSpeakQueue(key, parts) {
   }
   TTS_STATE.activeKey = key;
 
-  // Preferred path: Polly via /api/tts.
-  // IMPORTANT: We intentionally DO NOT fall back to browser SpeechSynthesis.
-  // Reason: browsers may switch to a default/system voice in rapid-click or partial-failure
-  // scenarios, which feels like a different "mode". This app uses a strict 2-state toggle:
-  //   ON = Polly, OFF = silent.
+  // Preferred path: Polly via /api/tts. If it fails, fall back to browser voices.
   try {
     for (let i = 0; i < queue.length; i++) {
       const url = await pollyFetchUrl(queue[i]);
@@ -458,11 +460,10 @@ async function ttsSpeakQueue(key, parts) {
     }
     TTS_STATE.activeKey = null;
   } catch (err) {
-    // Polly failed (network/env/audio). Do not fall back to browser TTS.
-    console.warn("Polly TTS unavailable (browser TTS disabled):", err);
+    // If Polly isn't configured yet, don't spam alerts; just fall back.
+    console.warn("Polly TTS unavailable, falling back to browser TTS:", err);
     ttsStop();
-    // Ensure the toggle resets cleanly so the next click retries Polly.
-    TTS_STATE.activeKey = null;
+    browserSpeakQueue(key, queue);
   }
 }
 

@@ -59,6 +59,7 @@ export default async function handler(req, res) {
     const body = await readJsonBody(req);
     const text = String(body?.text ?? "").trim();
     const debug = String(body?.debug ?? "").trim() === "1" || body?.debug === true;
+    const nocache = body?.nocache === true || String(body?.nocache ?? "").trim() === "1";
 
     if (!text) {
       return json(res, 400, { error: "Missing text" });
@@ -70,45 +71,18 @@ export default async function handler(req, res) {
       return json(res, 400, { error: "Text too long", detail: "Max 8000 characters." });
     }
 
-    // Accept common env var aliases to reduce "works locally but not on Vercel" footguns.
     const region = requiredEnv("AWS_REGION") || requiredEnv("AWS_DEFAULT_REGION");
-    const bucket =
-      requiredEnv("AWS_S3_BUCKET") ||
-      requiredEnv("S3_BUCKET") ||
-      requiredEnv("S3_BUCKET_NAME");
+    const bucket = requiredEnv("AWS_S3_BUCKET");
 
     if (!region || !bucket) {
-      // NOTE: This guard happens BEFORE any AWS SDK calls. If you hit this error,
-      // Vercel is not injecting the env vars into this deployment/runtime.
       return json(res, 500, {
         error: "Missing AWS configuration",
         detail: "Set AWS_REGION (or AWS_DEFAULT_REGION) and AWS_S3_BUCKET.",
-        present: {
-          AWS_REGION: Boolean(requiredEnv("AWS_REGION")),
-          AWS_DEFAULT_REGION: Boolean(requiredEnv("AWS_DEFAULT_REGION")),
-          AWS_S3_BUCKET: Boolean(requiredEnv("AWS_S3_BUCKET")),
-          S3_BUCKET: Boolean(requiredEnv("S3_BUCKET")),
-          S3_BUCKET_NAME: Boolean(requiredEnv("S3_BUCKET_NAME")),
-          AWS_ACCESS_KEY_ID: Boolean(requiredEnv("AWS_ACCESS_KEY_ID")),
-          AWS_SECRET_ACCESS_KEY: Boolean(requiredEnv("AWS_SECRET_ACCESS_KEY")),
-        },
       });
     }
 
-    const voiceId = String(
-      body?.voiceId ||
-        requiredEnv("POLLY_VOICE_ID") ||
-        requiredEnv("AWS_POLLY_VOICE_ID") ||
-        "Joanna"
-    ).trim();
-    const engineRaw = String(
-      body?.engine ||
-        requiredEnv("POLLY_ENGINE") ||
-        requiredEnv("AWS_POLLY_ENGINE") ||
-        "neural"
-    )
-      .trim()
-      .toLowerCase();
+    const voiceId = String(body?.voiceId || requiredEnv("POLLY_VOICE_ID") || "Joanna").trim();
+    const engineRaw = String(body?.engine || requiredEnv("POLLY_ENGINE") || "neural").trim().toLowerCase();
     const engine = engineRaw === "standard" ? "standard" : "neural";
 
     const prefix = toSafePrefix(requiredEnv("AWS_S3_PREFIX"));
@@ -119,13 +93,15 @@ export default async function handler(req, res) {
     const s3 = new S3Client({ region });
     const polly = new PollyClient({ region });
 
-    // Cache check
+    // Cache check (can be disabled via { nocache: true } while auditioning voices)
     let cacheHit = false;
-    try {
-      await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: objectKey }));
-      cacheHit = true;
-    } catch (_) {
-      cacheHit = false;
+    if (!nocache) {
+      try {
+        await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: objectKey }));
+        cacheHit = true;
+      } catch (_) {
+        cacheHit = false;
+      }
     }
 
     if (!cacheHit) {
@@ -162,7 +138,7 @@ export default async function handler(req, res) {
     );
 
     const payload = { url, cacheHit };
-    if (debug) payload.debug = { voiceId, engine, objectKey, textLength: text.length };
+    if (debug) payload.debug = { voiceId, engine, objectKey, textLength: text.length, nocache };
     return json(res, 200, payload);
   } catch (err) {
     return json(res, 500, { error: "Server error", detail: String(err) });
