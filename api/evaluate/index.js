@@ -44,8 +44,6 @@ export default async function handler(req, res) {
     const userText = String(body?.userText ?? "").trim();
     const pageBetterConsolidation = typeof body?.pageBetterConsolidation === "string" ? body.pageBetterConsolidation : undefined;
     const anchors = Array.isArray(body?.anchors) ? body.anchors : undefined;
-    const betterCharLimit = Number(body?.betterCharLimit);
-    const bulletMaxChars = Number(body?.bulletMaxChars);
     const debug = String(body?.debug ?? "").trim() === "1" || body?.debug === true;
 
     if (!pageText || !userText) {
@@ -56,12 +54,7 @@ export default async function handler(req, res) {
       return json(res, 500, { error: "Missing GROQ_API_KEY env var" });
     }
 
-    const messages = buildPromptMessages(pageText, userText, {
-      pageBetterConsolidation,
-      anchors,
-      betterCharLimit,
-      bulletMaxChars,
-    });
+    const messages = buildPromptMessages(pageText, userText, { pageBetterConsolidation, anchors });
 
     const upstream = await fetch(GROQ_URL, {
       method: "POST",

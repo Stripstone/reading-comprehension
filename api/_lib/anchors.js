@@ -3,8 +3,7 @@ import crypto from "node:crypto";
 
 // Bump when matching/normalization semantics change so cached anchors refresh.
 // v5: anchors endpoint no longer emits pageBetterConsolidation (evaluate owns that).
-// v6: weight stabilization (guarantee a single spine anchor) + prompt shift toward 3–5 deep anchors.
-export const ANCHOR_VERSION = 6;
+export const ANCHOR_VERSION = 5;
 
 // Conservative caps to keep UI stable.
 const MAX_QUOTE_LEN = 220;
@@ -367,45 +366,12 @@ export function normalizeAnchorsWithDebug({ pageText, modelText, maxAnchors = 5,
     .slice(0, cap);
 
   // Finalize ids and remove internal fields.
-  let anchors = indexed.map((a, i) => ({
+  const anchors = indexed.map((a, i) => ({
     id: stableAnchorId(i),
     quote: a.quote,
     terms: a.terms,
     weight: a.weight,
   }));
-
-  // Weight stabilization (UI/UX fairness):
-  // - Ensure exactly ONE weight=3 anchor when possible (the "spine").
-  // - Avoid multiple 3s (downgrade extras deterministically).
-  // - Ensure at least one 2 when there are 2+ anchors.
-  // This does NOT expose scoring math; it only stabilizes the relative importance signal.
-  if (anchors.length) {
-    const w3 = anchors.map((a, idx) => ({ idx, w: a.weight })).filter(x => x.w === 3);
-
-    // If none are weight 3, promote the first anchor (earliest in text / most central by ordering).
-    if (w3.length === 0) {
-      anchors = anchors.map((a, idx) => (idx === 0 ? { ...a, weight: 3 } : a));
-    }
-
-    // If multiple are 3, keep the first and downgrade the rest to 2.
-    const w3b = anchors.map((a, idx) => ({ idx, w: a.weight })).filter(x => x.w === 3);
-    if (w3b.length > 1) {
-      const keep = w3b[0].idx;
-      anchors = anchors.map((a, idx) => {
-        if (idx === keep) return a;
-        if (a.weight === 3) return { ...a, weight: 2 };
-        return a;
-      });
-    }
-
-    // If there are 2+ anchors and none are weight 2, promote the second anchor to 2.
-    if (anchors.length >= 2) {
-      const has2 = anchors.some(a => a.weight === 2);
-      if (!has2) {
-        anchors = anchors.map((a, idx) => (idx === 1 ? { ...a, weight: 2 } : a));
-      }
-    }
-  }
 
   return {
     anchors,

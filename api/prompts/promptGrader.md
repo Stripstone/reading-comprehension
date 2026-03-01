@@ -33,19 +33,6 @@ Focus on **strategic, actionable guidance**, not tone, style, or generic reporti
    * Tie **Compression** and **Engagement** to primary divergences.
    * Feedback should guide **actionable comprehension improvement**, not just sentence fixes.
 
-6. **Emotional Fairness (Benefit of the Doubt)**
-   * Do NOT penalize harmless grammar, spelling, or naming slips if the intended meaning is clear.
-   * Accuracy penalties are for **meaning-changing** distortions (breaking causality, scope, conditions, agents, quantities).
-
-7. **Gap-First Feedback**
-   * Prefer identifying the **single missing mechanism** (or single meaning-changing distortion) that blocks the next score band.
-   * Avoid long lists of minor flaws.
-
-8. **Progressive Strictness**
-   * Low scores: prioritize structural clarification (what the passage is doing).
-   * Mid scores: prioritize the one missing mechanism.
-   * High scores: provide refinement framing (optional improvements), not nitpicks.
-
 ---
 
 ### Per-Page Evaluation — Output Structure
@@ -76,26 +63,15 @@ Failed:
 
 Notes:
 
-ONE sentence only. Do both:
-1) state what mechanism you understood correctly, AND
-2) name the single missing mechanism or meaning-changing distortion that prevents a higher score.
-Write directly to the learner ("you").
+Summarize successes and failures in one sharp sentence referencing the learner's specific area of comprehension drift, phrased like you're talking directly to the learner. 
 
 Example of Strong Consolidation:
 
 A 1-2 sentence version of the learner’s text that preserves scope, causality, conditional claims, and maximum correctness.
 
-If `---ANCHORS---` is provided, treat anchors as the structural "spine" for Core Idea:
- - Anchors include a weight (1–3). High-weight anchors represent core mechanisms.
- - If the learner captures weight=3 (and most weight=2) anchors, protect Core Idea from being dragged down by minor detail misses.
- - Do NOT reveal scoring math or weights to the user; use it internally to prioritize what matters.
+If `---ANCHORS---` is provided, consider using those keywords in your **Example of Strong Consolidation**
 
-Rewrite style rule:
- - Upgrade the learner's consolidation while MIRRORING their sentence rhythm and structure when possible.
- - Do not replace their structure with a totally new one unless their structure causes a meaning error.
-
-If `---LIMITS---` is provided, it will include `betterCharLimit`.
-Treat `betterCharLimit` as the **target maximum length** for your **Example of Strong Consolidation**:
+If a `betterCharLimit` is provided, treat it as the **target maximum length** for your **Example of Strong Consolidation**:
  - Aim to stay within 10% above the limit
  - Only exceed it if necessary to preserve core mechanisms and conditional accuracy
  - Prioritize clarity and correctness over rigid adherence
@@ -118,9 +94,9 @@ Treat `betterCharLimit` as the **target maximum length** for your **Example of S
 ### Grading Criteria
 
 * **Core Idea** → Captures the passage’s main mechanisms, scope, and intended meaning in reasonable detail. No vague or one-phrase summaries.
-* **Accuracy** → Preserves conditional statements, causal links, and factual correctness. Do not penalize harmless label/name slips unless meaning changes.
+* **Accuracy** → Preserves conditional statements, causal links, and factual correctness.
 * **Compression** → Condenses the passage effectively with reasonable detail and without losing meaning or adding unnecessary detail.
-* **Engagement** → Earned only by connecting a mechanism to an implication, condition, or consequence (text-grounded). Not personality-based.
+* **Engagement** → Shows textually ground reasoning, insight, or actionable interpretation of the passage.
 
 ---
 

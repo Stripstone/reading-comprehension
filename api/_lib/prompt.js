@@ -39,30 +39,15 @@ export function buildPromptMessages(pageText, userText, opts = {}) {
   const promptTemplate = readPromptTemplate("promptGrader.md");
 
   const extras = [];
-  // Stable limits block so the grader can obey UI constraints deterministically.
-  if (opts && typeof opts === 'object') {
-    const betterCharLimit = Number(opts.betterCharLimit);
-    const bulletMaxChars = Number(opts.bulletMaxChars);
-    const hasBetter = Number.isFinite(betterCharLimit) && betterCharLimit > 0;
-    const hasBullet = Number.isFinite(bulletMaxChars) && bulletMaxChars > 0;
-    if (hasBetter || hasBullet) {
-      extras.push('---LIMITS---');
-      extras.push(JSON.stringify({
-        betterCharLimit: hasBetter ? Math.round(betterCharLimit) : null,
-        bulletMaxChars: hasBullet ? Math.round(bulletMaxChars) : null,
-      }));
-      extras.push('');
-    }
-  }
   if (typeof opts.pageBetterConsolidation === "string" && opts.pageBetterConsolidation.trim()) {
     extras.push("---PASSAGE REFERENCE CONSOLIDATION---");
     extras.push(opts.pageBetterConsolidation.trim());
     extras.push("");
   }
   if (Array.isArray(opts.anchors) && opts.anchors.length) {
-    // Keep compact + stable: include weight as a visible importance signal.
+    // Keep compact + stable: quote + terms only.
     const compactAnchors = opts.anchors
-      .map(a => ({ quote: a?.quote, terms: a?.terms, weight: a?.weight }))
+      .map(a => ({ quote: a?.quote, terms: a?.terms }))
       .slice(0, 12);
     extras.push("---ANCHORS---");
     extras.push(JSON.stringify(compactAnchors));
