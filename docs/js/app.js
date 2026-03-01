@@ -357,7 +357,9 @@ function ttsMaybePrepareSentenceHighlight(key, rawText, marks) {
   const pageIndex = Number(String(key).slice(5));
   if (!Number.isFinite(pageIndex)) return;
 
-  const pageEl = document.querySelector(`.page[data-page="${pageIndex}"]`);
+  // Pages are rendered as .page elements in DOM order.
+  // (They do NOT carry a data-page attribute.)
+  const pageEl = document.querySelectorAll('.page')[pageIndex];
   if (!pageEl) return;
   const textEl = pageEl.querySelector(".page-text");
   if (!textEl) return;
@@ -611,7 +613,12 @@ async function ttsSpeakQueue(key, parts) {
     }
     TTS_STATE.activeKey = null;
   } catch (err) {
-    // If Polly isn't configured yet, don't spam alerts; just fall back.
+    // IMPORTANT: If the user explicitly stopped (or switched actions) while Polly
+    // was fetching/playing, do NOT fall back to browser TTS.
+    if (TTS_STATE.activeKey !== key) return;
+    if (err && (err.name === 'AbortError' || String(err).includes('aborted'))) return;
+
+    // If Polly isn't configured yet (or otherwise fails), don't spam alerts; just fall back.
     console.warn("Polly TTS unavailable, falling back to browser TTS:", err);
     ttsStop();
     browserSpeakQueue(key, queue);
