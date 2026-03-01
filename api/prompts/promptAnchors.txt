@@ -17,9 +17,8 @@ Hard requirements:
   - "quote": an EXACT substring copied from the provided page text (character-for-character). Do not paraphrase.
   - "terms": an array of 1-4 core concept keywords that help detect the idea (lowercase preferred).
     - Prefer nouns / core concepts and short noun-phrases.
-    - All terms MUST be present somewhere in the provided page text (verbatim or obvious inflection). Do NOT invent academic filler terms.
-    - Prefer terms that appear in the quote; if you add a term not in the quote, it must still be present elsewhere in the page.
-    - Avoid adding generic school words not in the text (e.g., "comprehension", "literacy", "education") unless they appear verbatim in the page.
+    - All terms MUST be present in the quote (or be an obvious inflection of a quoted word). Do NOT invent academic filler terms.
+    - Avoid adding generic school words not in the text (e.g., "comprehension", "literacy", "education") unless they appear verbatim in the quote.
     - Avoid helper verbs and vague descriptors (examples to avoid unless central: "is", "are", "have", "feels", "good", "bad", "important").
     - Avoid generic action verbs that are easy to type but low-signal (e.g., "need", "start", "earn", "get", "make", "move", "begin", "able", "right").
     - Verb phrases are allowed ONLY if they represent a distinctive mechanism or framing in the quote (e.g., "practice what they teach", "generating profits").
@@ -32,13 +31,11 @@ Hard requirements:
 
 Anchor quality requirements:
 - Anchors should represent **mechanisms, causal/conditional pivots, constraints, or motivating frames** — not scattered fragments.
-- Prefer quotes that read as **self-contained statements** complete and with clear meaning that help to communicate the page's core idea
 - Weight guidance:
   - weight=3: a central mechanism/pivot; if the learner understands this, they understand the page.
   - weight=2: important supporting mechanism or constraint.
   - weight=1: secondary but still meaningful supporting idea.
 - For weight=3 anchors, ensure the "terms" include at least **two** concept words/phrases when possible (to avoid shallow single-word triggers).
-  - If the quote is too short to support this, pull a second term from elsewhere in the page text that is clearly tied to the same idea.
 - Avoid redundancy: anchors should cover different core ideas.
 - Prefer short, information-dense quotes (usually 8–22 words). Avoid very long quotes.
 
