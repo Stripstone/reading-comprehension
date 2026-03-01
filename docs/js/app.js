@@ -437,7 +437,11 @@ async function ttsSpeakQueue(key, parts) {
   }
   TTS_STATE.activeKey = key;
 
-  // Preferred path: Polly via /api/tts. If it fails, fall back to browser voices.
+  // Preferred path: Polly via /api/tts.
+  // IMPORTANT: We intentionally DO NOT fall back to browser SpeechSynthesis.
+  // Reason: browsers may switch to a default/system voice in rapid-click or partial-failure
+  // scenarios, which feels like a different "mode". This app uses a strict 2-state toggle:
+  //   ON = Polly, OFF = silent.
   try {
     for (let i = 0; i < queue.length; i++) {
       const url = await pollyFetchUrl(queue[i]);
@@ -454,10 +458,11 @@ async function ttsSpeakQueue(key, parts) {
     }
     TTS_STATE.activeKey = null;
   } catch (err) {
-    // If Polly isn't configured yet, don't spam alerts; just fall back.
-    console.warn("Polly TTS unavailable, falling back to browser TTS:", err);
+    // Polly failed (network/env/audio). Do not fall back to browser TTS.
+    console.warn("Polly TTS unavailable (browser TTS disabled):", err);
     ttsStop();
-    browserSpeakQueue(key, queue);
+    // Ensure the toggle resets cleanly so the next click retries Polly.
+    TTS_STATE.activeKey = null;
   }
 }
 
