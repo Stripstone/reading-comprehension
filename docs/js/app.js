@@ -745,7 +745,41 @@ function escapeHtml(str) {
     // path should start with '/'
     return API_BASE ? (API_BASE + path) : path;
   }
-const ANCHOR_VERSION = 5;
+  // ----------------------------------------------------
+  // Anchor cache invalidation
+  // ----------------------------------------------------
+  // Anchors are cached in localStorage under keys like:
+  //   anchors:<ANCHOR_VERSION>:<pageHash>
+  // During iterative development, logic/prompt changes can make old cached
+  // anchors look like "hallucinated" runtime bugs. To prevent that, we treat
+  // ANCHOR_ENGINE_VERSION as the broad truth for anchor-system behavior.
+  // If it changes, we wipe ALL anchor cache entries before continuing.
+  const ANCHOR_ENGINE_VERSION = "2.1.0";
+  const ANCHOR_ENGINE_VERSION_KEY = "rc_anchor_engine_version";
+
+  function invalidateAnchorsCacheIfNeeded() {
+    try {
+      const stored = localStorage.getItem(ANCHOR_ENGINE_VERSION_KEY);
+      if (stored === ANCHOR_ENGINE_VERSION) return;
+
+      // Remove ALL cached anchor entries (any version).
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('anchors:')) {
+          localStorage.removeItem(k);
+        }
+      }
+      localStorage.setItem(ANCHOR_ENGINE_VERSION_KEY, ANCHOR_ENGINE_VERSION);
+      try { console.info('[AnchorEngine] cache cleared (version change)', { from: stored, to: ANCHOR_ENGINE_VERSION }); } catch (_) {}
+    } catch (_) {
+      // ignore (private mode / quota)
+    }
+  }
+
+  // IMPORTANT: run before any anchor cache reads.
+  invalidateAnchorsCacheIfNeeded();
+
+const ANCHOR_VERSION = 6;
   const anchorsInFlight = new Map(); // pageHash -> Promise
 
   // Global anchors diagnostics record surfaced via the 🔧 Diagnostics panel.
