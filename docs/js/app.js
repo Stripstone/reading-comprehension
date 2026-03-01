@@ -893,28 +893,88 @@ const ANCHOR_VERSION = 5;
   }
 
   function extractEssentialTerms(anchor) {
-    // UX rule: ANY keyword should be able to activate an anchor.
-    // So we take a UNION of:
-    // - model-provided terms (often semantic)
-    // - terms derived from the quote itself (often literal)
-    // This prevents cases like "generational" not activating when the model only provided "wealth".
+    // Matching should feel generous, but not "free".
+    // We prioritize literal quote terms, and only keep a small number of extra model terms
+    // (to support paraphrase) while filtering low-signal filler.
     const rawTerms = Array.isArray(anchor?.terms) ? anchor.terms : [];
-    // Terms are already normalized server-side, but we apply baseForm to match user variations.
-    const modelTerms = rawTerms.flatMap(t => tokenizeBase(t));
-    const quoteTerms = tokenizeBase(anchor?.quote || '');
+
+    const quoteTerms = tokenizeBase(anchor?.quote || "");
+    const quoteSet = new Set(quoteTerms);
+
+    const STOP = new Set([
+      "a","an","the","and","or","but","so","to","of","in","on","for","with","at","by","from","as","it","its",
+      "is","are","was","were","be","been","being","do","does","did","have","has","had",
+      "this","that","these","those","you","your","we","our","they","their","i","me","my",
+      "can","could","should","would","will","just","very","really","more","most","less","much",
+      "about","into","over","under","than","then","when","how","why","what","who"
+    ]);
+
+    function isHighSignal(term) {
+      if (!term) return false;
+      if (/\d/.test(term)) return true; // numbers, wpm, percentages
+      if (term.length >= 8) return true; // longer words tend to be more specific
+      return ["hundred","hundreds","percent","wpm","spreeder","triforce","monologue","tracker","insight","insights"].includes(term);
+    }
+
+    // Normalize model terms via tokenizeBase, but filter filler.
+    const modelTermsAll = rawTerms.flatMap(t => tokenizeBase(t));
+    const modelTerms = modelTermsAll.filter(w => w && !STOP.has(w));
 
     const out = [];
     const seen = new Set();
-    [...modelTerms, ...quoteTerms].forEach(w => {
-      if (!w) return;
-      if (seen.has(w)) return;
+
+    // 1) Always include quote terms first (literal spine)
+    for (const w of quoteTerms) {
+      if (!w || STOP.has(w) || seen.has(w)) continue;
       seen.add(w);
       out.push(w);
-    });
+      if (out.length >= 6) return out;
+    }
+
+    // 2) Add a small number of extra model terms (paraphrase support),
+    // preferring those that are either in the quote OR high-signal.
+    let extras = 0;
+    for (const w of modelTerms) {
+      if (!w || seen.has(w)) continue;
+      if (quoteSet.has(w) || isHighSignal(w)) {
+        seen.add(w);
+        out.push(w);
+        extras += quoteSet.has(w) ? 0 : 1;
+      }
+      if (out.length >= 6 || extras >= 2) break;
+    }
+
     return out.slice(0, 6);
   }
+function shouldCountAnchor(anchor, quoteMatch, matchedTerms, matchCount, totalTerms) {
+    // Quote match counts as found.
+    if (quoteMatch) return true;
 
-  function quoteChunkMatch(quote, inputNorm) {
+    const weight = Number(anchor?.weight ?? 1);
+    const ratio = totalTerms > 0 ? (matchCount / totalTerms) : 0;
+
+    // High-signal terms are the ones that tend to carry the "mechanism" or key detail.
+    const HIGH = new Set(["hundred","hundreds","percent","wpm","spreeder","triforce","monologue","tracker","insight","insights"]);
+    const hasHigh = Array.isArray(anchor?.terms) && anchor.terms.some(t => HIGH.has(String(t).toLowerCase()));
+    const matchedHigh = Array.isArray(matchedTerms) && matchedTerms.some(t => HIGH.has(String(t).toLowerCase()));
+
+    // Progressive strictness:
+    // - weight 3: require strong completion (or at least one high-signal term)
+    // - weight 2: require moderate completion
+    // - weight 1: allow a single meaningful hit
+    if (weight >= 3) {
+      if (hasHigh && !matchedHigh) return false;
+      return ratio >= 0.8 || matchCount >= Math.min(3, totalTerms);
+    }
+    if (weight === 2) {
+      if (hasHigh && !matchedHigh) return false;
+      return ratio >= 0.6 || matchCount >= Math.min(2, totalTerms);
+    }
+    // weight 1
+    return matchCount >= 1;
+  }
+
+function quoteChunkMatch(quote, inputNorm) {
     const q = normalizeForMatch(quote);
     if (!q || !inputNorm) return false;
     // If the quote is short, allow direct substring match.
@@ -1202,7 +1262,7 @@ function writeAnchorsToCache(pageHash, payload) {
       const quoteMatch = quoteChunkMatch(a.quote, inputNorm);
       const total = Math.max(1, essential.length);
       const matchCount = quoteMatch ? total : matched.length;
-      const counted = matchCount >= 1;
+      const counted = shouldCountAnchor(a, quoteMatch, matched, matchCount, total);
       const ratio = Math.min(1, matchCount / total);
 
       // Apply progressive alpha.

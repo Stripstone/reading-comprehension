@@ -16,6 +16,8 @@ Hard requirements:
   - "quote": an EXACT substring copied from the provided page text (character-for-character). Do not paraphrase.
   - "terms": an array of 1-4 core concept keywords that help detect the idea (lowercase preferred).
     - Prefer nouns / core concepts and short noun-phrases.
+    - All terms MUST be present in the quote (or be an obvious inflection of a quoted word). Do NOT invent academic filler terms.
+    - Avoid adding generic school words not in the text (e.g., "comprehension", "literacy", "education") unless they appear verbatim in the quote.
     - Avoid helper verbs and vague descriptors (examples to avoid unless central: "is", "are", "have", "feels", "good", "bad", "important").
     - Avoid generic action verbs that are easy to type but low-signal (e.g., "need", "start", "earn", "get", "make", "move", "begin", "able", "right").
     - Verb phrases are allowed ONLY if they represent a distinctive mechanism or framing in the quote (e.g., "practice what they teach", "generating profits").

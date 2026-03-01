@@ -44,6 +44,8 @@ export default async function handler(req, res) {
     const userText = String(body?.userText ?? "").trim();
     const pageBetterConsolidation = typeof body?.pageBetterConsolidation === "string" ? body.pageBetterConsolidation : undefined;
     const anchors = Array.isArray(body?.anchors) ? body.anchors : undefined;
+    const betterCharLimit = Number.isFinite(Number.parseInt(body?.betterCharLimit, 10)) ? Number.parseInt(body.betterCharLimit, 10) : undefined;
+    const bulletMaxChars = Number.isFinite(Number.parseInt(body?.bulletMaxChars, 10)) ? Number.parseInt(body.bulletMaxChars, 10) : undefined;
     const debug = String(body?.debug ?? "").trim() === "1" || body?.debug === true;
 
     if (!pageText || !userText) {
@@ -54,7 +56,7 @@ export default async function handler(req, res) {
       return json(res, 500, { error: "Missing GROQ_API_KEY env var" });
     }
 
-    const messages = buildPromptMessages(pageText, userText, { pageBetterConsolidation, anchors });
+    const messages = buildPromptMessages(pageText, userText, { pageBetterConsolidation, anchors, betterCharLimit, bulletMaxChars });
 
     const upstream = await fetch(GROQ_URL, {
       method: "POST",
@@ -81,7 +83,7 @@ export default async function handler(req, res) {
     let retryOutput = "";
 
     let finalParsed = parseMultiCriteriaOutput(modelText);
-    let feedback = formatAs4Lines(finalParsed);
+    let feedback = formatAs4Lines(finalParsed, { betterCharLimit });
 
     if (!isValid4LineFeedback(feedback)) {
       const retry = await fetch(GROQ_URL, {
@@ -102,7 +104,7 @@ export default async function handler(req, res) {
         const retryData = JSON.parse(retryText);
         retryOutput = retryData?.choices?.[0]?.message?.content ?? "";
         const parsed2 = parseMultiCriteriaOutput(retryOutput);
-        const feedback2 = formatAs4Lines(parsed2);
+        const feedback2 = formatAs4Lines(parsed2, { betterCharLimit });
         if (isValid4LineFeedback(feedback2)) {
           feedback = feedback2;
           finalParsed = parsed2;

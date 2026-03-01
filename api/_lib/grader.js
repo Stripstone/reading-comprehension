@@ -167,13 +167,68 @@ export function parseMultiCriteriaOutput(rawText) {
   };
 }
 
-export function formatAs4Lines(parsed) {
+export function formatAs4Lines(parsed, opts = {}) {
   const rating = scoreToCompassRating(parsed.overallScore);
   const line1 = compassEmojis(rating);
   const line2 = String(parsed.notesText || "").trim();
   const line3 = "Better consolidation:";
-  const line4 = String(parsed.consolidationText || "").trim();
-  return `${line1}\n${line2}\n${line3}\n${line4}`;
+  let line4 = String(parsed.consolidationText || "").trim();
+
+  const limit = Number.parseInt(opts?.betterCharLimit, 10);
+  if (Number.isFinite(limit) && limit > 0) {
+    line4 = shrinkBetterLine(line4, limit);
+  }
+
+  return `${line1}
+${line2}
+${line3}
+${line4}`;
+}
+
+function shrinkBetterLine(text, limit) {
+  let s = String(text || "").replace(/\s+/g, " ").trim();
+  if (!s) return s;
+  if (s.length <= limit) return s;
+
+  // 1) Drop speaker background clauses (names/credentials) first.
+  // Heuristic: remove appositives after commas that mention roles/credentials, and leading "Using X, ..." fluff.
+  const bgPatterns = [
+    /,\s*(a|an)\s+[\w\s-]{0,30}(student|doctor|med|masters?|phd|author|speaker|youtuber|founder)\b[^,\.]*,?/gi,
+    /\b(developed|created)\s+by\s+[A-Z][a-z]+\b[^,\.]*,?/g,
+    /^Using\s+[^,]{0,40},\s*/i
+  ];
+  for (const rx of bgPatterns) {
+    s = s.replace(rx, " ").replace(/\s+/g, " ").trim();
+    if (s.length <= limit) return s;
+  }
+
+  // 2) Remove exact numbers and measurement details (%, WPM, counts) when space is tight.
+  s = s
+    .replace(/\b\d+(?:\.\d+)?\s*(%|percent|wpm|words per minute|words\/minute)\b/gi, "")
+    .replace(/\b\d+(?:\.\d+)?\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (s.length <= limit) return s;
+
+  // 3) Remove extra hedges / filler phrases.
+  const fillers = [
+    /\b(very|really|basically|actually|just|significantly|crucial|important|in order to|it\'s crucial to|it is crucial to|you can)\b/gi,
+    /\b(as you do|for example|e\.g\.|such as)\b[^,\.]*[\,\.]?/gi
+  ];
+  for (const rx of fillers) {
+    s = s.replace(rx, " ").replace(/\s+/g, " ").trim();
+    if (s.length <= limit) return s;
+  }
+
+  // 4) Prefer a single sentence: keep first sentence if multiple.
+  const firstSentence = s.split(/(?<=[\.\!\?])\s+/)[0];
+  if (firstSentence && firstSentence.length <= limit) return firstSentence.trim();
+
+  // 5) Final fallback: hard cut with ellipsis (still within limit).
+  if (limit <= 1) return s.slice(0, limit);
+  const ell = "…";
+  const maxBody = Math.max(0, limit - ell.length);
+  return (s.slice(0, maxBody).trimEnd() + ell).slice(0, limit);
 }
 
 export function isValid4LineFeedback(feedback) {

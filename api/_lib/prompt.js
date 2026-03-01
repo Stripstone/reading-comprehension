@@ -52,6 +52,15 @@ export function buildPromptMessages(pageText, userText, opts = {}) {
     extras.push("---ANCHORS---");
     extras.push(JSON.stringify(compactAnchors));
     extras.push("");
+
+  if (Number.isFinite(Number.parseInt(opts.betterCharLimit, 10))) {
+    extras.push("---CONSTRAINTS---");
+    extras.push(JSON.stringify({
+      betterCharLimit: Number.parseInt(opts.betterCharLimit, 10),
+      bulletMaxChars: Number.isFinite(Number.parseInt(opts.bulletMaxChars, 10)) ? Number.parseInt(opts.bulletMaxChars, 10) : undefined
+    }));
+    extras.push("");
+  }
   }
 
   // Match your local “template + appended content” behavior

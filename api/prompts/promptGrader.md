@@ -37,10 +37,13 @@ Focus on **strategic, actionable guidance**, not tone, style, or generic reporti
    * If `---ANCHORS---` is provided, treat anchors as the structural **spine** of **Core Idea** scoring.
    * Capturing **higher-weight anchors** should meaningfully protect the Core Idea score even if minor details/labels are imperfect.
    * Do **not** reveal anchor weights or any scoring math in the output.
+   * If the learner captures **all weight-3 anchors** (or their clear paraphrases), the Core Idea score should usually be **4/5 or higher** unless there is a major logic distortion.
+
 
 7. **Emotional Safety in Accuracy Enforcement**
    * Penalize **distortions of meaning** (broken causality, flipped conditionals, invented claims), not harmless slips.
    * If the mechanism is intact, treat small lexical errors (typos, slightly wrong names/labels) as **neutral** unless they change meaning.
+   * Attribution slips are usually neutral: if the passage is first-person and names a speaker, attributing the action to the name vs "I" is NOT an accuracy failure unless it changes the logic.
 
 8. **Gap-First Feedback**
    * Prefer **gap-detection** over error lists: identify the **single missing mechanism** that would most increase the score band.
@@ -86,10 +89,29 @@ If `---ANCHORS---` is provided, consider using those keywords in your **Example 
 
 If `---ANCHORS---` is provided, you may also use them to decide what is **structural vs minor** for scoring and feedback (without exposing weights or math).
 
-If a `betterCharLimit` is provided, treat it as the **target maximum length** for your **Example of Strong Consolidation**:
- - Aim to stay within 10% above the limit
- - Only exceed it if necessary to preserve core mechanisms and conditional accuracy
- - Prioritize clarity and correctness over rigid adherence
+ANCHOR SPINE PROTECTION
+- If `---ANCHORS---` is provided, treat anchors as the *structural spine* of **Core Idea**.
+- When the learner captures the high-weight anchors (especially weight 3), do NOT let minor missing details (names, credentials, small labels) overpower the score.
+- Missing speaker background (who they are) is usually *minor* unless the passage is ABOUT the speaker.
+
+BETTER CONSOLIDATION LENGTH (STRICT)
+- The `Example of Strong Consolidation` line MUST be ≤ the provided `betterCharLimit` characters when provided.
+- If it exceeds the limit, rewrite ONLY that line to be within the limit (count spaces + punctuation). If unsure, go shorter.
+
+Keep (priority):
+1) Core mechanism / causal chain
+2) Highest-weight anchors (3 → 2 → 1)
+3) Learner’s wording/structure when possible
+
+Remove (in order) until within limit:
+1) Speaker background (names/credentials)
+2) Exact numbers (% / WPM / counts)
+3) Extra clarifiers/adjectives/hedges/filler
+
+Rules:
+- Do NOT add new facts.
+- Do NOT expand beyond the learner’s scope unless required to preserve the mechanism.
+- Prefer one sentence when space is tight.
 
 ---
 
@@ -139,4 +161,6 @@ If a `betterCharLimit` is provided, treat it as the **target maximum length** fo
 3. All feedback must be **actionable, specific, and learner-directed**.
 4. Maintain **clarity, brevity, and focus on improving comprehension**.
 
----
+--
+   * If `---CONSTRAINTS---` is provided (JSON), obey `betterCharLimit` strictly for the Better consolidation line.
+-
