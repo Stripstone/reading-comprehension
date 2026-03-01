@@ -70,18 +70,45 @@ export default async function handler(req, res) {
       return json(res, 400, { error: "Text too long", detail: "Max 8000 characters." });
     }
 
+    // Accept common env var aliases to reduce "works locally but not on Vercel" footguns.
     const region = requiredEnv("AWS_REGION") || requiredEnv("AWS_DEFAULT_REGION");
-    const bucket = requiredEnv("AWS_S3_BUCKET");
+    const bucket =
+      requiredEnv("AWS_S3_BUCKET") ||
+      requiredEnv("S3_BUCKET") ||
+      requiredEnv("S3_BUCKET_NAME");
 
     if (!region || !bucket) {
+      // NOTE: This guard happens BEFORE any AWS SDK calls. If you hit this error,
+      // Vercel is not injecting the env vars into this deployment/runtime.
       return json(res, 500, {
         error: "Missing AWS configuration",
         detail: "Set AWS_REGION (or AWS_DEFAULT_REGION) and AWS_S3_BUCKET.",
+        present: {
+          AWS_REGION: Boolean(requiredEnv("AWS_REGION")),
+          AWS_DEFAULT_REGION: Boolean(requiredEnv("AWS_DEFAULT_REGION")),
+          AWS_S3_BUCKET: Boolean(requiredEnv("AWS_S3_BUCKET")),
+          S3_BUCKET: Boolean(requiredEnv("S3_BUCKET")),
+          S3_BUCKET_NAME: Boolean(requiredEnv("S3_BUCKET_NAME")),
+          AWS_ACCESS_KEY_ID: Boolean(requiredEnv("AWS_ACCESS_KEY_ID")),
+          AWS_SECRET_ACCESS_KEY: Boolean(requiredEnv("AWS_SECRET_ACCESS_KEY")),
+        },
       });
     }
 
-    const voiceId = String(body?.voiceId || requiredEnv("POLLY_VOICE_ID") || "Joanna").trim();
-    const engineRaw = String(body?.engine || requiredEnv("POLLY_ENGINE") || "neural").trim().toLowerCase();
+    const voiceId = String(
+      body?.voiceId ||
+        requiredEnv("POLLY_VOICE_ID") ||
+        requiredEnv("AWS_POLLY_VOICE_ID") ||
+        "Joanna"
+    ).trim();
+    const engineRaw = String(
+      body?.engine ||
+        requiredEnv("POLLY_ENGINE") ||
+        requiredEnv("AWS_POLLY_ENGINE") ||
+        "neural"
+    )
+      .trim()
+      .toLowerCase();
     const engine = engineRaw === "standard" ? "standard" : "neural";
 
     const prefix = toSafePrefix(requiredEnv("AWS_S3_PREFIX"));
