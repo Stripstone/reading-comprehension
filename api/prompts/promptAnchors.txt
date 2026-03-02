@@ -35,7 +35,7 @@ Anchor quality requirements:
   - weight=3: a central mechanism/pivot; if the learner understands this, they understand the page.
   - weight=2: important supporting mechanism or constraint.
   - weight=1: secondary but still meaningful supporting idea.
-- For weight=3 anchors, ensure the "terms" include at least **two** concept words/phrases when possible (to avoid shallow single-word triggers).
+- For weight=3 anchors, ensure the "terms" include at least **two meaningful concept words/phrases from the same idea** when possible (to avoid shallow or generic triggers).
   - If the quote is too short to support this, pull a second term from elsewhere in the page text that is clearly tied to the same idea.
 - Avoid redundancy: anchors should cover different core ideas.
 - Prefer short, information-dense quotes (usually 8–22 words). Avoid very long quotes.
