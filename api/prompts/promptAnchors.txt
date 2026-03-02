@@ -22,7 +22,8 @@ Hard requirements:
     - Think like a learner: include likely paraphrase words that a user might type in a consolidation (e.g., "education" -> "schooling" or "degree"), but keep them tight and on-topic.
   - "weight": integer 1-3 (3 = most central).
 - Avoid redundancy: anchors should cover different core ideas.
-- Must be short, information-dense, self-contained FULL statements (complete claims with clear meaning) that build key context or mark a structural pivot.
+- Prefer short, information-dense, self-contained statements that build key context or mark a structural pivot
+- Make them complete statements wherever possible by including nearby verbs/wording (avoid fragments).
 
 Optional candidates (helps diagnostics; include it if you can):
 - "candidates": array of up to 7 objects:
