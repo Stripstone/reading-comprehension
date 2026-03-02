@@ -31,14 +31,17 @@ Hard requirements:
 
 Anchor quality requirements:
 - Anchors should represent **mechanisms, causal/conditional pivots, constraints, or motivating frames** — not scattered fragments.
+- Anchors may be either:
+  - a distinctive concept phrase, or
+  - a short causal statement.
 - Weight guidance:
   - weight=3: a central mechanism/pivot; if the learner understands this, they understand the page.
   - weight=2: important supporting mechanism or constraint.
   - weight=1: secondary but still meaningful supporting idea.
-- For weight=3 anchors, ensure the "terms" include at least **two** concept words/phrases when possible (to avoid shallow single-word triggers).
-  - If the quote is too short to support this, pull a second term from elsewhere in the page text that is clearly tied to the same idea.
+- For weight=3 anchors:
+  - Prefer multiple meaningful terms when possible, but never force awkward wording.
 - Avoid redundancy: anchors should cover different core ideas.
-- Prefer short, information-dense quotes (usually 8–22 words). Avoid very long quotes.
+- Prefer concise anchors (often 4–15 words). Extend the quote only when needed to preserve the mechanism or meaning.
 
 Optional candidates (helps diagnostics; include it if you can):
 - "candidates": array of up to 7 objects:
