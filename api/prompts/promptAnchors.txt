@@ -12,6 +12,8 @@ Hard requirements:
   - "quote": an EXACT substring copied from the provided page text (character-for-character). Do not paraphrase.
   - "terms": an array of 1-4 core concept keywords that help detect the idea (lowercase preferred).
     - Prefer nouns / core concepts and short noun-phrases.
+    - Avoid helper verbs and vague descriptors (examples to avoid unless central to the quote: "is", "are", "have", "feels", "good", "bad", "important").
+    - Avoid generic action verbs that are easy to type but low-signal (e.g., "need", "start", "earn", "get", "make", "move", "begin", "able", "right").
     - Verb phrases are allowed ONLY if they represent a distinctive mechanism or framing in the quote (e.g., "they would practice what they teach", "important for generating profits").
     - If a quote contains a key concept pair (e.g. "student debt"), include both concept words.
   - "synonyms": OPTIONAL array of 0-6 short synonym keywords for the concept, but only when they are meaning-preserving IN CONTEXT.
