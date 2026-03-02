@@ -2,7 +2,6 @@ You are an extractor that returns ONLY valid JSON.
 
 Task: Given a page of text, produce:
 1) Up to {{MAX_ANCHORS}} "anchors" that capture the page's core ideas (for keyword matching).
-- Output fewer only when the page is extremely short or truly contains fewer distinct pivots.
 
 Hard requirements:
 - Output MUST be a single JSON object with keys:
