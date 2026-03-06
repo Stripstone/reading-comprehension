@@ -138,6 +138,311 @@ body {
       transform: translateY(-1px);
     }
 
+    .import-book-btn,
+    .manage-library-btn {
+      position: absolute;
+      top: 14px;
+      padding: 10px 12px;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      background: var(--secondary-bg);
+      color: var(--text-primary);
+      font-family: 'Karla', sans-serif;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.10);
+    }
+
+    /* Place buttons left of How It Works, without changing layout */
+    .import-book-btn { right: 168px; }
+    .manage-library-btn { right: 300px; }
+
+    .import-book-btn:hover,
+    .manage-library-btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      padding: 10px 14px;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      background: var(--accent);
+      color: #fff;
+      font-family: 'Karla', sans-serif;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      padding: 10px 14px;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      background: var(--secondary-bg);
+      color: var(--text-primary);
+      font-family: 'Karla', sans-serif;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn-mini {
+      padding: 7px 10px;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      background: var(--secondary-bg);
+      color: var(--text-primary);
+      font-family: 'Karla', sans-serif;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: var(--shadow-sm);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    /* Import modal */
+    .import-modal {
+      width: min(980px, 96vw);
+    }
+
+    .import-stage { min-height: 220px; }
+
+    .import-dropzone {
+      border: 2px dashed rgba(139, 111, 87, 0.45);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.35);
+      padding: 18px;
+      text-align: center;
+      cursor: pointer;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .import-dropzone:hover {
+      border-color: rgba(139, 111, 87, 0.75);
+      transform: translateY(-1px);
+    }
+
+    .import-dropzone-title {
+      font-family: 'Karla', sans-serif;
+      font-weight: 900;
+      font-size: 16px;
+      margin-bottom: 4px;
+    }
+
+    .import-dropzone-sub {
+      font-family: 'Karla', sans-serif;
+      font-weight: 600;
+      opacity: 0.8;
+      font-size: 13px;
+    }
+
+    .import-hint {
+      margin-top: 10px;
+      font-size: 12px;
+      opacity: 0.75;
+    }
+
+    .import-status {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      background: var(--secondary-bg);
+      font-size: 13px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .import-picker {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 14px;
+    }
+
+    .import-picker-left,
+    .import-picker-right {
+      border: 2px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.35);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+
+    .import-picker-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 12px 10px 12px;
+      border-bottom: 1px solid rgba(0,0,0,0.08);
+    }
+
+    .import-picker-title {
+      font-family: 'Karla', sans-serif;
+      font-weight: 900;
+      font-size: 15px;
+    }
+
+    .import-picker-tools { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+
+    .import-filter {
+      width: calc(100% - 24px);
+      margin: 10px 12px 8px 12px;
+      padding: 10px 12px;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      background: var(--card-bg);
+      font-family: 'Karla', sans-serif;
+      font-weight: 600;
+      outline: none;
+    }
+
+    .import-toc {
+      max-height: 44vh;
+      overflow: auto;
+      padding: 6px 8px 10px 8px;
+    }
+
+    .toc-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 10px 10px;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+
+    .toc-row:hover { background: rgba(0,0,0,0.04); }
+    .toc-row.is-active { background: rgba(193, 125, 74, 0.12); }
+
+    .toc-row input { margin-top: 3px; }
+
+    .toc-title {
+      font-family: 'Karla', sans-serif;
+      font-weight: 800;
+      line-height: 1.25;
+    }
+
+    .toc-meta {
+      font-size: 12px;
+      opacity: 0.75;
+      margin-top: 2px;
+    }
+
+    .toc-pills { display:flex; gap:6px; flex-wrap:wrap; margin-top: 6px; }
+    .toc-pill {
+      font-size: 11px;
+      padding: 3px 7px;
+      border-radius: 999px;
+      border: 1px solid rgba(0,0,0,0.12);
+      background: rgba(255,255,255,0.45);
+      opacity: 0.9;
+    }
+
+    .import-footerbar {
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border-top: 1px solid rgba(0,0,0,0.08);
+      background: rgba(255,255,255,0.25);
+    }
+
+    .import-selection-meta { font-size: 12px; opacity: 0.8; }
+
+    .import-preview-head {
+      padding: 12px 12px 8px 12px;
+      border-bottom: 1px solid rgba(0,0,0,0.08);
+      font-family: 'Karla', sans-serif;
+      font-weight: 900;
+    }
+
+    .import-preview-title {
+      padding: 10px 12px 0 12px;
+      font-family: 'Karla', sans-serif;
+      font-weight: 900;
+      font-size: 15px;
+    }
+
+    .import-preview-body {
+      padding: 10px 12px 14px 12px;
+      max-height: 44vh;
+      overflow: auto;
+      font-family: 'Crimson Pro', serif;
+      font-size: 16px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .import-progress {
+      border: 2px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.35);
+      padding: 14px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .import-progress-title { font-family:'Karla', sans-serif; font-weight: 900; font-size: 16px; }
+    .import-progress-meta { font-size: 13px; opacity: 0.8; margin-top: 4px; }
+
+    .import-progress-bar {
+      margin-top: 10px;
+      height: 12px;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.08);
+      overflow: hidden;
+    }
+
+    .import-progress-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: var(--accent);
+    }
+
+    .import-progress-detail { font-size: 12px; opacity: 0.8; margin-top: 8px; }
+
+    /* Library modal list */
+    .library-list { display:flex; flex-direction:column; gap:10px; }
+    .library-row {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 10px;
+      padding: 12px;
+      border: 2px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.35);
+      box-shadow: var(--shadow-sm);
+    }
+    .library-row-title { font-family:'Karla', sans-serif; font-weight: 900; }
+    .library-row-meta { font-size: 12px; opacity: 0.75; margin-top: 2px; }
+    .library-row-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+
+    .btn-danger {
+      padding: 10px 14px;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      background: #8B2500;
+      color: #fff;
+      font-family: 'Karla', sans-serif;
+      font-weight: 900;
+      cursor: pointer;
+      box-shadow: var(--shadow-sm);
+    }
+
+    @media (max-width: 900px) {
+      .import-picker { grid-template-columns: 1fr; }
+      .import-toc, .import-preview-body { max-height: 36vh; }
+      .manage-library-btn { right: 14px; top: 58px; }
+      .import-book-btn { right: 14px; top: 102px; }
+      .how-it-works-btn { right: 14px; }
+    }
+
     .modal-overlay {
       position: fixed;
       inset: 0;

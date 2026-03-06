@@ -1645,6 +1645,357 @@ function writeAnchorsToCache(pageHash, payload) {
     return chapters;
   }
 
+  // ===================================
+  // LOCAL LIBRARY (IndexedDB)
+  // ===================================
+  const LOCAL_DB_NAME = 'rc_local_library_v1';
+  const LOCAL_DB_VERSION = 1;
+  const LOCAL_STORE_BOOKS = 'books';
+
+  let _localDbPromise = null;
+
+  function openLocalDb() {
+    if (_localDbPromise) return _localDbPromise;
+    _localDbPromise = new Promise((resolve, reject) => {
+      try {
+        const req = indexedDB.open(LOCAL_DB_NAME, LOCAL_DB_VERSION);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(LOCAL_STORE_BOOKS)) {
+            db.createObjectStore(LOCAL_STORE_BOOKS, { keyPath: 'id' });
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error || new Error('IndexedDB open failed'));
+      } catch (e) {
+        reject(e);
+      }
+    });
+    return _localDbPromise;
+  }
+
+  async function localBooksGetAll() {
+    const db = await openLocalDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(LOCAL_STORE_BOOKS, 'readonly');
+      const store = tx.objectStore(LOCAL_STORE_BOOKS);
+      const req = store.getAll();
+      req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
+      req.onerror = () => reject(req.error || new Error('getAll failed'));
+    });
+  }
+
+  async function localBookGet(id) {
+    const db = await openLocalDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(LOCAL_STORE_BOOKS, 'readonly');
+      const store = tx.objectStore(LOCAL_STORE_BOOKS);
+      const req = store.get(id);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error || new Error('get failed'));
+    });
+  }
+
+  async function localBookPut(record) {
+    const db = await openLocalDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(LOCAL_STORE_BOOKS, 'readwrite');
+      const store = tx.objectStore(LOCAL_STORE_BOOKS);
+      const req = store.put(record);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error || new Error('put failed'));
+    });
+  }
+
+  async function localBookDelete(id) {
+    const db = await openLocalDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(LOCAL_STORE_BOOKS, 'readwrite');
+      const store = tx.objectStore(LOCAL_STORE_BOOKS);
+      const req = store.delete(id);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error || new Error('delete failed'));
+    });
+  }
+
+  function isLocalBookId(id) {
+    return typeof id === 'string' && id.startsWith('local:');
+  }
+
+  function stripLocalPrefix(id) {
+    return isLocalBookId(id) ? id.slice('local:'.length) : id;
+  }
+
+  async function hashArrayBufferSha256(buf) {
+    try {
+      const digest = await crypto.subtle.digest('SHA-256', buf);
+      const bytes = new Uint8Array(digest);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      const b64 = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+      return b64.slice(0, 22);
+    } catch (_) {
+      // Fallback: not cryptographically strong, but stable.
+      return String(Date.now());
+    }
+  }
+
+  // ===================================
+  // EPUB (client-side) -> Markdown (chapters + pages)
+  // Requires JSZip (loaded in index.html)
+  // ===================================
+
+  function xmlParseSafe(xmlStr) {
+    try {
+      return new DOMParser().parseFromString(String(xmlStr || ''), 'application/xml');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function htmlParseSafe(htmlStr) {
+    try {
+      return new DOMParser().parseFromString(String(htmlStr || ''), 'text/html');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function normPath(p) {
+    return String(p || '').replace(/^\//, '');
+  }
+
+  function joinPath(baseDir, rel) {
+    const b = String(baseDir || '');
+    const r = String(rel || '');
+    if (!b) return normPath(r);
+    if (!r) return normPath(b);
+    if (/^https?:/i.test(r)) return r;
+    if (r.startsWith('/')) return normPath(r);
+    const out = (b.endsWith('/') ? b : (b + '/')) + r;
+    // Resolve ./ and ../
+    const parts = out.split('/');
+    const stack = [];
+    for (const part of parts) {
+      if (!part || part === '.') continue;
+      if (part === '..') stack.pop();
+      else stack.push(part);
+    }
+    return stack.join('/');
+  }
+
+  async function zipReadText(zip, path) {
+    const f = zip.file(path);
+    if (!f) return '';
+    return await f.async('text');
+  }
+
+  async function epubFindOpfPath(zip) {
+    const container = await zipReadText(zip, 'META-INF/container.xml');
+    const doc = xmlParseSafe(container);
+    if (!doc) return null;
+    const rootfile = doc.querySelector('rootfile');
+    const fullPath = rootfile?.getAttribute('full-path') || rootfile?.getAttribute('fullpath');
+    return fullPath ? normPath(fullPath) : null;
+  }
+
+  function dirOf(path) {
+    const p = String(path || '');
+    const idx = p.lastIndexOf('/');
+    return idx >= 0 ? p.slice(0, idx) : '';
+  }
+
+  function classifySection(title) {
+    const t = String(title || '').toLowerCase();
+    if (!t.trim()) return { type: 'unknown', tags: [] };
+    const tags = [];
+    let type = 'unknown';
+    if (/\bchapter\b|\bch\.?\s*\d+\b/.test(t) || /^chapter\s+\w+/.test(t)) { type = 'chapter'; tags.push('Chapter'); }
+    if (/\bintroduction\b|\bprologue\b|\bforeword\b/.test(t)) { type = 'intro'; tags.push('Intro'); }
+    if (/\backnowledg|\bdedication|\bcopyright|\bpermissions|\babout\b/.test(t)) { type = 'front_matter'; tags.push('Front'); }
+    if (/\bappendix\b|\breferences\b|\bbibliography\b|\bnotes\b/.test(t)) { type = 'appendix'; tags.push('Appendix'); }
+    if (/\bindex\b|\bglossary\b/.test(t)) { type = 'index'; tags.push('Index'); }
+    return { type, tags };
+  }
+
+  function defaultSelectedForTitle(title) {
+    const cls = classifySection(title);
+    // Default ON: chapters + intro. Default OFF: front matter / appendix / index.
+    if (cls.type === 'chapter' || cls.type === 'intro') return true;
+    if (cls.type === 'front_matter' || cls.type === 'appendix' || cls.type === 'index') return false;
+    // Unknown: keep on (user can uncheck)
+    return true;
+  }
+
+  function extractTextBlocksFromHtml(htmlStr) {
+    const doc = htmlParseSafe(htmlStr);
+    if (!doc) return [];
+    const root = doc.body || doc.documentElement;
+    if (!root) return [];
+
+    const blocks = [];
+    const candidates = root.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li');
+    candidates.forEach((el) => {
+      const txt = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!txt) return;
+      // Ignore obvious nav junk
+      if (txt.length < 2) return;
+      blocks.push(txt);
+    });
+    // Fallback if markup is minimal
+    if (blocks.length === 0) {
+      const txt = (root.textContent || '').replace(/\s+/g, ' ').trim();
+      if (txt) blocks.push(txt);
+    }
+    return blocks;
+  }
+
+  function chunkBlocksToPages(blocks, targetChars = 1600) {
+    const pagesOut = [];
+    let buf = '';
+    for (const b of (blocks || [])) {
+      const next = buf ? (buf + '\n\n' + b) : b;
+      if (next.length <= targetChars) {
+        buf = next;
+        continue;
+      }
+      if (buf.trim()) pagesOut.push(buf.trim());
+      // If a single block is huge, split it.
+      if (b.length > targetChars * 1.4) {
+        let start = 0;
+        while (start < b.length) {
+          const slice = b.slice(start, start + targetChars);
+          pagesOut.push(slice.trim());
+          start += targetChars;
+        }
+        buf = '';
+      } else {
+        buf = b;
+      }
+    }
+    if (buf.trim()) pagesOut.push(buf.trim());
+    return pagesOut;
+  }
+
+  function buildMarkdownBookFromSections(sections, { pageChars = 1600 } = {}) {
+    const out = [];
+    (sections || []).forEach((sec) => {
+      const title = (sec?.title || 'Untitled Section').trim();
+      out.push(`# ${title}`);
+      out.push('');
+      const pages = chunkBlocksToPages(sec?.blocks || [], pageChars);
+      pages.forEach((p, idx) => {
+        out.push(`## Page ${idx + 1}`);
+        out.push('');
+        out.push(p);
+        out.push('');
+      });
+      out.push('');
+    });
+    return out.join('\n');
+  }
+
+  async function epubParseToc(zip, opfPath) {
+    const opfText = await zipReadText(zip, opfPath);
+    const opf = xmlParseSafe(opfText);
+    if (!opf) return { metadata: {}, items: [] };
+
+    const baseDir = dirOf(opfPath);
+    const md = {};
+    const titleEl = opf.querySelector('metadata > title, metadata > dc\\:title, dc\\:title');
+    const creatorEl = opf.querySelector('metadata > creator, metadata > dc\\:creator, dc\\:creator');
+    md.title = (titleEl?.textContent || '').trim();
+    md.author = (creatorEl?.textContent || '').trim();
+
+    // Build manifest map
+    const manifest = new Map();
+    opf.querySelectorAll('manifest > item').forEach((it) => {
+      const id = it.getAttribute('id') || '';
+      const href = it.getAttribute('href') || '';
+      const mediaType = it.getAttribute('media-type') || it.getAttribute('mediaType') || '';
+      const props = it.getAttribute('properties') || '';
+      if (!id || !href) return;
+      manifest.set(id, { id, href: joinPath(baseDir, href), mediaType, props });
+    });
+
+    // EPUB3 nav
+    const navItem = Array.from(manifest.values()).find(v => /\bnav\b/.test(v.props || ''));
+    if (navItem) {
+      const navHtml = await zipReadText(zip, navItem.href);
+      const navDoc = htmlParseSafe(navHtml);
+      const tocNav = navDoc?.querySelector('nav[epub\\:type="toc"], nav[epub\\:type="toc" i], nav[type="toc"], nav#toc');
+      const links = tocNav ? tocNav.querySelectorAll('a[href]') : navDoc?.querySelectorAll('a[href]');
+      const items = [];
+      (links ? Array.from(links) : []).forEach((a) => {
+        const href = a.getAttribute('href') || '';
+        const title = (a.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!href || !title) return;
+        const cleanHref = href.split('#')[0];
+        if (!cleanHref) return;
+        const full = joinPath(dirOf(navItem.href), cleanHref);
+        items.push({ title, href: full });
+      });
+      // De-dupe
+      const seen = new Set();
+      const uniq = [];
+      for (const it of items) {
+        const k = it.title + '|' + it.href;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        uniq.push(it);
+      }
+      return { metadata: md, items: uniq };
+    }
+
+    // EPUB2 NCX
+    const spine = opf.querySelector('spine');
+    const tocId = spine?.getAttribute('toc') || '';
+    const tocItem = tocId ? manifest.get(tocId) : null;
+    if (tocItem) {
+      const ncxText = await zipReadText(zip, tocItem.href);
+      const ncx = xmlParseSafe(ncxText);
+      const navPoints = ncx ? Array.from(ncx.querySelectorAll('navPoint')) : [];
+      const items = [];
+      navPoints.forEach((np) => {
+        const t = (np.querySelector('navLabel > text')?.textContent || '').trim();
+        const src = (np.querySelector('content')?.getAttribute('src') || '').trim();
+        if (!t || !src) return;
+        const cleanHref = src.split('#')[0];
+        const full = joinPath(dirOf(tocItem.href), cleanHref);
+        items.push({ title: t, href: full });
+      });
+      return { metadata: md, items };
+    }
+
+    // Worst-case: fall back to spine order
+    const spineIds = [];
+    opf.querySelectorAll('spine > itemref').forEach((it) => {
+      const idref = it.getAttribute('idref');
+      if (idref) spineIds.push(idref);
+    });
+    const items = spineIds.map((idref, i) => {
+      const entry = manifest.get(idref);
+      if (!entry) return null;
+      return { title: `Section ${i + 1}`, href: entry.href };
+    }).filter(Boolean);
+    return { metadata: md, items };
+  }
+
+  async function epubToMarkdownFromSelected(zip, tocItems, selectedIds, { pageChars = 1600, onProgress = null } = {}) {
+    const chosen = (tocItems || []).filter(it => selectedIds.has(it.id));
+    const sections = [];
+    let done = 0;
+    for (const it of chosen) {
+      const html = await zipReadText(zip, it.href);
+      const blocks = extractTextBlocksFromHtml(html);
+      sections.push({ title: it.title, blocks });
+      done++;
+      if (typeof onProgress === 'function') onProgress({ done, total: chosen.length });
+    }
+    const md = buildMarkdownBookFromSections(sections, { pageChars });
+    return md;
+  }
+
   async function initBookImporter() {
     const sourceSel = document.getElementById("importSource");
     const bookControls = document.getElementById("bookControls");
@@ -1874,6 +2225,25 @@ function writeAnchorsToCache(pageHash, payload) {
       setSelectOptions(pageStart, [], "Loading…");
       setSelectOptions(pageEnd, [], "Loading…");
 
+      // Local library
+      if (isLocalBookId(id)) {
+        try {
+          const rec = await localBookGet(stripLocalPrefix(id));
+          if (!rec || typeof rec.markdown !== 'string') throw new Error('local book missing');
+          currentBookRaw = rec.markdown;
+          hasExplicitChapters = countExplicitH1(currentBookRaw) > 0;
+          if (hasExplicitChapters) chapterList = parseChaptersFromMarkdown(currentBookRaw);
+          refreshChapterAndPagesUI();
+          return;
+        } catch (e) {
+          setSelectOptions(chapterSelect, [], "Failed to load local book");
+          setSelectOptions(pageStart, [], "Failed to load local book");
+          setSelectOptions(pageEnd, [], "Failed to load local book");
+          console.error('Local book load error:', e);
+          return;
+        }
+      }
+
       const entry = manifest.find(b => b.id === id);
       if (!entry) {
         setSelectOptions(chapterSelect, [], "Select a book first");
@@ -1994,36 +2364,68 @@ function writeAnchorsToCache(pageHash, payload) {
       applySelectionToBulkInput(slice.join("\n---\n"), { append: true });
     });
 
-    try {
-      await loadManifest();
-      // Populate book select
+    async function populateBookSelectWithLocal() {
+      // Populate server + local books in one dropdown.
       bookSelect.innerHTML = "";
-      if (manifest.length === 0) {
-        const opt = document.createElement("option");
-        opt.value = "";
-        opt.textContent = "No books found";
-        bookSelect.appendChild(opt);
-        return;
-      }
+
       const placeholder = document.createElement("option");
       placeholder.value = "";
       placeholder.textContent = "Select a book…";
       bookSelect.appendChild(placeholder);
 
-      manifest.forEach((b) => {
-        const opt = document.createElement("option");
-        opt.value = b.id;
-        opt.textContent = b.title;
+      // Local books
+      let locals = [];
+      try { locals = await localBooksGetAll(); } catch (_) { locals = []; }
+      if (locals.length) {
+        const og = document.createElement('optgroup');
+        og.label = 'Saved on this device';
+        locals
+          .slice()
+          .sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')))
+          .forEach((b) => {
+            const opt = document.createElement('option');
+            opt.value = `local:${b.id}`;
+            opt.textContent = b.title || 'Untitled (Local)';
+            og.appendChild(opt);
+          });
+        bookSelect.appendChild(og);
+      }
+
+      // Server books
+      if (manifest.length) {
+        const og = document.createElement('optgroup');
+        og.label = 'Server books';
+        manifest.forEach((b) => {
+          const opt = document.createElement('option');
+          opt.value = b.id;
+          opt.textContent = b.title;
+          og.appendChild(opt);
+        });
+        bookSelect.appendChild(og);
+      }
+
+      if (!locals.length && !manifest.length) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'No books found';
         bookSelect.appendChild(opt);
-      });
+      }
+    }
+
+    try {
+      await loadManifest();
+      await populateBookSelectWithLocal();
     } catch (e) {
-      bookSelect.innerHTML = "";
-      const opt = document.createElement("option");
-      opt.value = "";
-      opt.textContent = "Failed to load manifest";
-      bookSelect.appendChild(opt);
+      // Even if manifest fails, still show local library.
+      manifest = [];
+      await populateBookSelectWithLocal();
       console.error("Book manifest load error:", e);
     }
+
+    // Expose a tiny hook so the import modal can refresh the dropdown after import.
+    window.__rcRefreshBookSelect = async () => {
+      try { await populateBookSelectWithLocal(); } catch (_) {}
+    };
   }
 
 
@@ -3295,15 +3697,7 @@ function writeAnchorsToCache(pageHash, payload) {
     w.print();
   }
 
-  // Keep escaping helper for rendering AI text safely into HTML blocks.
-  function escapeHtml(str) {
-    return String(str)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/\"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-  }
+  // escapeHtml() is defined earlier (single canonical helper).
   
   function getNextTierAdvice(currentTier) {
     const advice = {
@@ -3334,6 +3728,418 @@ function writeAnchorsToCache(pageHash, payload) {
 
   // Initialize optional Book Import UI
   initBookImporter();
+
+  // ===================================
+  // ➕ Import EPUB UI (local-first)
+  // ===================================
+
+  (function initEpubImportModal() {
+    const openBtn = document.getElementById('importBookBtn');
+    const modal = document.getElementById('importBookModal');
+    const closeBtn = document.getElementById('importBookClose');
+
+    const dropzone = document.getElementById('importDropzone');
+    const browseBtn = document.getElementById('importBrowseBtn');
+    const fileInput = document.getElementById('importFileInput');
+    const scanBtn = document.getElementById('importScanBtn');
+    const uploadStatus = document.getElementById('importUploadStatus');
+
+    const stageUpload = document.getElementById('importStageUpload');
+    const stagePick = document.getElementById('importStagePick');
+    const stageProgress = document.getElementById('importStageProgress');
+
+    const tocList = document.getElementById('importTocList');
+    const filterInput = document.getElementById('importFilter');
+    const selectAllBtn = document.getElementById('importSelectAll');
+    const selectNoneBtn = document.getElementById('importSelectNone');
+    const selectMainBtn = document.getElementById('importSelectMain');
+    const selectionMeta = document.getElementById('importSelectionMeta');
+    const doImportBtn = document.getElementById('importDoImport');
+    const backBtn = document.getElementById('importBackBtn');
+
+    const previewTitle = document.getElementById('importPreviewTitle');
+    const previewBody = document.getElementById('importPreviewBody');
+
+    const progMeta = document.getElementById('importProgressMeta');
+    const progFill = document.getElementById('importProgressFill');
+    const progDetail = document.getElementById('importProgressDetail');
+    const doneBtn = document.getElementById('importDoneBtn');
+
+    if (!openBtn || !modal) return;
+
+    let _file = null;
+    let _zip = null;
+    let _tocItems = []; // {id,title,href,selected,tags,type,preview}
+    let _activeId = null;
+
+    function showModal() {
+      modal.style.display = 'flex';
+      modal.setAttribute('aria-hidden', 'false');
+      // reset view
+      showStage('upload');
+    }
+
+    function hideModal() {
+      modal.style.display = 'none';
+      modal.setAttribute('aria-hidden', 'true');
+    }
+
+    function showStage(which) {
+      if (stageUpload) stageUpload.style.display = (which === 'upload') ? 'block' : 'none';
+      if (stagePick) stagePick.style.display = (which === 'pick') ? 'block' : 'none';
+      if (stageProgress) stageProgress.style.display = (which === 'progress') ? 'block' : 'none';
+    }
+
+    function setStatus(msg) {
+      if (!uploadStatus) return;
+      uploadStatus.style.display = msg ? 'block' : 'none';
+      uploadStatus.textContent = msg || '';
+    }
+
+    function setProgress(pct, meta, detail) {
+      if (progFill) progFill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+      if (progMeta) progMeta.textContent = meta || '';
+      if (progDetail) progDetail.textContent = detail || '';
+    }
+
+    function escapeHtmlLite(s) {
+      return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function updateSelectionMeta() {
+      if (!selectionMeta) return;
+      const n = _tocItems.filter(x => x.selected).length;
+      selectionMeta.textContent = `Selected: ${n}`;
+      if (doImportBtn) doImportBtn.disabled = n === 0;
+    }
+
+    function renderToc() {
+      if (!tocList) return;
+      const q = String(filterInput?.value || '').trim().toLowerCase();
+      tocList.innerHTML = '';
+      const frag = document.createDocumentFragment();
+      _tocItems.forEach((it) => {
+        if (q && !String(it.title || '').toLowerCase().includes(q)) return;
+        const row = document.createElement('div');
+        row.className = 'toc-row' + (it.id === _activeId ? ' is-active' : '');
+        row.dataset.id = it.id;
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = !!it.selected;
+        cb.addEventListener('click', (e) => {
+          e.stopPropagation();
+          it.selected = cb.checked;
+          updateSelectionMeta();
+        });
+
+        const body = document.createElement('div');
+        const t = document.createElement('div');
+        t.className = 'toc-title';
+        t.textContent = it.title || 'Untitled';
+
+        const meta = document.createElement('div');
+        meta.className = 'toc-meta';
+        meta.textContent = it.type === 'chapter' ? 'Chapter' : (it.type || 'Section');
+
+        const pills = document.createElement('div');
+        pills.className = 'toc-pills';
+        (it.tags || []).forEach((p) => {
+          const pill = document.createElement('span');
+          pill.className = 'toc-pill';
+          pill.textContent = p;
+          pills.appendChild(pill);
+        });
+
+        body.appendChild(t);
+        body.appendChild(meta);
+        if (pills.childNodes.length) body.appendChild(pills);
+
+        row.appendChild(cb);
+        row.appendChild(body);
+
+        row.addEventListener('click', async () => {
+          _activeId = it.id;
+          renderToc();
+          if (previewTitle) previewTitle.textContent = it.title || 'Untitled';
+          if (previewBody) previewBody.textContent = 'Loading preview…';
+          try {
+            const html = await zipReadText(_zip, it.href);
+            const blocks = extractTextBlocksFromHtml(html);
+            const sample = (blocks || []).slice(0, 8).join('\n\n');
+            if (previewBody) previewBody.textContent = sample || '(No preview available)';
+          } catch (e) {
+            if (previewBody) previewBody.textContent = '(Preview failed to load)';
+          }
+        });
+
+        frag.appendChild(row);
+      });
+      tocList.appendChild(frag);
+    }
+
+    async function onFileSelected(file) {
+      _file = file || null;
+      _zip = null;
+      _tocItems = [];
+      _activeId = null;
+      if (!scanBtn) return;
+      if (!_file) {
+        scanBtn.disabled = true;
+        setStatus('');
+        return;
+      }
+      scanBtn.disabled = false;
+      setStatus(`Selected: ${_file.name} (${Math.round((_file.size || 0) / 1024)} KB)`);
+    }
+
+    async function scanContents() {
+      if (!_file) return;
+      if (!window.JSZip) {
+        setStatus('JSZip failed to load. Check your network connection.');
+        return;
+      }
+
+      try {
+        scanBtn.disabled = true;
+        setStatus('Reading EPUB…');
+        const buf = await _file.arrayBuffer();
+        _zip = await JSZip.loadAsync(buf);
+        const opfPath = await epubFindOpfPath(_zip);
+        if (!opfPath) throw new Error('OPF not found');
+        const { metadata, items } = await epubParseToc(_zip, opfPath);
+        const baseTitle = (metadata?.title || _file.name.replace(/\.epub$/i, '')).trim();
+
+        // Build toc list with ids
+        _tocItems = (items || []).map((it, idx) => {
+          const t = (it.title || `Section ${idx + 1}`).trim();
+          const cls = classifySection(t);
+          return {
+            id: `${idx}:${t}`,
+            title: t,
+            href: it.href,
+            type: cls.type,
+            tags: cls.tags,
+            selected: defaultSelectedForTitle(t)
+          };
+        });
+
+        // De-dupe obvious junk: empty titles, duplicates by href
+        const seenHref = new Set();
+        _tocItems = _tocItems.filter((x) => {
+          if (!x.title || x.title.length < 2) return false;
+          if (!x.href) return false;
+          if (seenHref.has(x.href)) return false;
+          seenHref.add(x.href);
+          return true;
+        });
+
+        // Default preview
+        if (previewTitle) previewTitle.textContent = baseTitle;
+        if (previewBody) previewBody.textContent = 'Select a section on the left to preview it.';
+
+        updateSelectionMeta();
+        renderToc();
+        showStage('pick');
+      } catch (e) {
+        console.error('EPUB scan error:', e);
+        setStatus('Failed to scan EPUB. Try another file.');
+      } finally {
+        scanBtn.disabled = !_file;
+      }
+    }
+
+    async function doImportSelected() {
+      if (!_file || !_zip) return;
+      const selectedIds = new Set(_tocItems.filter(x => x.selected).map(x => x.id));
+      if (selectedIds.size === 0) return;
+
+      try {
+        showStage('progress');
+        doneBtn.style.display = 'none';
+        setProgress(0, 'Preparing', '');
+
+        const buf = await _file.arrayBuffer();
+        const bookHash = await hashArrayBufferSha256(buf);
+
+        // Create a stable record id per file hash
+        const id = bookHash;
+        const title = _file.name.replace(/\.epub$/i, '').trim();
+
+        const total = selectedIds.size;
+        let createdPages = 0;
+
+        // Build markdown
+        const md = await epubToMarkdownFromSelected(
+          _zip,
+          _tocItems,
+          selectedIds,
+          {
+            pageChars: 1600,
+            onProgress: ({ done, total }) => {
+              const pct = total ? Math.round((done / total) * 80) : 0;
+              setProgress(pct, `Extracting sections (${done}/${total})`, `${createdPages} pages created`);
+            }
+          }
+        );
+
+        // Estimate page count by counting H2
+        createdPages = (md.match(/^\s*##\s+/gm) || []).length;
+        setProgress(92, 'Saving to device', `${createdPages} pages created`);
+
+        const record = {
+          id,
+          title,
+          createdAt: Date.now(),
+          sourceName: _file.name,
+          byteSize: _file.size || 0,
+          markdown: md
+        };
+        await localBookPut(record);
+
+        setProgress(100, 'Import complete', `${createdPages} pages created`);
+        doneBtn.style.display = 'inline-block';
+
+        // Refresh book dropdown
+        try { if (typeof window.__rcRefreshBookSelect === 'function') await window.__rcRefreshBookSelect(); } catch (_) {}
+      } catch (e) {
+        console.error('EPUB import error:', e);
+        setProgress(100, 'Import failed', 'Try again with a different file.');
+        doneBtn.style.display = 'inline-block';
+      }
+    }
+
+    function setAllSelected(v) {
+      _tocItems.forEach((it) => (it.selected = !!v));
+      updateSelectionMeta();
+      renderToc();
+    }
+
+    function selectMain() {
+      _tocItems.forEach((it) => {
+        it.selected = (it.type === 'chapter' || it.type === 'intro');
+      });
+      updateSelectionMeta();
+      renderToc();
+    }
+
+    // Open/close
+    openBtn.addEventListener('click', showModal);
+    closeBtn?.addEventListener('click', hideModal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) hideModal(); });
+
+    // Upload
+    browseBtn?.addEventListener('click', () => fileInput?.click());
+    dropzone?.addEventListener('click', () => fileInput?.click());
+    dropzone?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') fileInput?.click();
+    });
+    fileInput?.addEventListener('change', (e) => {
+      const f = e.target.files && e.target.files[0];
+      onFileSelected(f);
+    });
+
+    // Drag/drop
+    const prevent = (e) => { e.preventDefault(); e.stopPropagation(); };
+    ['dragenter','dragover','dragleave','drop'].forEach((ev) => {
+      dropzone?.addEventListener(ev, prevent);
+    });
+    dropzone?.addEventListener('drop', (e) => {
+      const f = e.dataTransfer?.files && e.dataTransfer.files[0];
+      if (f) onFileSelected(f);
+    });
+
+    scanBtn?.addEventListener('click', scanContents);
+    backBtn?.addEventListener('click', () => showStage('upload'));
+    filterInput?.addEventListener('input', renderToc);
+    selectAllBtn?.addEventListener('click', () => setAllSelected(true));
+    selectNoneBtn?.addEventListener('click', () => setAllSelected(false));
+    selectMainBtn?.addEventListener('click', selectMain);
+    doImportBtn?.addEventListener('click', doImportSelected);
+    doneBtn?.addEventListener('click', hideModal);
+  })();
+
+  // ===================================
+  // 🗂️ Manage Library UI
+  // ===================================
+
+  (function initManageLibraryModal() {
+    const openBtn = document.getElementById('manageLibraryBtn');
+    const modal = document.getElementById('manageLibraryModal');
+    const closeBtn = document.getElementById('manageLibraryClose');
+    const listEl = document.getElementById('manageLibraryList');
+    if (!openBtn || !modal || !listEl) return;
+
+    function show() {
+      modal.style.display = 'flex';
+      modal.setAttribute('aria-hidden', 'false');
+      render();
+    }
+    function hide() {
+      modal.style.display = 'none';
+      modal.setAttribute('aria-hidden', 'true');
+    }
+
+    async function render() {
+      listEl.innerHTML = '';
+      let books = [];
+      try { books = await localBooksGetAll(); } catch (_) { books = []; }
+      if (!books.length) {
+        const empty = document.createElement('div');
+        empty.className = 'import-status';
+        empty.textContent = 'No local books yet. Use “Import EPUB” to add one.';
+        listEl.appendChild(empty);
+        return;
+      }
+
+      books
+        .slice()
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+        .forEach((b) => {
+          const row = document.createElement('div');
+          row.className = 'library-row';
+
+          const left = document.createElement('div');
+          const t = document.createElement('div');
+          t.className = 'library-row-title';
+          t.textContent = b.title || 'Untitled';
+          const m = document.createElement('div');
+          m.className = 'library-row-meta';
+          const kb = Math.round((b.byteSize || 0) / 1024);
+          const pages = (String(b.markdown || '').match(/^\s*##\s+/gm) || []).length;
+          m.textContent = `${pages} pages • ~${kb} KB • ${new Date(b.createdAt || Date.now()).toLocaleDateString()}`;
+          left.appendChild(t);
+          left.appendChild(m);
+
+          const actions = document.createElement('div');
+          actions.className = 'library-row-actions';
+          const del = document.createElement('button');
+          del.className = 'btn-danger';
+          del.type = 'button';
+          del.textContent = 'Delete';
+          del.addEventListener('click', async () => {
+            const ok = confirm(`Delete “${b.title || 'this book'}” from this device?`);
+            if (!ok) return;
+            try {
+              await localBookDelete(b.id);
+              try { if (typeof window.__rcRefreshBookSelect === 'function') await window.__rcRefreshBookSelect(); } catch (_) {}
+              render();
+            } catch (e) {
+              alert('Delete failed.');
+            }
+          });
+          actions.appendChild(del);
+
+          row.appendChild(left);
+          row.appendChild(actions);
+          listEl.appendChild(row);
+        });
+    }
+
+    openBtn.addEventListener('click', show);
+    closeBtn?.addEventListener('click', hide);
+    modal.addEventListener('click', (e) => { if (e.target === modal) hide(); });
+  })();
 
   // ===================================
   // 📘 How This Works (Instructions Modal)
