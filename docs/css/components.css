@@ -299,6 +299,7 @@ body {
       display: grid;
       grid-template-columns: 1.1fr 0.9fr;
       gap: 14px;
+      height: min(64vh, 560px);
     }
 
     .import-picker-left,
@@ -308,13 +309,11 @@ body {
       background: rgba(255,255,255,0.35);
       box-shadow: var(--shadow-sm);
       overflow: hidden;
-    }
-
-    .import-picker-right {
       display: flex;
       flex-direction: column;
-      min-height: 420px;
     }
+
+    .import-picker-right { min-height: 420px; }
 
     .import-picker-head {
       display: flex;
@@ -346,10 +345,36 @@ body {
     }
 
     .import-toc {
-      max-height: 44vh;
+      flex: 1;
       overflow: auto;
       padding: 6px 8px 10px 8px;
     }
+
+    .import-advanced-panel {
+      flex: 1;
+      overflow: auto;
+      padding: 10px 12px 12px 12px;
+      border-top: 1px solid rgba(0,0,0,0.08);
+    }
+
+    .import-advanced-head {
+      font-family: 'Karla', sans-serif;
+      font-weight: 900;
+      margin-bottom: 10px;
+    }
+
+    .import-advanced-body select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      background: var(--card-bg);
+      font-family: 'Karla', sans-serif;
+      font-weight: 650;
+    }
+
+    .import-adv-row label { display:block; font-weight: 800; margin-bottom: 6px; }
+    .import-adv-check { font-weight: 800; }
 
     .toc-row {
       display: flex;
@@ -462,6 +487,7 @@ body {
       font-size: 16px;
       line-height: 1.5;
       white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
 
     .import-progress {
@@ -522,11 +548,20 @@ body {
 
     @media (max-width: 900px) {
       .import-picker { grid-template-columns: 1fr; }
-      .import-toc { max-height: 36vh; }
-      .import-preview-body { max-height: 34vh; }
+      .import-picker { height: min(68vh, 620px); }
+      .import-toc, .import-preview-body, .import-advanced-panel { flex: 1; }
 
       .top-actions-desktop { display: none; }
       .top-menu-btn { display: inline-flex; align-items:center; justify-content:center; }
+
+      /* Make the hamburger menu part of normal flow (pushes config down; doesn't float over it) */
+      .top-menu {
+        position: static;
+        width: 100%;
+        max-width: none;
+        margin-top: 10px;
+        box-shadow: 0 8px 18px rgba(0,0,0,0.14);
+      }
     }
 
     .modal-overlay {
@@ -1745,7 +1780,15 @@ body {
   .top-btn { font-size: 16px; padding: 12px 14px; }
   button, .btn { font-size: 16px; }
   .page-card { padding: 16px; }
-  .page-text { font-size: 16px; line-height: 1.55; }
+  /* Mobile: show the passage in a scrollable pane (prevents "1800+ chars" from overshooting the viewport). */
+  .page-text {
+    font-size: 16px;
+    line-height: 1.55;
+    max-height: 55vh;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    overflow-wrap: anywhere;
+  }
   textarea { font-size: 16px; }
 }
 
