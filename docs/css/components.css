@@ -80,6 +80,17 @@ body {
   margin: 6px 0 2px 0;
 }
 
+.anchors-nav {
+  display: flex;
+  justify-content: flex-end;
+  margin: 6px 0 14px 0;
+}
+
+.anchors-nav .next-btn {
+  min-height: 44px;
+  padding: 10px 14px;
+}
+
 .anchors-counter {
   padding: 6px 12px;
   border: none;
@@ -119,48 +130,75 @@ body {
    Instructions modal + support banner
    ========================= */
 
-    .how-it-works-btn {
+    .top-actions {
       position: absolute;
       top: 14px;
       right: 14px;
-      padding: 10px 12px;
-      border: 2px solid var(--border);
-      border-radius: 10px;
-      background: var(--secondary-bg);
-      color: var(--text-primary);
-      font-family: 'Karla', sans-serif;
-      font-weight: 600;
-      cursor: pointer;
-      box-shadow: 0 6px 18px rgba(0,0,0,0.10);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 2;
     }
 
-    .how-it-works-btn:hover {
-      transform: translateY(-1px);
+    .top-actions-desktop {
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
 
+    .how-it-works-btn,
     .import-book-btn,
-    .manage-library-btn {
-      position: absolute;
-      top: 14px;
-      padding: 10px 12px;
+    .manage-library-btn,
+    .top-menu-btn {
+      padding: 10px 14px;
+      min-height: 44px;
       border: 2px solid var(--border);
-      border-radius: 10px;
+      border-radius: 12px;
       background: var(--secondary-bg);
       color: var(--text-primary);
       font-family: 'Karla', sans-serif;
-      font-weight: 700;
+      font-weight: 800;
       cursor: pointer;
       box-shadow: 0 6px 18px rgba(0,0,0,0.10);
     }
 
-    /* Place buttons left of How It Works, without changing layout */
-    .import-book-btn { right: 168px; }
-    .manage-library-btn { right: 300px; }
-
+    .how-it-works-btn:hover,
     .import-book-btn:hover,
-    .manage-library-btn:hover {
+    .manage-library-btn:hover,
+    .top-menu-btn:hover {
       transform: translateY(-1px);
     }
+
+    .top-menu-btn { display: none; }
+
+    .top-menu {
+      position: absolute;
+      top: 52px;
+      right: 0;
+      width: 220px;
+      max-width: 86vw;
+      border: 2px solid var(--border);
+      border-radius: 14px;
+      background: var(--secondary-bg);
+      box-shadow: 0 10px 28px rgba(0,0,0,0.22);
+      overflow: hidden;
+      z-index: 3;
+    }
+
+    .top-menu-item {
+      width: 100%;
+      text-align: left;
+      padding: 12px 14px;
+      border: none;
+      border-bottom: 1px solid rgba(0,0,0,0.08);
+      background: transparent;
+      font-family: 'Karla', sans-serif;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .top-menu-item:last-child { border-bottom: none; }
+    .top-menu-item:hover { background: rgba(0,0,0,0.04); }
 
     .btn-primary {
       padding: 10px 14px;
@@ -272,6 +310,12 @@ body {
       overflow: hidden;
     }
 
+    .import-picker-right {
+      display: flex;
+      flex-direction: column;
+      min-height: 420px;
+    }
+
     .import-picker-head {
       display: flex;
       align-items: center;
@@ -353,6 +397,47 @@ body {
       background: rgba(255,255,255,0.25);
     }
 
+    .import-advanced {
+      border: 2px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.25);
+      box-shadow: var(--shadow-sm);
+      padding: 10px 12px;
+    }
+
+    .import-advanced > summary {
+      cursor: pointer;
+      font-family: 'Karla', sans-serif;
+      font-weight: 900;
+      list-style: none;
+    }
+
+    .import-advanced > summary::-webkit-details-marker { display: none; }
+
+    .import-advanced-body {
+      margin-top: 10px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .import-adv-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .import-adv-row select {
+      padding: 10px 12px;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      background: var(--card-bg);
+      font-family: 'Karla', sans-serif;
+      font-weight: 700;
+    }
+
+    .import-adv-check { font-weight: 800; font-family: 'Karla', sans-serif; }
+
     .import-selection-meta { font-size: 12px; opacity: 0.8; }
 
     .import-preview-head {
@@ -370,8 +455,8 @@ body {
     }
 
     .import-preview-body {
-      padding: 10px 12px 14px 12px;
-      max-height: 44vh;
+      padding: 12px;
+      flex: 1;
       overflow: auto;
       font-family: 'Crimson Pro', serif;
       font-size: 16px;
@@ -437,10 +522,11 @@ body {
 
     @media (max-width: 900px) {
       .import-picker { grid-template-columns: 1fr; }
-      .import-toc, .import-preview-body { max-height: 36vh; }
-      .manage-library-btn { right: 14px; top: 58px; }
-      .import-book-btn { right: 14px; top: 102px; }
-      .how-it-works-btn { right: 14px; }
+      .import-toc { max-height: 36vh; }
+      .import-preview-body { max-height: 34vh; }
+
+      .top-actions-desktop { display: none; }
+      .top-menu-btn { display: inline-flex; align-items:center; justify-content:center; }
     }
 
     .modal-overlay {

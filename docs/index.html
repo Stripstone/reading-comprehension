@@ -86,20 +86,22 @@
   <h1>Reading Comprehension</h1>
 
   <div class="top-controls">
-    <!-- Top-right help button -->
-    <button id="howItWorksBtn" class="how-it-works-btn" type="button" title="Instructions">
-      📘 How This Works
-    </button>
+    <div class="top-actions">
+      <!-- Desktop actions -->
+      <div class="top-actions-desktop">
+        <button id="manageLibraryBtn" class="manage-library-btn" type="button" title="Manage books saved on this device">🗂️ Library</button>
+        <button id="importBookBtn" class="import-book-btn" type="button" title="Import an EPUB from your device">➕ Import EPUB</button>
+        <button id="howItWorksBtn" class="how-it-works-btn" type="button" title="Instructions">📘 How This Works</button>
+      </div>
 
-    <!-- Import EPUB (local-first) -->
-    <button id="importBookBtn" class="import-book-btn" type="button" title="Import an EPUB from your device">
-      ➕ Import EPUB
-    </button>
-
-    <!-- Manage local library -->
-    <button id="manageLibraryBtn" class="manage-library-btn" type="button" title="Manage books saved on this device">
-      🗂️ Library
-    </button>
+      <!-- Mobile hamburger -->
+      <button id="topMenuBtn" class="top-menu-btn" type="button" aria-haspopup="true" aria-expanded="false" title="Menu">☰</button>
+      <div id="topMenu" class="top-menu" style="display:none;" role="menu" aria-label="Top menu">
+        <button id="topMenuLibrary" type="button" role="menuitem" class="top-menu-item">🗂️ Library</button>
+        <button id="topMenuImport" type="button" role="menuitem" class="top-menu-item">➕ Import EPUB</button>
+        <button id="topMenuHow" type="button" role="menuitem" class="top-menu-item">📘 How This Works</button>
+      </div>
+    </div>
     <div class="import-row" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin-bottom:12px; position:relative; z-index:1;">
       <div class="input-group" style="min-width: 160px;">
         <label class="input-label">Source</label>
@@ -241,6 +243,23 @@
               <div id="importPreviewBody" class="import-preview-body">You’ll see a short preview here.</div>
             </div>
           </div>
+
+          <details class="import-advanced" style="margin-top:12px;">
+            <summary>Advanced (optional)</summary>
+            <div class="import-advanced-body">
+              <div class="import-adv-row">
+                <label for="importPageSize">Page size</label>
+                <select id="importPageSize">
+                  <option value="1200">Small (~1200 chars)</option>
+                  <option value="1600" selected>Medium (~1600 chars)</option>
+                  <option value="2000">Large (~2000 chars)</option>
+                </select>
+              </div>
+              <div class="import-adv-row">
+                <label class="import-adv-check"><input id="importKeepParagraphs" type="checkbox" checked> Keep paragraphs together</label>
+              </div>
+            </div>
+          </details>
 
           <div class="import-actions" style="margin-top:12px; display:flex; gap:10px; justify-content:space-between;">
             <button id="importBackBtn" type="button" class="btn-secondary">Back</button>

@@ -1851,28 +1851,68 @@ function writeAnchorsToCache(pageHash, payload) {
   }
 
   function chunkBlocksToPages(blocks, targetChars = 1600) {
+    // Goal: stable page sizes while avoiding mid-sentence splits.
     const pagesOut = [];
+    const softMax = Math.round(targetChars * 1.18); // allow a little overflow to keep paragraphs intact
+    const minCarry = Math.round(targetChars * 0.55);
+
+    function splitLargeTextAtBoundary(text) {
+      const out = [];
+      let remaining = String(text || '').trim();
+      while (remaining.length > targetChars) {
+        const slice = remaining.slice(0, targetChars);
+        // Prefer splitting at sentence punctuation.
+        let cut = Math.max(
+          slice.lastIndexOf('. '),
+          slice.lastIndexOf('! '),
+          slice.lastIndexOf('? '),
+          slice.lastIndexOf('; ')
+        );
+        if (cut > 200) cut += 1; // keep punctuation
+        // Fallback: split at whitespace.
+        if (cut < 200) {
+          cut = slice.lastIndexOf(' ');
+        }
+        if (cut < 200) cut = targetChars;
+        out.push(remaining.slice(0, cut).trim());
+        remaining = remaining.slice(cut).trim();
+      }
+      if (remaining) out.push(remaining);
+      return out;
+    }
+
     let buf = '';
-    for (const b of (blocks || [])) {
+    for (const bRaw of (blocks || [])) {
+      const b = String(bRaw || '').trim();
+      if (!b) continue;
+
+      // If a single block is huge, split it by sentence boundaries.
+      if (b.length > softMax) {
+        if (buf.trim()) {
+          pagesOut.push(buf.trim());
+          buf = '';
+        }
+        const parts = splitLargeTextAtBoundary(b);
+        parts.forEach(p => { if (p) pagesOut.push(p.trim()); });
+        continue;
+      }
+
       const next = buf ? (buf + '\n\n' + b) : b;
-      if (next.length <= targetChars) {
+      if (next.length <= softMax) {
         buf = next;
         continue;
       }
-      if (buf.trim()) pagesOut.push(buf.trim());
-      // If a single block is huge, split it.
-      if (b.length > targetChars * 1.4) {
-        let start = 0;
-        while (start < b.length) {
-          const slice = b.slice(start, start + targetChars);
-          pagesOut.push(slice.trim());
-          start += targetChars;
-        }
-        buf = '';
-      } else {
-        buf = b;
+
+      // If current buffer is tiny, allow it to grow past softMax a bit rather than creating micro-pages.
+      if (buf && buf.length < minCarry) {
+        buf = next;
+        continue;
       }
+
+      if (buf.trim()) pagesOut.push(buf.trim());
+      buf = b;
     }
+
     if (buf.trim()) pagesOut.push(buf.trim());
     return pagesOut;
   }
@@ -1893,6 +1933,13 @@ function writeAnchorsToCache(pageHash, payload) {
       out.push('');
     });
     return out.join('\n');
+  }
+
+  function _normEpubHref(href) {
+    return String(href || '')
+      .split('#')[0]
+      .replace(/^\.\//, '')
+      .replace(/^\//, '');
   }
 
   async function epubParseToc(zip, opfPath) {
@@ -1917,6 +1964,17 @@ function writeAnchorsToCache(pageHash, payload) {
       if (!id || !href) return;
       manifest.set(id, { id, href: joinPath(baseDir, href), mediaType, props });
     });
+
+    // Spine order (used to extract full chapter ranges)
+    const spineIds = [];
+    opf.querySelectorAll('spine > itemref').forEach((it) => {
+      const idref = it.getAttribute('idref');
+      if (idref) spineIds.push(idref);
+    });
+    const spineHrefs = spineIds
+      .map((idref) => manifest.get(idref)?.href)
+      .filter(Boolean)
+      .map(_normEpubHref);
 
     // EPUB3 nav
     const navItem = Array.from(manifest.values()).find(v => /\bnav\b/.test(v.props || ''));
@@ -1944,7 +2002,7 @@ function writeAnchorsToCache(pageHash, payload) {
         seen.add(k);
         uniq.push(it);
       }
-      return { metadata: md, items: uniq };
+      return { metadata: md, items: uniq, spineHrefs };
     }
 
     // EPUB2 NCX
@@ -1964,36 +2022,54 @@ function writeAnchorsToCache(pageHash, payload) {
         const full = joinPath(dirOf(tocItem.href), cleanHref);
         items.push({ title: t, href: full });
       });
-      return { metadata: md, items };
+      return { metadata: md, items, spineHrefs };
     }
 
     // Worst-case: fall back to spine order
-    const spineIds = [];
-    opf.querySelectorAll('spine > itemref').forEach((it) => {
-      const idref = it.getAttribute('idref');
-      if (idref) spineIds.push(idref);
-    });
-    const items = spineIds.map((idref, i) => {
-      const entry = manifest.get(idref);
-      if (!entry) return null;
-      return { title: `Section ${i + 1}`, href: entry.href };
-    }).filter(Boolean);
-    return { metadata: md, items };
+    const items = spineHrefs.map((href, i) => ({ title: `Section ${i + 1}`, href }));
+    return { metadata: md, items, spineHrefs };
   }
 
-  async function epubToMarkdownFromSelected(zip, tocItems, selectedIds, { pageChars = 1600, onProgress = null } = {}) {
-    const chosen = (tocItems || []).filter(it => selectedIds.has(it.id));
+  async function epubToMarkdownFromSelected(zip, tocItems, selectedIds, spineHrefs, { pageChars = 1600, onProgress = null } = {}) {
+    // Extract each selected TOC item as a range in spine order: from its start file until next TOC start.
+    const toc = (tocItems || [])
+      .slice()
+      .filter(x => x && x.href)
+      .map((x, idx) => ({ ...x, _order: idx, _hrefNorm: _normEpubHref(x.href) }));
+
+    const spine = Array.isArray(spineHrefs) ? spineHrefs.map(_normEpubHref) : [];
+    const hrefToSpineIndex = new Map(spine.map((h, i) => [h, i]));
+    toc.forEach((it) => { it.spineIndex = hrefToSpineIndex.has(it._hrefNorm) ? hrefToSpineIndex.get(it._hrefNorm) : null; });
+
+    const chosen = toc.filter(it => selectedIds.has(it.id) && typeof it.spineIndex === 'number');
+    chosen.sort((a, b) => a._order - b._order);
+
     const sections = [];
     let done = 0;
-    for (const it of chosen) {
-      const html = await zipReadText(zip, it.href);
-      const blocks = extractTextBlocksFromHtml(html);
+    for (let i = 0; i < chosen.length; i++) {
+      const it = chosen[i];
+      // Find the next TOC item after this one (regardless of selection) that has a spine index.
+      let endSpine = spine.length;
+      for (let j = it._order + 1; j < toc.length; j++) {
+        const nxt = toc[j];
+        if (typeof nxt.spineIndex === 'number' && nxt.spineIndex > it.spineIndex) {
+          endSpine = nxt.spineIndex;
+          break;
+        }
+      }
+
+      const blocks = [];
+      for (let s = it.spineIndex; s < endSpine; s++) {
+        const href = spine[s];
+        const html = await zipReadText(zip, href);
+        extractTextBlocksFromHtml(html).forEach(b => blocks.push(b));
+      }
       sections.push({ title: it.title, blocks });
       done++;
       if (typeof onProgress === 'function') onProgress({ done, total: chosen.length });
     }
-    const md = buildMarkdownBookFromSections(sections, { pageChars });
-    return md;
+
+    return buildMarkdownBookFromSections(sections, { pageChars });
   }
 
   async function initBookImporter() {
@@ -2597,6 +2673,10 @@ function writeAnchorsToCache(pageHash, payload) {
           </div>
         </div>
 
+        <div class="anchors-nav">
+          <button class="top-btn next-btn" onclick="goToNext(${i})">▶ Next</button>
+        </div>
+
         <div class="page-header">Consolidation</div>
 
         <div class="sand-wrapper">
@@ -2621,7 +2701,6 @@ function writeAnchorsToCache(pageHash, payload) {
           </div>
 
           <div class="action-buttons">
-            <button class="top-btn" onclick="goToNext()">▶ Next</button>
             <button class="ai-btn" data-page="${i}" style="display: none;">▼ AI Evaluate&nbsp;&nbsp;</button>
           </div>
         </div>
@@ -3757,6 +3836,9 @@ function writeAnchorsToCache(pageHash, payload) {
     const doImportBtn = document.getElementById('importDoImport');
     const backBtn = document.getElementById('importBackBtn');
 
+    const pageSizeSel = document.getElementById('importPageSize');
+    const keepParasChk = document.getElementById('importKeepParagraphs');
+
     const previewTitle = document.getElementById('importPreviewTitle');
     const previewBody = document.getElementById('importPreviewBody');
 
@@ -3771,6 +3853,7 @@ function writeAnchorsToCache(pageHash, payload) {
     let _zip = null;
     let _tocItems = []; // {id,title,href,selected,tags,type,preview}
     let _activeId = null;
+    let _spineHrefs = [];
 
     function showModal() {
       modal.style.display = 'flex';
@@ -3864,9 +3947,24 @@ function writeAnchorsToCache(pageHash, payload) {
           if (previewTitle) previewTitle.textContent = it.title || 'Untitled';
           if (previewBody) previewBody.textContent = 'Loading preview…';
           try {
-            const html = await zipReadText(_zip, it.href);
-            const blocks = extractTextBlocksFromHtml(html);
-            const sample = (blocks || []).slice(0, 8).join('\n\n');
+            // Preview the whole section range (from this TOC href until next TOC href in spine order)
+            const spine = Array.isArray(_spineHrefs) ? _spineHrefs : [];
+            const hrefToIndex = new Map(spine.map((h, idx) => [_normEpubHref(h), idx]));
+            const start = hrefToIndex.get(_normEpubHref(it.href));
+            let end = spine.length;
+            for (let j = it._order + 1; j < _tocItems.length; j++) {
+              const nxt = _tocItems[j];
+              const ni = hrefToIndex.get(_normEpubHref(nxt.href));
+              if (typeof ni === 'number' && typeof start === 'number' && ni > start) { end = ni; break; }
+            }
+            const blocks = [];
+            if (typeof start === 'number') {
+              for (let s = start; s < end; s++) {
+                const html = await zipReadText(_zip, spine[s]);
+                extractTextBlocksFromHtml(html).forEach(b => blocks.push(b));
+              }
+            }
+            const sample = (blocks || []).slice(0, 10).join('\n\n');
             if (previewBody) previewBody.textContent = sample || '(No preview available)';
           } catch (e) {
             if (previewBody) previewBody.textContent = '(Preview failed to load)';
@@ -3907,22 +4005,30 @@ function writeAnchorsToCache(pageHash, payload) {
         _zip = await JSZip.loadAsync(buf);
         const opfPath = await epubFindOpfPath(_zip);
         if (!opfPath) throw new Error('OPF not found');
-        const { metadata, items } = await epubParseToc(_zip, opfPath);
+        const { metadata, items, spineHrefs } = await epubParseToc(_zip, opfPath);
+        _spineHrefs = Array.isArray(spineHrefs) ? spineHrefs : [];
         const baseTitle = (metadata?.title || _file.name.replace(/\.epub$/i, '')).trim();
 
         // Build toc list with ids
         _tocItems = (items || []).map((it, idx) => {
           const t = (it.title || `Section ${idx + 1}`).trim();
+
+          // Drop obvious junk: TOC titles that are actually full paragraphs.
+          const words = t.split(/\s+/).filter(Boolean);
+          const looksLikeParagraph = (t.length > 120) || (t.length > 80 && words.length > 14) || (words.length > 24);
+          if (looksLikeParagraph) return null;
+
           const cls = classifySection(t);
           return {
             id: `${idx}:${t}`,
             title: t,
             href: it.href,
+            _order: idx,
             type: cls.type,
             tags: cls.tags,
             selected: defaultSelectedForTitle(t)
           };
-        });
+        }).filter(Boolean);
 
         // De-dupe obvious junk: empty titles, duplicates by href
         const seenHref = new Set();
@@ -3933,6 +4039,9 @@ function writeAnchorsToCache(pageHash, payload) {
           seenHref.add(x.href);
           return true;
         });
+
+        // Ensure stable order field after filtering
+        _tocItems.forEach((x, i) => { x._order = i; });
 
         // Default preview
         if (previewTitle) previewTitle.textContent = baseTitle;
@@ -3970,12 +4079,16 @@ function writeAnchorsToCache(pageHash, payload) {
         let createdPages = 0;
 
         // Build markdown
+        const pageChars = parseInt(pageSizeSel?.value || '1600', 10) || 1600;
+        // keepParasChk is currently informational; paragraph preservation is the default behavior.
+
         const md = await epubToMarkdownFromSelected(
           _zip,
           _tocItems,
           selectedIds,
+          _spineHrefs,
           {
-            pageChars: 1600,
+            pageChars,
             onProgress: ({ done, total }) => {
               const pct = total ? Math.round((done / total) * 80) : 0;
               setProgress(pct, `Extracting sections (${done}/${total})`, `${createdPages} pages created`);
@@ -4139,6 +4252,42 @@ function writeAnchorsToCache(pageHash, payload) {
     openBtn.addEventListener('click', show);
     closeBtn?.addEventListener('click', hide);
     modal.addEventListener('click', (e) => { if (e.target === modal) hide(); });
+  })();
+
+  // ===================================
+  // ☰ Mobile Top Menu
+  // ===================================
+
+  (function initTopMenu() {
+    const btn = document.getElementById('topMenuBtn');
+    const menu = document.getElementById('topMenu');
+    const mHow = document.getElementById('topMenuHow');
+    const mImport = document.getElementById('topMenuImport');
+    const mLib = document.getElementById('topMenuLibrary');
+
+    const howBtn = document.getElementById('howItWorksBtn');
+    const importBtn = document.getElementById('importBookBtn');
+    const libBtn = document.getElementById('manageLibraryBtn');
+
+    if (!btn || !menu) return;
+
+    function toggle(force) {
+      const willOpen = typeof force === 'boolean' ? force : (menu.style.display === 'none' || !menu.style.display);
+      menu.style.display = willOpen ? 'block' : 'none';
+      btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    }
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggle();
+    });
+
+    document.addEventListener('click', () => toggle(false));
+    menu.addEventListener('click', (e) => e.stopPropagation());
+
+    mHow?.addEventListener('click', () => { toggle(false); howBtn?.click(); });
+    mImport?.addEventListener('click', () => { toggle(false); importBtn?.click(); });
+    mLib?.addEventListener('click', () => { toggle(false); libBtn?.click(); });
   })();
 
   // ===================================
