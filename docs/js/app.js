@@ -4737,7 +4737,7 @@ function writeAnchorsToCache(pageHash, payload) {
 
       // Button: match the music button styling and sit beside it.
       diagBtn = document.createElement('button');
-      diagBtn.id = 'diagBtn';
+      diagBtn.id = 'diagnosticsToggle';
       diagBtn.type = 'button';
       diagBtn.className = 'music-button';
       diagBtn.title = 'Diagnostics';
@@ -4919,6 +4919,7 @@ try {
 // ===================================
 (function () {
   const musicBtn = document.getElementById("musicToggle");
+  const diagBtn = document.getElementById("diagnosticsToggle");
   if (!musicBtn) return;
 
   const SNAP_THRESHOLD = 140; // px
@@ -4934,6 +4935,10 @@ try {
     musicBtn.style.bottom = nearBottom
       ? `calc(var(--support-footer-height) + 20px)`
       : `20px`;
+
+    // Keep diagnostics button vertically aligned with the music button.
+    // (It sits to the left, but should share the same bottom offset logic.)
+    if (diagBtn) diagBtn.style.bottom = musicBtn.style.bottom;
   }
 
   // Throttle to one update per frame (prevents observer spam)
