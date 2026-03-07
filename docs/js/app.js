@@ -440,10 +440,22 @@ function ttsStartHighlightLoop(audio) {
         // Make the active sentence highlight fully readable (avoid washed-out opacity).
         cur.style.setProperty('--tts-alpha', '1');
 
-        // Mobile + pane UX: ensure the currently-read sentence stays in view.
-        // scrollIntoView will scroll the nearest scrollable ancestor (e.g., .page-text on mobile).
+        // Mobile: scroll ONLY the reading pane (.page-text), not the document.
+        // (Avoid scrollIntoView which can move the whole page.)
         try {
-          cur.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+          const isMobile = window.matchMedia && window.matchMedia('(max-width: 480px)').matches;
+          const pane = TTS_STATE.highlightPageEl;
+          if (isMobile && pane) {
+            // Only if pane is actually scrollable.
+            const canScroll = pane.scrollHeight > pane.clientHeight + 4;
+            if (canScroll) {
+              const curTop = cur.offsetTop;
+              const curHeight = cur.offsetHeight;
+              const desired = curTop - (pane.clientHeight / 2) + (curHeight / 2);
+              const nextScroll = Math.max(0, Math.min(desired, pane.scrollHeight - pane.clientHeight));
+              pane.scrollTop = nextScroll;
+            }
+          }
         } catch (_) {}
       }
 
@@ -1861,39 +1873,25 @@ function writeAnchorsToCache(pageHash, payload) {
     const pagesOut = [];
     const softMax = Math.round(targetChars * 1.18); // allow a little overflow to keep paragraphs intact
     const minCarry = Math.round(targetChars * 0.55);
-    const minPage = Math.round(targetChars * 0.60); // used for post-merge (reduces micro-pages)
 
     function splitLargeTextAtBoundary(text) {
       const out = [];
       let remaining = String(text || '').trim();
       while (remaining.length > targetChars) {
-        const slice = remaining.slice(0, targetChars + 180); // lookahead window
-
-        // Prefer true sentence boundaries: . ! ? possibly followed by quotes/brackets.
-        // This avoids breaks like "comments such as," → next page starts with an opening quote.
-        let cut = -1;
-        const re = /[.!?][\"'\)\]\}]*\s+/g;
-        let m;
-        while ((m = re.exec(slice)) !== null) {
-          // Choose the last sentence end that leaves a reasonable page size.
-          if (m.index >= 260 && m.index <= targetChars + 60) cut = m.index + 1;
+        const slice = remaining.slice(0, targetChars);
+        // Prefer splitting at sentence punctuation.
+        let cut = Math.max(
+          slice.lastIndexOf('. '),
+          slice.lastIndexOf('! '),
+          slice.lastIndexOf('? '),
+          slice.lastIndexOf('; ')
+        );
+        if (cut > 200) cut += 1; // keep punctuation
+        // Fallback: split at whitespace.
+        if (cut < 200) {
+          cut = slice.lastIndexOf(' ');
         }
-
-        // Secondary boundary: semicolons / colons (still better than commas)
-        if (cut < 0) {
-          const re2 = /[;:][\"'\)\]\}]*\s+/g;
-          while ((m = re2.exec(slice)) !== null) {
-            if (m.index >= 260 && m.index <= targetChars + 40) cut = m.index + 1;
-          }
-        }
-
-        // Fallback: last whitespace near target
-        if (cut < 0) {
-          const near = slice.slice(0, targetChars);
-          const ws = near.lastIndexOf(' ');
-          cut = ws > 220 ? ws : targetChars;
-        }
-
+        if (cut < 200) cut = targetChars;
         out.push(remaining.slice(0, cut).trim());
         remaining = remaining.slice(cut).trim();
       }
@@ -1934,32 +1932,7 @@ function writeAnchorsToCache(pageHash, payload) {
     }
 
     if (buf.trim()) pagesOut.push(buf.trim());
-
-    // Post-pass: merge micro-pages where possible (stabilizes sizes).
-    const merged = [];
-    for (let i = 0; i < pagesOut.length; i++) {
-      const cur = pagesOut[i];
-      if (!cur) continue;
-      const next = pagesOut[i + 1];
-
-      // If current is tiny and we can merge with next without getting huge, do it.
-      if (cur.length < minPage && next && (cur.length + 2 + next.length) <= Math.round(targetChars * 1.35)) {
-        merged.push((cur + '\n\n' + next).trim());
-        i++; // skip next
-        continue;
-      }
-
-      // Otherwise, if previous is tiny, merge into previous if safe.
-      const prevIdx = merged.length - 1;
-      if (prevIdx >= 0 && merged[prevIdx].length < minPage && (merged[prevIdx].length + 2 + cur.length) <= Math.round(targetChars * 1.35)) {
-        merged[prevIdx] = (merged[prevIdx] + '\n\n' + cur).trim();
-        continue;
-      }
-
-      merged.push(cur);
-    }
-
-    return merged;
+    return pagesOut;
   }
 
   function buildMarkdownBookFromSections(sections, { pageChars = 1600 } = {}) {
@@ -3879,10 +3852,7 @@ function writeAnchorsToCache(pageHash, payload) {
     const selectMainBtn = document.getElementById('importSelectMain');
     const selectionMeta = document.getElementById('importSelectionMeta');
     const doImportBtn = document.getElementById('importDoImport');
-    const advancedBtn = document.getElementById('importAdvancedBtn');
     const backBtn = document.getElementById('importBackBtn');
-
-    const advancedPanel = document.getElementById('importAdvancedPanel');
 
     const pageSizeSel = document.getElementById('importPageSize');
     const keepParasChk = document.getElementById('importKeepParagraphs');
@@ -3902,14 +3872,11 @@ function writeAnchorsToCache(pageHash, payload) {
     let _tocItems = []; // {id,title,href,selected,tags,type,preview}
     let _activeId = null;
     let _spineHrefs = [];
-    let _showAdvanced = false;
 
     function showModal() {
       modal.style.display = 'flex';
       modal.setAttribute('aria-hidden', 'false');
       // reset view
-      _showAdvanced = false;
-      if (advancedBtn) advancedBtn.textContent = 'Advanced';
       showStage('upload');
     }
 
@@ -3922,16 +3889,6 @@ function writeAnchorsToCache(pageHash, payload) {
       if (stageUpload) stageUpload.style.display = (which === 'upload') ? 'block' : 'none';
       if (stagePick) stagePick.style.display = (which === 'pick') ? 'block' : 'none';
       if (stageProgress) stageProgress.style.display = (which === 'progress') ? 'block' : 'none';
-    }
-
-    function setAdvancedVisible(v) {
-      _showAdvanced = !!v;
-      if (advancedPanel) advancedPanel.style.display = _showAdvanced ? 'block' : 'none';
-      if (tocList) tocList.style.display = _showAdvanced ? 'none' : 'block';
-      if (filterInput) filterInput.disabled = _showAdvanced;
-      if (advancedBtn) advancedBtn.textContent = _showAdvanced ? 'Contents' : 'Advanced';
-      // When returning to contents, re-render list to ensure selection UI stays in sync.
-      if (!_showAdvanced) renderToc();
     }
 
     function setStatus(msg) {
@@ -3959,7 +3916,6 @@ function writeAnchorsToCache(pageHash, payload) {
 
     function renderToc() {
       if (!tocList) return;
-      if (_showAdvanced) return;
       const q = String(filterInput?.value || '').trim().toLowerCase();
       tocList.innerHTML = '';
       const frag = document.createDocumentFragment();
@@ -4111,7 +4067,6 @@ function writeAnchorsToCache(pageHash, payload) {
 
         updateSelectionMeta();
         renderToc();
-        setAdvancedVisible(false);
         showStage('pick');
       } catch (e) {
         console.error('EPUB scan error:', e);
@@ -4233,8 +4188,6 @@ function writeAnchorsToCache(pageHash, payload) {
     selectMainBtn?.addEventListener('click', selectMain);
     doImportBtn?.addEventListener('click', doImportSelected);
     doneBtn?.addEventListener('click', hideModal);
-
-    advancedBtn?.addEventListener('click', () => setAdvancedVisible(!_showAdvanced));
   })();
 
   // ===================================
