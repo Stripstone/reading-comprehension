@@ -4386,8 +4386,13 @@ function writeAnchorsToCache(pageHash, payload) {
     modal.addEventListener('click', (e) => { if (e.target === modal) hideModal(); });
 
     // Upload
+    // On mobile, the file input overlays the dropzone for reliable uploads.
     browseBtn?.addEventListener('click', () => fileInput?.click());
-    dropzone?.addEventListener('click', () => fileInput?.click());
+    dropzone?.addEventListener('click', (e) => {
+      // If the click originated from the native file input overlay, do nothing.
+      if (e.target === fileInput) return;
+      fileInput?.click();
+    });
     dropzone?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') fileInput?.click();
     });
