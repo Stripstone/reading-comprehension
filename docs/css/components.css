@@ -107,6 +107,11 @@ body {
   cursor: not-allowed;
 }
 
+    html {
+      overflow-x: hidden;
+      max-width: 100%;
+    }
+
     body {
       font-family: 'Crimson Pro', serif;
       font-weight: 600;
@@ -115,8 +120,14 @@ body {
       padding: 60px 20px;
       position: relative;
       overflow-x: hidden;
+      max-width: 100%;
       display: flex;
       flex-direction: column;
+    }
+
+    /* Prevent subtle layout overflow from padding/borders on mobile/tablet. */
+    *, *::before, *::after {
+      box-sizing: border-box;
     }
 
 /* Let the main app content take remaining height so the footer can sit on the bottom
@@ -475,6 +486,9 @@ body {
       font-size: 16px;
       line-height: 1.5;
       white-space: pre-wrap;
+      overflow-x: hidden;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .import-progress {
@@ -1023,6 +1037,10 @@ body {
       line-height: 1.6;
       position: relative;
       z-index: 1;
+      /* Mobile/tablet: never allow horizontal panning due to long tokens/URLs. */
+      overflow-x: hidden;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     /* ===============================
