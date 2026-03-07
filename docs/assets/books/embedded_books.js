@@ -1,7 +1,7 @@
 // Auto-generated: embedded books for file:// offline use
 window.EMBED_MANIFEST = [
   { id: 'BOOK_ReadingTraining', title: 'Reading Training', path: 'assets/books/BOOK_ReadingTraining.md' },
-  { id: 'BOOK_TheZeroPercent', title: 'The Zero Percent', path: 'assets/books/BOOK_TheZeroPercent.md' }
+  // BOOK_TheZeroPercent removed from embedded manifest (use local import instead).
 ];
 window.EMBED_BOOKS = window.EMBED_BOOKS || {};
 window.EMBED_BOOKS['BOOK_ReadingTraining'] = `# Triforce Reading Method — Page Breakdown

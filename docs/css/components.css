@@ -267,6 +267,7 @@ body {
     .import-stage { min-height: 220px; }
 
     .import-dropzone {
+      position: relative;
       border: 2px dashed rgba(139, 111, 87, 0.45);
       border-radius: 14px;
       background: rgba(255,255,255,0.35);
@@ -274,6 +275,18 @@ body {
       text-align: center;
       cursor: pointer;
       box-shadow: var(--shadow-sm);
+    }
+
+    /* File input stays in DOM for mobile Safari, but we trigger it from a user click.
+       Keep it off-screen (not display:none) to avoid iOS quirks. */
+    .import-file-input {
+      position: absolute;
+      left: -9999px;
+      top: 0;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
     }
 
     .import-dropzone:hover {

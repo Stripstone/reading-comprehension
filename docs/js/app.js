@@ -4386,8 +4386,19 @@ function writeAnchorsToCache(pageHash, payload) {
     modal.addEventListener('click', (e) => { if (e.target === modal) hideModal(); });
 
     // Upload
-    browseBtn?.addEventListener('click', () => fileInput?.click());
-    dropzone?.addEventListener('click', () => fileInput?.click());
+    // Keep behavior consistent: desktop supports click-to-browse + drag/drop.
+    // Mobile/tablet: click-to-browse should open the file picker reliably.
+    browseBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      fileInput?.click();
+    });
+    dropzone?.addEventListener('click', (e) => {
+      // If the click was on a button (Browse), don't double-trigger.
+      const btn = e.target && e.target.closest ? e.target.closest('button') : null;
+      if (btn) return;
+      fileInput?.click();
+    });
     dropzone?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') fileInput?.click();
     });
