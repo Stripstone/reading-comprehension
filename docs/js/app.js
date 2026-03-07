@@ -295,6 +295,7 @@ const TTS_STATE = {
   activeKey: null,
   audio: null,
   abort: null,
+  volume: 1,
   // sentence highlight state (page read)
   highlightPageKey: null,
   highlightPageEl: null,
@@ -592,6 +593,8 @@ function browserSpeakQueue(key, parts) {
     utter.lang = "en-US";
     utter.rate = 1;
     utter.pitch = 1;
+    // Browser TTS volume (0..1). Persisted via the Voices slider.
+    try { utter.volume = Math.max(0, Math.min(1, Number(TTS_STATE.volume ?? 1))); } catch (_) {}
     if (voice) utter.voice = voice;
     utter.onend = () => { idx += 1; speakNext(); };
     utter.onerror = () => { TTS_STATE.activeKey = null; };
@@ -630,6 +633,8 @@ async function ttsSpeakQueue(key, parts) {
       await new Promise((resolve, reject) => {
         const audio = new Audio(url);
         TTS_STATE.audio = audio;
+        // Polly audio volume (0..1). Persisted via the Voices slider.
+        try { audio.volume = Math.max(0, Math.min(1, Number(TTS_STATE.volume ?? 1))); } catch (_) {}
         // Start sentence highlight loop if prepared for this action.
         ttsStartHighlightLoop(audio);
         audio.onended = () => { ttsClearSentenceHighlight(); resolve(); };
@@ -1522,6 +1527,8 @@ function writeAnchorsToCache(pageHash, payload) {
   }
 
   const savedVol = loadSavedVolumes() || {};
+  // Voices (TTS) volume is handled separately from music/SFX.
+  TTS_STATE.volume = typeof savedVol.voice === 'number' ? savedVol.voice : 1;
   sandSound.volume = typeof savedVol.sand === 'number' ? savedVol.sand : SAND_VOLUME;
   stoneSound.volume = typeof savedVol.stone === 'number' ? savedVol.stone : STONE_VOLUME;
   rewardSound.volume = typeof savedVol.reward === 'number' ? savedVol.reward : REWARD_VOLUME;
@@ -1543,11 +1550,65 @@ function writeAnchorsToCache(pageHash, payload) {
     if (key === 'pageTurn') pageTurnSound.volume = v;
     if (key === 'evaluate') evaluateSound.volume = v;
     if (key === 'music') music.volume = v;
+    if (key === 'voice') {
+      TTS_STATE.volume = v;
+      // Apply immediately if Polly audio is currently playing.
+      if (TTS_STATE.audio && typeof TTS_STATE.audio.volume === 'number') {
+        try { TTS_STATE.audio.volume = v; } catch (_) {}
+      }
+    }
   }
   
   // Set initial input values from constants
   document.getElementById("goalTimeInput").value = DEFAULT_TIME_GOAL;
   document.getElementById("goalCharInput").value = DEFAULT_CHAR_GOAL;
+
+  // Difficulty presets: set time + character targets with one click.
+  (function initDifficultyPresets() {
+    const btnEasy = document.getElementById('difficultyEasy');
+    const btnMed = document.getElementById('difficultyMedium');
+    const btnHard = document.getElementById('difficultyHard');
+    const timeEl = document.getElementById('goalTimeInput');
+    const charEl = document.getElementById('goalCharInput');
+    if (!btnEasy || !btnMed || !btnHard || !timeEl || !charEl) return;
+
+    const PRESETS = {
+      easy:   { time: 90,  chars: 200 },
+      medium: { time: 180, chars: 300 },
+      hard:   { time: 360, chars: 400 },
+    };
+
+    function setActive(mode) {
+      [btnEasy, btnMed, btnHard].forEach((b) => b.classList.remove('is-active'));
+      btnEasy.setAttribute('aria-pressed', String(mode === 'easy'));
+      btnMed.setAttribute('aria-pressed', String(mode === 'medium'));
+      btnHard.setAttribute('aria-pressed', String(mode === 'hard'));
+      if (mode === 'easy') btnEasy.classList.add('is-active');
+      if (mode === 'medium') btnMed.classList.add('is-active');
+      if (mode === 'hard') btnHard.classList.add('is-active');
+    }
+
+    function applyPreset(mode) {
+      const p = PRESETS[mode];
+      if (!p) return;
+      timeEl.value = String(p.time);
+      charEl.value = String(p.chars);
+      setActive(mode);
+      try { localStorage.setItem('rc_difficulty', mode); } catch (_) {}
+    }
+
+    btnEasy.addEventListener('click', () => applyPreset('easy'));
+    btnMed.addEventListener('click', () => applyPreset('medium'));
+    btnHard.addEventListener('click', () => applyPreset('hard'));
+
+    // Restore last selection if present; otherwise leave the current values.
+    try {
+      const saved = localStorage.getItem('rc_difficulty');
+      if (saved && PRESETS[saved]) {
+        applyPreset(saved);
+      }
+    } catch (_) {}
+  })();
 
   
   // ===================================
@@ -4530,6 +4591,7 @@ function writeAnchorsToCache(pageHash, payload) {
     // Volume panel wiring
     if (musicToggleBtn && volumePanel) {
       const sliders = {
+        voice: document.getElementById('vol_voice'),
         music: document.getElementById('vol_music'),
         sand: document.getElementById('vol_sand'),
         stone: document.getElementById('vol_stone'),
@@ -4540,6 +4602,7 @@ function writeAnchorsToCache(pageHash, payload) {
       };
 
       function syncSlidersFromState() {
+        if (sliders.voice) sliders.voice.value = String(Math.max(0, Math.min(1, Number(TTS_STATE.volume ?? 1))));
         if (sliders.music) sliders.music.value = String(music.volume);
         if (sliders.sand) sliders.sand.value = String(sandSound.volume);
         if (sliders.stone) sliders.stone.value = String(stoneSound.volume);
