@@ -118,7 +118,17 @@ export default async function handler(req, res) {
     const envMale = requiredEnv("POLLY_VOICE_ID_MALE") || requiredEnv("POLLY_VOICE_ID");
     const pickedEnv = (voiceVariant === "male") ? envMale : envFemale;
     const voiceId = String(body?.voiceId || pickedEnv || "Joanna").trim();
-    const engineRaw = String(body?.engine || requiredEnv("POLLY_ENGINE") || "neural").trim().toLowerCase();
+    // Engine selection (cost control):
+    // - Explicit body.engine wins (rare).
+    // - Otherwise default to STANDARD unless debug=1, where we use PREMIUM.
+    // Env vars (preferred):
+    //   POLLY_ENGINE_STANDARD=standard
+    //   POLLY_ENGINE_PREMIUM=neural
+    // Fallback: POLLY_ENGINE, else "standard".
+    const envStandard = requiredEnv("POLLY_ENGINE_STANDARD") || requiredEnv("POLLY_ENGINE") || "standard";
+    const envPremium = requiredEnv("POLLY_ENGINE_PREMIUM") || requiredEnv("POLLY_ENGINE") || "neural";
+    const defaultEngine = debug ? envPremium : envStandard;
+    const engineRaw = String(body?.engine || defaultEngine).trim().toLowerCase();
     const engine = engineRaw === "standard" ? "standard" : "neural";
 
     const prefix = toSafePrefix(requiredEnv("AWS_S3_PREFIX"));

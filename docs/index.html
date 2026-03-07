@@ -161,11 +161,6 @@
     </div>
 
 	    <div class="goal-time-row">
-	      <div class="difficulty-toggle" role="group" aria-label="Difficulty presets">
-	        <button id="difficultyEasy" type="button" class="difficulty-btn" aria-pressed="false">Easy</button>
-	        <button id="difficultyMedium" type="button" class="difficulty-btn" aria-pressed="false">Medium</button>
-	        <button id="difficultyHard" type="button" class="difficulty-btn" aria-pressed="false">Hard</button>
-	      </div>
 	      <div class="input-group">
 	        <label class="input-label">Time (sec)</label>
 	        <input type="number" id="goalTimeInput" min="5">
@@ -173,6 +168,13 @@
 	      <div class="input-group">
 	        <label class="input-label">Characters</label>
 	        <input type="number" id="goalCharInput" min="10">
+	      </div>
+
+	      <!-- Difficulty presets sit between Characters and Load Pages -->
+	      <div class="difficulty-toggle" role="group" aria-label="Difficulty presets">
+	        <button id="difficultyEasy" type="button" class="difficulty-btn" aria-pressed="false">Easy</button>
+	        <button id="difficultyMedium" type="button" class="difficulty-btn" aria-pressed="false">Medium</button>
+	        <button id="difficultyHard" type="button" class="difficulty-btn" aria-pressed="false">Hard</button>
 	      </div>
 
 	      <!-- Replaces legacy "Update Goal & Add Pages" in the same position area -->

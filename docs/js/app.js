@@ -528,6 +528,13 @@ async function pollyFetchUrl(text, opts = {}) {
   const payload = { text };
   if (opts && opts.sentenceMarks) payload.speechMarks = "sentence";
 
+  // Cost control: use premium Polly engine only when the *page* is in debug mode.
+  // Server defaults to STANDARD otherwise.
+  try {
+    const qs = new URLSearchParams(window.location.search);
+    if (qs.get('debug') === '1') payload.debug = '1';
+  } catch (_) {}
+
   // Optional voice variant (server maps male/female to env vars).
   // Default is female if omitted.
   try {
@@ -1439,8 +1446,25 @@ function writeAnchorsToCache(pageHash, payload) {
   function bindHintButton(pageEl, pageIndex) {
     const btn = pageEl.querySelector('.hint-btn');
     if (!btn) return;
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const pd = pageData?.[pageIndex];
+
+      // Lazy anchors: if anchors aren't ready yet, generate them now.
+      // Keep UX simple: disable button briefly while loading.
+      if (!pd?.anchors?.length) {
+        try {
+          btn.disabled = true;
+          btn.textContent = 'Generating…';
+          await hydrateAnchorsIntoPageEl(pageEl, pageIndex);
+        } catch (_) {
+          // If anchors fail, keep hint disabled (consistent with error path).
+        } finally {
+          btn.textContent = 'Hint';
+          // hydrateAnchorsIntoPageEl will re-enable if successful
+          if (pd?.anchors?.length) btn.disabled = false;
+        }
+      }
+
       if (!pd?.anchors?.length) return;
 
       // 2s fade-in / 2s fade-out visual override.
@@ -2857,7 +2881,7 @@ function writeAnchorsToCache(pageHash, payload) {
         <div class="anchors-row">
           <div class="anchors-ui anchors-ui--right">
             <div class="anchors-counter" title="Anchors">Anchors Found: 0/0</div>
-            <button type="button" class="top-btn hint-btn" disabled>Hint</button>
+            <button type="button" class="top-btn hint-btn">Hint</button>
           </div>
         </div>
 
@@ -2961,6 +2985,11 @@ function writeAnchorsToCache(pageHash, payload) {
             pageTurnSound.play();
           }
         }
+
+        // Anchors (lazy): first meaningful engagement triggers anchor generation for this page.
+        // This avoids the huge cost of precomputing anchors for every loaded page.
+        try { hydrateAnchorsIntoPageEl(page, i); } catch (_) {}
+
         startTimer(i, sand, timerDiv, wrapper, textarea);
       });
       
@@ -3068,11 +3097,10 @@ function writeAnchorsToCache(pageHash, payload) {
 
       container.appendChild(page);
 
-      // Anchors: bind hint button and hydrate anchors asynchronously (with local cache).
+      // Anchors: bind hint button.
+      // IMPORTANT cost control: do NOT hydrate anchors for every page on load.
+      // We generate anchors lazily on first meaningful interaction (focus / hint / evaluate).
       bindHintButton(page, i);
-      // Always start with plain text (safe), then wrap quotes once anchors are available.
-      // If this page already has anchors cached in pageData, hydrate will apply immediately.
-      hydrateAnchorsIntoPageEl(page, i);
 
     });
     
