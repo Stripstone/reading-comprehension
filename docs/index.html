@@ -273,11 +273,15 @@
                   <div class="import-adv-row">
                     <label class="import-adv-check"><input id="importKeepParagraphs" type="checkbox" checked> Keep paragraphs together</label>
                   </div>
+                  <div class="import-adv-row">
+                    <label class="import-adv-check"><input id="importCleanupHeadings" type="checkbox" checked> Cleanup headings (skip decorative spaced headings)</label>
+                  </div>
                 </div>
               </div>
               <div class="import-footerbar">
                 <div id="importSelectionMeta" class="import-selection-meta">Selected: 0</div>
                 <div style="display:flex; gap:8px; align-items:center;">
+                  <button id="importBackBtn" type="button" class="btn-mini">Back</button>
                   <button id="importAdvancedToggle" type="button" class="btn-mini">Advanced</button>
                   <button id="importDoImport" type="button" class="btn-primary">Import selected</button>
                 </div>
@@ -290,8 +294,7 @@
             </div>
           </div>
 
-          <div class="import-actions" style="margin-top:12px; display:flex; gap:10px; justify-content:space-between;">
-            <button id="importBackBtn" type="button" class="btn-secondary">Back</button>
+          <div class="import-actions" style="margin-top:12px; display:flex; gap:10px; justify-content:flex-end;">
             <div class="import-hint" style="margin:0;">Tip: Dedication/Index/etc. are unchecked by default.</div>
           </div>
         </div>

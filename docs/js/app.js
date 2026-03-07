@@ -1964,7 +1964,7 @@ function writeAnchorsToCache(pageHash, payload) {
     const blocks = [];
     const candidates = root.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li');
     candidates.forEach((el) => {
-      const txt = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      let txt = (el.textContent || '').replace(/\s+/g, ' ').trim();
       if (!txt) return;
       // Ignore obvious nav junk
       if (txt.length < 2) return;
@@ -1976,6 +1976,43 @@ function writeAnchorsToCache(pageHash, payload) {
       if (txt) blocks.push(txt);
     }
     return blocks;
+  }
+
+  // Import-time text normalization (build-safe)
+  function fixDropCapsInLine(s) {
+    const str = String(s || '');
+    // Start-of-line drop cap: "M ost" -> "Most" (also handles opening quotes)
+    return str
+      .replace(/^(\s*["“']\s*)([A-Z])\s+([a-z])/g, (m, q, a, b) => `${q}${a}${b}`)
+      .replace(/^(\s*)([A-Z])\s+([a-z])/g, (m, p, a, b) => `${p}${a}${b}`);
+  }
+
+  function isDecorativeSpacedHeading(s) {
+    const str = String(s || '').trim();
+    if (!str) return false;
+    if (str.length > 80) return false;
+    // If it contains lowercase early, it's not a decorative spaced heading.
+    if (/[a-z]/.test(str)) return false;
+    // Many single-letter tokens separated by spaces: "C H A P T E R O N E"
+    const tokens = str.split(/\s+/).filter(Boolean);
+    if (tokens.length < 6) return false;
+    const singleLetter = tokens.filter(t => /^[A-Z]$/.test(t)).length;
+    const letters = tokens.join('');
+    // Require high ratio of single-letter tokens.
+    if (singleLetter / tokens.length < 0.8) return false;
+    // Require mostly letters.
+    if (!/^[A-Z0-9]+$/.test(letters)) return false;
+    return true;
+  }
+
+  function normalizeImportedBlocks(blocks, { cleanupHeadings = true } = {}) {
+    const out = [];
+    for (const b of (blocks || [])) {
+      let line = fixDropCapsInLine(b);
+      if (cleanupHeadings && isDecorativeSpacedHeading(line)) continue; // remove decorative heading
+      out.push(line);
+    }
+    return out;
   }
 
   function chunkBlocksToPages(blocks, targetChars = 1600) {
@@ -2251,7 +2288,7 @@ function writeAnchorsToCache(pageHash, payload) {
     return { metadata: md, items, spineHrefs };
   }
 
-  async function epubToMarkdownFromSelected(zip, tocItems, selectedIds, spineHrefs, { pageChars = 1600, onProgress = null } = {}) {
+  async function epubToMarkdownFromSelected(zip, tocItems, selectedIds, spineHrefs, { pageChars = 1600, cleanupHeadings = true, onProgress = null } = {}) {
     // Extract each selected TOC item as a range in spine order: from its start file until next TOC start.
     const toc = (tocItems || [])
       .slice()
@@ -2285,7 +2322,7 @@ function writeAnchorsToCache(pageHash, payload) {
         const html = await zipReadText(zip, href);
         extractTextBlocksFromHtml(html).forEach(b => blocks.push(b));
       }
-      sections.push({ title: it.title, blocks });
+      sections.push({ title: it.title, blocks: normalizeImportedBlocks(blocks, { cleanupHeadings }) });
       done++;
       if (typeof onProgress === 'function') onProgress({ done, total: chosen.length });
     }
@@ -4065,6 +4102,7 @@ function writeAnchorsToCache(pageHash, payload) {
 
     const pageSizeSel = document.getElementById('importPageSize');
     const keepParasChk = document.getElementById('importKeepParagraphs');
+    const cleanupHeadingsChk = document.getElementById('importCleanupHeadings');
 
     const previewTitle = document.getElementById('importPreviewTitle');
     const previewBody = document.getElementById('importPreviewBody');
@@ -4136,7 +4174,8 @@ function writeAnchorsToCache(pageHash, payload) {
     function updateSelectionMeta() {
       if (!selectionMeta) return;
       const n = _tocItems.filter(x => x.selected).length;
-      selectionMeta.textContent = `Selected: ${n}`;
+      const total = _tocItems.length;
+      selectionMeta.textContent = `Selected: ${n}/${total}`;
       if (doImportBtn) doImportBtn.disabled = n === 0;
     }
 
@@ -4208,7 +4247,8 @@ function writeAnchorsToCache(pageHash, payload) {
                 extractTextBlocksFromHtml(html).forEach(b => blocks.push(b));
               }
             }
-            const sample = (blocks || []).slice(0, 10).join('\n\n');
+            const cleaned = normalizeImportedBlocks(blocks, { cleanupHeadings: cleanupHeadingsChk ? !!cleanupHeadingsChk.checked : true });
+            const sample = (cleaned || []).slice(0, 10).join('\n\n');
             if (previewBody) previewBody.textContent = sample || '(No preview available)';
           } catch (e) {
             if (previewBody) previewBody.textContent = '(Preview failed to load)';
@@ -4324,6 +4364,7 @@ function writeAnchorsToCache(pageHash, payload) {
 
         // Build markdown
         const pageChars = parseInt(pageSizeSel?.value || '1600', 10) || 1600;
+        const cleanupHeadings = cleanupHeadingsChk ? !!cleanupHeadingsChk.checked : true;
         // keepParasChk is currently informational; paragraph preservation is the default behavior.
 
         const md = await epubToMarkdownFromSelected(
@@ -4333,6 +4374,7 @@ function writeAnchorsToCache(pageHash, payload) {
           _spineHrefs,
           {
             pageChars,
+            cleanupHeadings,
             onProgress: ({ done, total }) => {
               const pct = total ? Math.round((done / total) * 80) : 0;
               setProgress(pct, `Extracting sections (${done}/${total})`, `${createdPages} pages created`);
