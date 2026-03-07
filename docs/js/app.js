@@ -1467,12 +1467,11 @@ function writeAnchorsToCache(pageHash, payload) {
 
       if (!pd?.anchors?.length) return;
 
-      // 2s fade-in / 2s fade-out visual override.
+      // REQUIRED: 2s fade-in / 2s fade-out.
+      // CSS already enforces 2s transitions; we only toggle the visual override.
       const spans = pageEl.querySelectorAll('.page-text .anchor');
-      spans.forEach(s => { s.style.transitionDuration = '2s'; });
-      // Inline CSS vars beat class rules; explicitly set alpha for hint.
       spans.forEach(s => {
-        s.dataset.anchorAlphaPrev = s.style.getPropertyValue('--anchor-alpha') || '';
+        // Inline CSS vars beat class rules; explicitly set alpha for hint.
         s.style.setProperty('--anchor-alpha', '0.90');
       });
       pageEl.classList.add('anchor-hint-active');
@@ -1480,12 +1479,10 @@ function writeAnchorsToCache(pageHash, payload) {
       // Hold for 2 seconds, then return to match-based visibility over 2 seconds.
       setTimeout(() => {
         pageEl.classList.remove('anchor-hint-active');
-        // After fade-out completes, restore normal transition speed and refresh matches.
+        // After fade-out completes, clear overrides and refresh matches.
         setTimeout(() => {
-          spans.forEach(s => { s.style.transitionDuration = '0.35s'; });
           spans.forEach(s => {
-            // Clear hint override; updateAnchorsUIForPage will re-apply match-based alpha.
-            delete s.dataset.anchorAlphaPrev;
+            s.style.removeProperty('--anchor-alpha');
           });
           const textarea = pageEl.querySelector('textarea');
           updateAnchorsUIForPage(pageEl, pageIndex, textarea ? textarea.value : '');
@@ -4735,10 +4732,10 @@ function writeAnchorsToCache(pageHash, payload) {
       diagBtn.innerHTML = '<span id="diagIcon">🔧</span>';
 
       // IMPORTANT: .music-button is fixed bottom-right.
-      // Stack diagnostics vertically above the music button (same right edge).
-      diagBtn.style.right = '20px';
-      // Music button is 56px tall with bottom: 20px. Add a gap so they don't touch.
-      diagBtn.style.bottom = '88px';
+      // Place diagnostics to the LEFT of the music button (same baseline), so they never overlap.
+      diagBtn.style.bottom = '20px';
+      diagBtn.style.right = '88px';
+      diagBtn.style.zIndex = '1001';
 
       if (musicToggleBtn && musicToggleBtn.parentElement) {
         musicToggleBtn.parentElement.insertBefore(diagBtn, musicToggleBtn);
