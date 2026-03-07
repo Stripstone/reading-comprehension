@@ -232,9 +232,30 @@
               </div>
               <input id="importFilter" class="import-filter" type="text" placeholder="Filter sections…" />
               <div id="importTocList" class="import-toc"></div>
+
+              <!-- Advanced (in-pane) -->
+              <div id="importAdvancedPanel" class="import-advanced-panel" style="display:none;">
+                <div class="import-advanced-title">Advanced</div>
+                <div class="import-advanced-body">
+                  <div class="import-adv-row">
+                    <label for="importPageSize">Page size</label>
+                    <select id="importPageSize">
+                      <option value="1200">Small (~1200 chars)</option>
+                      <option value="1600" selected>Medium (~1600 chars)</option>
+                      <option value="2000">Large (~2000 chars)</option>
+                    </select>
+                  </div>
+                  <div class="import-adv-row">
+                    <label class="import-adv-check"><input id="importKeepParagraphs" type="checkbox" checked> Keep paragraphs together</label>
+                  </div>
+                </div>
+              </div>
               <div class="import-footerbar">
                 <div id="importSelectionMeta" class="import-selection-meta">Selected: 0</div>
-                <button id="importDoImport" type="button" class="btn-primary">Import selected</button>
+                <div style="display:flex; gap:8px; align-items:center;">
+                  <button id="importAdvancedToggle" type="button" class="btn-mini">Advanced</button>
+                  <button id="importDoImport" type="button" class="btn-primary">Import selected</button>
+                </div>
               </div>
             </div>
             <div class="import-picker-right">
@@ -243,23 +264,6 @@
               <div id="importPreviewBody" class="import-preview-body">You’ll see a short preview here.</div>
             </div>
           </div>
-
-          <details class="import-advanced" style="margin-top:12px;">
-            <summary>Advanced (optional)</summary>
-            <div class="import-advanced-body">
-              <div class="import-adv-row">
-                <label for="importPageSize">Page size</label>
-                <select id="importPageSize">
-                  <option value="1200">Small (~1200 chars)</option>
-                  <option value="1600" selected>Medium (~1600 chars)</option>
-                  <option value="2000">Large (~2000 chars)</option>
-                </select>
-              </div>
-              <div class="import-adv-row">
-                <label class="import-adv-check"><input id="importKeepParagraphs" type="checkbox" checked> Keep paragraphs together</label>
-              </div>
-            </div>
-          </details>
 
           <div class="import-actions" style="margin-top:12px; display:flex; gap:10px; justify-content:space-between;">
             <button id="importBackBtn" type="button" class="btn-secondary">Back</button>

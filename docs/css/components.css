@@ -535,7 +535,10 @@ body {
 
       /* When stacked vertically, add breathing room so panels don't feel overlapped */
       .import-picker-right { margin-top: 12px; }
+    }
 
+    /* Mobile-only hamburger (not tablet) */
+    @media (max-width: 520px) {
       /* Mobile: actions bar participates in layout and stays above controls */
       .top-actions {
         position: sticky;
@@ -1774,16 +1777,40 @@ body {
   .top-btn { font-size: 16px; padding: 12px 14px; }
   button, .btn { font-size: 16px; }
   .page-card { padding: 16px; }
+  /* Make each page feel like a viewport "screen" while keeping controls visible. */
+  .page {
+    min-height: 92vh;
+    display: flex;
+    flex-direction: column;
+  }
   /* Mobile: keep page content inside a scrollable pane so the document doesn't jump */
   .page-text {
     font-size: 16px;
     line-height: 1.55;
-    max-height: 55vh;
+    max-height: 40vh;
     overflow: auto;
     overscroll-behavior: contain;
+    flex: 1 1 auto;
   }
   textarea { font-size: 16px; }
 }
+
+    /* Advanced panel shown inside left pane (toggle) */
+    .import-advanced-panel {
+      margin: 8px 12px 10px 12px;
+      padding: 12px;
+      border: 2px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.35);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .import-advanced-title {
+      font-family: 'Karla', sans-serif;
+      font-weight: 900;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
 
 
 /* ===============================
@@ -1930,7 +1957,8 @@ body {
 
 /* tighten spacing slightly so the zoom feels intentional */
 @media (max-width: 520px) {
-  body { padding: 40px 12px; }
+  /* Keep top padding, but remove bottom padding so the footer sits on the "floor" (no wallpaper gap). */
+  body { padding: 40px 12px 0 12px; }
   .top-controls, .page { padding: 14px; margin: 16px 0; }
   h1 { font-size: 2.1rem; }
 }

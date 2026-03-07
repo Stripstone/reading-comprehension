@@ -1869,70 +1869,163 @@ function writeAnchorsToCache(pageHash, payload) {
   }
 
   function chunkBlocksToPages(blocks, targetChars = 1600) {
-    // Goal: stable page sizes while avoiding mid-sentence splits.
-    const pagesOut = [];
-    const softMax = Math.round(targetChars * 1.18); // allow a little overflow to keep paragraphs intact
-    const minCarry = Math.round(targetChars * 0.55);
+    // Locked behavior (v1):
+    // - Target stable page size, but only break on paragraph boundary or sentence end (.?! + optional closing quote/bracket)
+    // - Do NOT break when it would split a continuation:
+    //   - next chunk starts with opening quote/paren/bracket
+    //   - current ends with lead-in token (':', ';', em-dash, ',', 'such as', 'the following', 'including', ...)
+    //   - inside an instruction/list block
+    // - Guardrails: allow overflow up to hard max; then pick least-bad safe stop.
+    // - Cleanup: merge micro-pages (< ~65% target) into neighbors when safe.
 
-    function splitLargeTextAtBoundary(text) {
-      const out = [];
-      let remaining = String(text || '').trim();
-      while (remaining.length > targetChars) {
-        const slice = remaining.slice(0, targetChars);
-        // Prefer splitting at sentence punctuation.
-        let cut = Math.max(
-          slice.lastIndexOf('. '),
-          slice.lastIndexOf('! '),
-          slice.lastIndexOf('? '),
-          slice.lastIndexOf('; ')
-        );
-        if (cut > 200) cut += 1; // keep punctuation
-        // Fallback: split at whitespace.
-        if (cut < 200) {
-          cut = slice.lastIndexOf(' ');
-        }
-        if (cut < 200) cut = targetChars;
-        out.push(remaining.slice(0, cut).trim());
-        remaining = remaining.slice(cut).trim();
+    const pagesOut = [];
+    const target = Math.max(400, targetChars | 0);
+    const softMax = Math.round(target * 1.15);
+    const hardMax = Math.round(target * 1.35);
+    const minChars = Math.round(target * 0.65);
+
+    const strongStopRe = /[.!?]["'”’\)\]\}]*\s*$/;
+    const openQuoteRe = /^\s*["“'\(\[]/;
+    const leadInRe = /(\:|\;|—|\,|\bsuch as\b|\bas follows\b|\bthe following\b|\bincluding\b)\s*$/i;
+    const listLineRe = /^\s*(\d+[\.|\)]\s+|box\s+\d+\s*:|line\s+\d+\s*:|part\s+[ivxlcdm]+\b)/i;
+
+    function startsWithOpenQuote(s) {
+      return openQuoteRe.test(String(s || '').trimStart());
+    }
+
+    function endsWithStrongStop(s) {
+      return strongStopRe.test(String(s || '').trim());
+    }
+
+    function endsWithLeadIn(s) {
+      return leadInRe.test(String(s || '').trim());
+    }
+
+    function lastNonEmptyLine(s) {
+      const lines = String(s || '').split(/\n/).map(x => x.trim()).filter(Boolean);
+      return lines.length ? lines[lines.length - 1] : '';
+    }
+
+    function looksLikeListContinuation(bufText, nextText) {
+      const lastLine = lastNonEmptyLine(bufText);
+      const nextLine = String(nextText || '').split(/\n/).map(x => x.trim()).filter(Boolean)[0] || '';
+      return listLineRe.test(lastLine) || listLineRe.test(nextLine);
+    }
+
+    function findBestCut(text, maxIdx) {
+      const t = String(text || '');
+      const limit = Math.min(maxIdx, t.length);
+      const slice = t.slice(0, limit);
+
+      // Prefer paragraph boundary near the end.
+      const para = slice.lastIndexOf('\n\n');
+      if (para > minChars) return para;
+
+      // Prefer strong sentence endings.
+      const re = /[.!?]["'”’\)\]\}]*\s+/g;
+      let m;
+      let best = -1;
+      while ((m = re.exec(slice)) !== null) {
+        const endPos = re.lastIndex;
+        if (endPos < minChars) continue;
+        best = endPos;
       }
-      if (remaining) out.push(remaining);
-      return out;
+      if (best > 0) return best;
+
+      // Fallback: whitespace.
+      const ws = slice.lastIndexOf(' ');
+      if (ws > minChars) return ws;
+
+      return Math.min(limit, Math.max(minChars, Math.round(target)));
     }
 
     let buf = '';
-    for (const bRaw of (blocks || [])) {
-      const b = String(bRaw || '').trim();
-      if (!b) continue;
+    const cleanBlocks = (blocks || []).map(b => String(b || '').trim()).filter(Boolean);
+    let i = 0;
+    while (i < cleanBlocks.length) {
+      const b = cleanBlocks[i];
+      const nextBlock = (i + 1 < cleanBlocks.length) ? cleanBlocks[i + 1] : '';
+      const candidate = buf ? (buf + '\n\n' + b) : b;
 
-      // If a single block is huge, split it by sentence boundaries.
-      if (b.length > softMax) {
-        if (buf.trim()) {
-          pagesOut.push(buf.trim());
-          buf = '';
+      // Keep filling up to target.
+      if (candidate.length <= target) {
+        buf = candidate;
+        i++;
+        continue;
+      }
+
+      // If buffer is empty and a single block is huge, force split at best cut.
+      if (!buf) {
+        const cut = findBestCut(candidate, hardMax);
+        const page = candidate.slice(0, cut).trim();
+        const rem = candidate.slice(cut).trim();
+        if (page) pagesOut.push(page);
+        buf = rem;
+        i++;
+        continue;
+      }
+
+      // We crossed target with the next block. Decide whether to finalize buf or continue.
+      const continuation =
+        startsWithOpenQuote(b) ||
+        startsWithOpenQuote(nextBlock) ||
+        endsWithLeadIn(buf) ||
+        looksLikeListContinuation(buf, b);
+
+      const safeToBreak = endsWithStrongStop(buf) && !endsWithLeadIn(buf) && !startsWithOpenQuote(b) && !looksLikeListContinuation(buf, b);
+
+      if (buf.length >= target && safeToBreak && !continuation) {
+        pagesOut.push(buf.trim());
+        buf = '';
+        continue;
+      }
+
+      // Otherwise, treat it as continuation: append and allow overflow up to hard max.
+      buf = candidate;
+      i++;
+
+      if (buf.length >= hardMax) {
+        // Forced cut: choose best cut <= hardMax, but avoid leaving a remainder starting with an opening quote.
+        let cut = findBestCut(buf, hardMax);
+        let page = buf.slice(0, cut).trim();
+        let rem = buf.slice(cut).trim();
+
+        // If remainder starts with an opening quote/paren/bracket, backtrack to an earlier cut if possible.
+        if (rem && startsWithOpenQuote(rem)) {
+          const earlier = findBestCut(buf, Math.max(minChars + 50, cut - 80));
+          if (earlier > minChars && earlier < cut) {
+            cut = earlier;
+            page = buf.slice(0, cut).trim();
+            rem = buf.slice(cut).trim();
+          }
         }
-        const parts = splitLargeTextAtBoundary(b);
-        parts.forEach(p => { if (p) pagesOut.push(p.trim()); });
-        continue;
-      }
 
-      const next = buf ? (buf + '\n\n' + b) : b;
-      if (next.length <= softMax) {
-        buf = next;
-        continue;
+        if (page) pagesOut.push(page);
+        buf = rem;
       }
-
-      // If current buffer is tiny, allow it to grow past softMax a bit rather than creating micro-pages.
-      if (buf && buf.length < minCarry) {
-        buf = next;
-        continue;
-      }
-
-      if (buf.trim()) pagesOut.push(buf.trim());
-      buf = b;
     }
 
     if (buf.trim()) pagesOut.push(buf.trim());
-    return pagesOut;
+
+    // Cleanup micro-pages by merging into neighbors when safe.
+    const merged = [];
+    for (let j = 0; j < pagesOut.length; j++) {
+      const p = pagesOut[j];
+      if (!p) continue;
+      if (p.length >= minChars || merged.length === 0) {
+        merged.push(p);
+        continue;
+      }
+      // Try merge with previous first.
+      const prev = merged[merged.length - 1];
+      if ((prev.length + 2 + p.length) <= hardMax) {
+        merged[merged.length - 1] = (prev + '\n\n' + p).trim();
+        continue;
+      }
+      // Otherwise merge with next by deferring: keep as-is.
+      merged.push(p);
+    }
+    return merged;
   }
 
   function buildMarkdownBookFromSections(sections, { pageChars = 1600 } = {}) {
@@ -3851,6 +3944,8 @@ function writeAnchorsToCache(pageHash, payload) {
     const selectNoneBtn = document.getElementById('importSelectNone');
     const selectMainBtn = document.getElementById('importSelectMain');
     const selectionMeta = document.getElementById('importSelectionMeta');
+    const advancedToggleBtn = document.getElementById('importAdvancedToggle');
+    const advancedPanel = document.getElementById('importAdvancedPanel');
     const doImportBtn = document.getElementById('importDoImport');
     const backBtn = document.getElementById('importBackBtn');
 
@@ -3873,11 +3968,27 @@ function writeAnchorsToCache(pageHash, payload) {
     let _activeId = null;
     let _spineHrefs = [];
 
+    let _advancedMode = false;
+
+    function setAdvancedMode(on) {
+      _advancedMode = !!on;
+      if (advancedPanel) advancedPanel.style.display = _advancedMode ? 'block' : 'none';
+      if (tocList) tocList.style.display = _advancedMode ? 'none' : 'block';
+      if (filterInput) filterInput.style.display = _advancedMode ? 'none' : 'block';
+
+      // Hide selection tools when in advanced mode to avoid cramped layout.
+      const tools = document.querySelector('.import-picker-tools');
+      if (tools) tools.style.display = _advancedMode ? 'none' : 'flex';
+
+      if (advancedToggleBtn) advancedToggleBtn.textContent = _advancedMode ? 'Contents' : 'Advanced';
+    }
+
     function showModal() {
       modal.style.display = 'flex';
       modal.setAttribute('aria-hidden', 'false');
       // reset view
       showStage('upload');
+      setAdvancedMode(false);
     }
 
     function hideModal() {
@@ -3889,6 +4000,7 @@ function writeAnchorsToCache(pageHash, payload) {
       if (stageUpload) stageUpload.style.display = (which === 'upload') ? 'block' : 'none';
       if (stagePick) stagePick.style.display = (which === 'pick') ? 'block' : 'none';
       if (stageProgress) stageProgress.style.display = (which === 'progress') ? 'block' : 'none';
+      if (which === 'pick') setAdvancedMode(false);
     }
 
     function setStatus(msg) {
@@ -4186,6 +4298,7 @@ function writeAnchorsToCache(pageHash, payload) {
     selectAllBtn?.addEventListener('click', () => setAllSelected(true));
     selectNoneBtn?.addEventListener('click', () => setAllSelected(false));
     selectMainBtn?.addEventListener('click', selectMain);
+    advancedToggleBtn?.addEventListener('click', () => setAdvancedMode(!_advancedMode));
     doImportBtn?.addEventListener('click', doImportSelected);
     doneBtn?.addEventListener('click', hideModal);
   })();
