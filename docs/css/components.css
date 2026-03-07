@@ -243,6 +243,11 @@ body {
       white-space: nowrap;
     }
 
+    .btn-mini.is-active {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
+      color: #fff;
+    }
+
     /* Import modal */
     .import-modal {
       width: min(980px, 96vw);
@@ -634,7 +639,13 @@ body {
       margin: 6px 0;
     }
 
-    .howitworks-goal {
+    .howitworks-goal-lead {
+      font-family: 'Karla', sans-serif;
+      font-weight: 900;
+      margin-bottom: 10px;
+    }
+
+    .howitworks-quote {
       margin-top: 12px;
       padding: 12px 12px;
       border: 2px solid var(--border);

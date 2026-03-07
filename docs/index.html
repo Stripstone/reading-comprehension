@@ -68,6 +68,14 @@
   <div style="display:flex; gap:10px; margin-bottom:10px; justify-content:space-between; align-items:center;">
     <button type="button" id="toggleMusicBtn" style="flex:1; padding:8px 10px;">Mute/Unmute</button>
   </div>
+
+  <div style="display:flex; gap:10px; margin-bottom:10px; justify-content:space-between; align-items:center;">
+    <div style="font-size:13px; font-weight:900; font-family:'Karla', sans-serif;">Voice:</div>
+    <div style="display:flex; gap:8px; flex:1; justify-content:flex-end;">
+      <button type="button" id="voiceFemaleBtn" class="btn-mini" aria-pressed="true">Female</button>
+      <button type="button" id="voiceMaleBtn" class="btn-mini" aria-pressed="false">Male</button>
+    </div>
+  </div>
   <div style="display:grid; grid-template-columns: 1fr 120px; gap: 8px 10px; align-items:center; font-size: 13px;">
     <div>Voices</div><input id="vol_voice" type="range" min="0" max="1" step="0.01">
     <div>Music</div><input id="vol_music" type="range" min="0" max="1" step="0.01">
@@ -185,6 +193,8 @@
       </div>
       <div class="modal-body">
 
+        <div class="howitworks-goal-lead"><strong>Your goal is simple:</strong></div>
+
         <div class="howitworks-block">
           <div class="howitworks-title">Read the passage carefully.</div>
           <div class="howitworks-title">Write a short consolidation of what the passage actually does.</div>
@@ -194,10 +204,7 @@
             <li>Get AI feedback and a clarity score.</li>
           </ul>
 
-          <div class="howitworks-goal">
-            <strong>Your goal is simple:</strong>
-            If someone only read your consolidation, would they understand how the passage works?
-          </div>
+          <div class="howitworks-quote">"If someone only read your consolidation, would they understand how the passage works?"</div>
 
           <div class="howitworks-title" style="margin-top:12px;">💡 What Makes a Strong Consolidation?</div>
           <ul class="howitworks-list">

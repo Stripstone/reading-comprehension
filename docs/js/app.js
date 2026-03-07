@@ -296,6 +296,8 @@ const TTS_STATE = {
   audio: null,
   abort: null,
   volume: 1,
+  // 'female' (default) or 'male' for Polly narrator selection
+  voiceVariant: 'female',
   // sentence highlight state (page read)
   highlightPageKey: null,
   highlightPageEl: null,
@@ -525,6 +527,14 @@ async function pollyFetchUrl(text, opts = {}) {
   // overridden by the client.
   const payload = { text };
   if (opts && opts.sentenceMarks) payload.speechMarks = "sentence";
+
+  // Optional voice variant (server maps male/female to env vars).
+  // Default is female if omitted.
+  try {
+    if (String(TTS_STATE.voiceVariant || '').toLowerCase() === 'male') {
+      payload.voiceVariant = 'male';
+    }
+  } catch (_) {}
 
   // Developer override: if you set localStorage.tts_nocache = "1",
   // the server will regenerate audio even if an S3 object already exists.
@@ -1529,6 +1539,12 @@ function writeAnchorsToCache(pageHash, payload) {
   const savedVol = loadSavedVolumes() || {};
   // Voices (TTS) volume is handled separately from music/SFX.
   TTS_STATE.volume = typeof savedVol.voice === 'number' ? savedVol.voice : 1;
+
+  // Voice variant (male/female) for Polly. Default: female.
+  try {
+    const v = String(localStorage.getItem('rc_voice_variant') || '').toLowerCase();
+    if (v === 'male' || v === 'female') TTS_STATE.voiceVariant = v;
+  } catch (_) {}
   sandSound.volume = typeof savedVol.sand === 'number' ? savedVol.sand : SAND_VOLUME;
   stoneSound.volume = typeof savedVol.stone === 'number' ? savedVol.stone : STONE_VOLUME;
   rewardSound.volume = typeof savedVol.reward === 'number' ? savedVol.reward : REWARD_VOLUME;
@@ -1574,8 +1590,8 @@ function writeAnchorsToCache(pageHash, payload) {
 
     const PRESETS = {
       easy:   { time: 90,  chars: 200 },
-      medium: { time: 180, chars: 300 },
-      hard:   { time: 360, chars: 400 },
+      medium: { time: 150, chars: 260 },
+      hard:   { time: 300, chars: 340 },
     };
 
     function setActive(mode) {
@@ -4590,6 +4606,8 @@ function writeAnchorsToCache(pageHash, payload) {
 
     // Volume panel wiring
     if (musicToggleBtn && volumePanel) {
+      const voiceFemaleBtn = document.getElementById('voiceFemaleBtn');
+      const voiceMaleBtn = document.getElementById('voiceMaleBtn');
       const sliders = {
         voice: document.getElementById('vol_voice'),
         music: document.getElementById('vol_music'),
@@ -4610,7 +4628,27 @@ function writeAnchorsToCache(pageHash, payload) {
         if (sliders.compass) sliders.compass.value = String(compassSound.volume);
         if (sliders.pageTurn) sliders.pageTurn.value = String(pageTurnSound.volume);
         if (sliders.evaluate) sliders.evaluate.value = String(evaluateSound.volume);
+
+        // Sync voice variant toggle
+        const vv = String(TTS_STATE.voiceVariant || 'female').toLowerCase();
+        if (voiceFemaleBtn && voiceMaleBtn) {
+          const isFemale = vv !== 'male';
+          voiceFemaleBtn.setAttribute('aria-pressed', String(isFemale));
+          voiceMaleBtn.setAttribute('aria-pressed', String(!isFemale));
+          voiceFemaleBtn.classList.toggle('is-active', isFemale);
+          voiceMaleBtn.classList.toggle('is-active', !isFemale);
+        }
       }
+
+      function setVoiceVariant(v) {
+        const vv = String(v || '').toLowerCase() === 'male' ? 'male' : 'female';
+        TTS_STATE.voiceVariant = vv;
+        try { localStorage.setItem('rc_voice_variant', vv); } catch (_) {}
+        syncSlidersFromState();
+      }
+
+      if (voiceFemaleBtn) voiceFemaleBtn.addEventListener('click', () => setVoiceVariant('female'));
+      if (voiceMaleBtn) voiceMaleBtn.addEventListener('click', () => setVoiceVariant('male'));
 
       Object.entries(sliders).forEach(([key, el]) => {
         if (!el) return;

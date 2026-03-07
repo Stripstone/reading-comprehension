@@ -109,7 +109,15 @@ export default async function handler(req, res) {
       });
     }
 
-    const voiceId = String(body?.voiceId || requiredEnv("POLLY_VOICE_ID") || "Joanna").trim();
+    // Voice selection
+    // - If body.voiceId is provided, it wins (explicit override).
+    // - Otherwise, if body.voiceVariant is 'male' or 'female', map to env vars.
+    //   Defaults to female.
+    const voiceVariant = String(body?.voiceVariant ?? "").trim().toLowerCase();
+    const envFemale = requiredEnv("POLLY_VOICE_ID_FEMALE") || requiredEnv("POLLY_VOICE_ID");
+    const envMale = requiredEnv("POLLY_VOICE_ID_MALE") || requiredEnv("POLLY_VOICE_ID");
+    const pickedEnv = (voiceVariant === "male") ? envMale : envFemale;
+    const voiceId = String(body?.voiceId || pickedEnv || "Joanna").trim();
     const engineRaw = String(body?.engine || requiredEnv("POLLY_ENGINE") || "neural").trim().toLowerCase();
     const engine = engineRaw === "standard" ? "standard" : "neural";
 
