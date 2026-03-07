@@ -43,8 +43,7 @@ body {
   background-color: rgba(255, 241, 118, var(--anchor-alpha, 0)); /* transparent marker by default */
   border-radius: 3px;
   padding: 0 2px;
-  /* REQUIRED: 2s fade in / 2s fade out */
-  transition: background-color 2s ease;
+  transition: background-color 0.35s ease;
 }
 
 /* When a keyword match unlocks an anchor, fully highlight the matched keyword(s) inside the quote.
@@ -2093,6 +2092,5 @@ body {
   border-radius: 8px;
   padding: 0 2px;
   background-color: rgba(255, 230, 120, var(--tts-alpha));
-  /* REQUIRED: 2s fade in / 2s fade out */
-  transition: background-color 2s ease;
+  transition: background-color 220ms ease;
 }

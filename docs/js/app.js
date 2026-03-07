@@ -1449,6 +1449,9 @@ function writeAnchorsToCache(pageHash, payload) {
     btn.addEventListener('click', async () => {
       const pd = pageData?.[pageIndex];
 
+      // Helper: ensure CSS transitions apply on first-time injection.
+      const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
+
       // Lazy anchors: if anchors aren't ready yet, generate them now.
       // Keep UX simple: disable button briefly while loading.
       if (!pd?.anchors?.length) {
@@ -1456,6 +1459,9 @@ function writeAnchorsToCache(pageHash, payload) {
           btn.disabled = true;
           btn.textContent = 'Generating…';
           await hydrateAnchorsIntoPageEl(pageEl, pageIndex);
+          // On first generation, the spans are newly injected; wait a frame so
+          // the browser can commit layout before we animate hint opacity.
+          await nextFrame();
         } catch (_) {
           // If anchors fail, keep hint disabled (consistent with error path).
         } finally {
@@ -1467,22 +1473,28 @@ function writeAnchorsToCache(pageHash, payload) {
 
       if (!pd?.anchors?.length) return;
 
-      // REQUIRED: 2s fade-in / 2s fade-out.
-      // CSS already enforces 2s transitions; we only toggle the visual override.
+      // 2s fade-in / 2s fade-out visual override.
       const spans = pageEl.querySelectorAll('.page-text .anchor');
+      spans.forEach(s => { s.style.transitionDuration = '2s'; });
+      // Inline CSS vars beat class rules; explicitly set alpha for hint.
+      // To avoid a "snap" on the first run, force a 0 -> 0.90 transition.
       spans.forEach(s => {
-        // Inline CSS vars beat class rules; explicitly set alpha for hint.
-        s.style.setProperty('--anchor-alpha', '0.90');
+        s.dataset.anchorAlphaPrev = s.style.getPropertyValue('--anchor-alpha') || '';
+        s.style.setProperty('--anchor-alpha', '0');
       });
+      await nextFrame();
+      spans.forEach(s => s.style.setProperty('--anchor-alpha', '0.90'));
       pageEl.classList.add('anchor-hint-active');
 
       // Hold for 2 seconds, then return to match-based visibility over 2 seconds.
       setTimeout(() => {
         pageEl.classList.remove('anchor-hint-active');
-        // After fade-out completes, clear overrides and refresh matches.
+        // After fade-out completes, restore normal transition speed and refresh matches.
         setTimeout(() => {
+          spans.forEach(s => { s.style.transitionDuration = '0.35s'; });
           spans.forEach(s => {
-            s.style.removeProperty('--anchor-alpha');
+            // Clear hint override; updateAnchorsUIForPage will re-apply match-based alpha.
+            delete s.dataset.anchorAlphaPrev;
           });
           const textarea = pageEl.querySelector('textarea');
           updateAnchorsUIForPage(pageEl, pageIndex, textarea ? textarea.value : '');
@@ -4732,9 +4744,10 @@ function writeAnchorsToCache(pageHash, payload) {
       diagBtn.innerHTML = '<span id="diagIcon">🔧</span>';
 
       // IMPORTANT: .music-button is fixed bottom-right.
-      // Place diagnostics to the LEFT of the music button (same baseline), so they never overlap.
-      diagBtn.style.bottom = '20px';
+      // Place diagnostics to the LEFT of the music button (same bottom edge).
       diagBtn.style.right = '88px';
+      diagBtn.style.bottom = '20px';
+      // Ensure it sits above other fixed UI.
       diagBtn.style.zIndex = '1001';
 
       if (musicToggleBtn && musicToggleBtn.parentElement) {
