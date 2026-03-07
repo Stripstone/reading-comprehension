@@ -109,15 +109,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // Voice selection
-    // - If body.voiceId is provided, it wins (explicit override).
-    // - Otherwise, if body.voiceVariant is 'male' or 'female', map to env vars.
-    //   Defaults to female.
-    const voiceVariant = String(body?.voiceVariant ?? "").trim().toLowerCase();
-    const envFemale = requiredEnv("POLLY_VOICE_ID_FEMALE") || requiredEnv("POLLY_VOICE_ID");
-    const envMale = requiredEnv("POLLY_VOICE_ID_MALE") || requiredEnv("POLLY_VOICE_ID");
-    const pickedEnv = (voiceVariant === "male") ? envMale : envFemale;
-    const voiceId = String(body?.voiceId || pickedEnv || "Joanna").trim();
     // Engine selection (cost control):
     // - Explicit body.engine wins (rare).
     // - Otherwise default to STANDARD unless debug=1, where we use PREMIUM.
@@ -130,6 +121,21 @@ export default async function handler(req, res) {
     const defaultEngine = debug ? envPremium : envStandard;
     const engineRaw = String(body?.engine || defaultEngine).trim().toLowerCase();
     const engine = engineRaw === "standard" ? "standard" : "neural";
+
+    // Voice selection
+    // - If body.voiceId is provided, it wins (explicit override).
+    // - Otherwise, if body.voiceVariant is 'male' or 'female', map to env vars.
+    //   Defaults to female.
+    // NOTE: Some voices are not available across both engines. We support a
+    // dedicated premium male voice via POLLY_VOICE_ID_MALE_2 when engine=neural.
+    const voiceVariant = String(body?.voiceVariant ?? "").trim().toLowerCase();
+    const envFemale = requiredEnv("POLLY_VOICE_ID_FEMALE") || requiredEnv("POLLY_VOICE_ID");
+    const envMaleStandard = requiredEnv("POLLY_VOICE_ID_MALE") || requiredEnv("POLLY_VOICE_ID");
+    const envMalePremium = requiredEnv("POLLY_VOICE_ID_MALE_2") || envMaleStandard;
+    const pickedEnv = (voiceVariant === "male")
+      ? (engine === "standard" ? envMaleStandard : envMalePremium)
+      : envFemale;
+    const voiceId = String(body?.voiceId || pickedEnv || "Joanna").trim();
 
     const prefix = toSafePrefix(requiredEnv("AWS_S3_PREFIX"));
     const identity = JSON.stringify({ voiceId, engine, text });

@@ -4734,12 +4734,11 @@ function writeAnchorsToCache(pageHash, payload) {
       diagBtn.title = 'Diagnostics';
       diagBtn.innerHTML = '<span id="diagIcon">🔧</span>';
 
-      // IMPORTANT: .music-button is fixed bottom-right. If we don't offset,
-      // the diagnostics button will sit directly under the music button.
-      // Nudge it left so both are visible.
-      diagBtn.style.right = '88px';
-      // Keep fixed buttons above the footer support section at the bottom of the page.
-      diagBtn.style.bottom = '96px';
+      // IMPORTANT: .music-button is fixed bottom-right.
+      // Stack diagnostics vertically above the music button (same right edge).
+      diagBtn.style.right = '20px';
+      // Music button is 56px tall with bottom: 20px. Add a gap so they don't touch.
+      diagBtn.style.bottom = '88px';
 
       if (musicToggleBtn && musicToggleBtn.parentElement) {
         musicToggleBtn.parentElement.insertBefore(diagBtn, musicToggleBtn);
