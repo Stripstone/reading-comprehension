@@ -565,35 +565,21 @@ body {
     }
 
     @media (max-width: 900px) {
-      /* Mobile/tablet: stack panes and keep both usable (no squeezed top pane) */
-      .import-picker { grid-template-columns: 1fr; height: auto; }
+      .import-picker { grid-template-columns: 1fr; }
+      .import-picker { height: auto; }
 
-      /* Remove desktop min-heights that can force the lower pane to dominate */
-      .import-picker-left,
-      .import-picker-right { min-height: 0; }
-      .import-picker-right { min-height: 0; }
+      /* Mobile/tablet: keep the chapter list panel tall enough to be usable. */
+      .import-picker-left { min-height: 70vh; }
 
-      /* Give the contents pane more room and keep each pane internally scrollable */
-      .import-picker-left { max-height: 70vh; }
-      .import-picker-right { max-height: 38vh; margin-top: 12px; }
-      .import-toc { -webkit-overflow-scrolling: touch; }
+      /* Preserve a solid preview area below the chapter list. */
+      .import-picker-right {
+        min-height: 420px;
+        margin-top: 12px;
+      }
     }
 
     /* Mobile-only hamburger (not tablet) */
     @media (max-width: 520px) {
-      /* Very small screens: let the 3 TOC utility buttons wrap cleanly */
-      .import-picker-tools {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        justify-content: flex-start;
-      }
-
-      .btn-mini {
-        font-size: 11px;
-        padding: 6px 9px;
-      }
-
       /* Mobile: actions bar participates in layout and stays above controls */
       .top-actions {
         position: sticky;
@@ -2065,6 +2051,26 @@ body {
   .support-footer-inner { justify-content: flex-start; }
 }
 
+/* =========================================
+   Mobile: more real-estate (stronger zoom-out)
+   ========================================= */
+
+@media (max-width: 520px) {
+  html {
+    zoom: 0.90;
+  }
+}
+
+/* iOS Safari fallback */
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 520px) {
+    body {
+      transform: scale(0.88);
+      transform-origin: top center;
+      width: calc(100% / 0.88);
+    }
+  }
+}
 
 /* tighten spacing slightly so the zoom feels intentional */
 @media (max-width: 520px) {
