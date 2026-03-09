@@ -2056,52 +2056,57 @@ function writeAnchorsToCache(pageHash, payload) {
     const minChars = Math.round(target * 0.65);
     const tinyTail = Math.max(160, Math.round(target * 0.22));
 
-    const strongStopRe = /[.!?]["'”’\)\]\}]*\s*$/;
-    const openQuoteRe = /^\s*["“'\(\[]/;
-    const leadInRe = /(\:|\;|—|\,|such as|as follows|the following|including)\s*$/i;
-    const listLineRe = /^\s*(\d+[.|\)]\s+|[-•*]\s+|box\s+\d+\s*:|line\s+\d+\s*:)/i;
-    const reportingVerbRe = /(reads?|states?|stated|says?|said|writes?|wrote|provides?|provided|declares?|declared|explains?|explained|asks?|asked|begins?|began|continues?|continued|quotes?|quoted|proclaims?|proclaimed|notes?|noted)/i;
+    const strongStopRe = /[.!?]["'”’)\]\}]*\s*$/;
+    const openQuoteRe = /^\s*["“'(\[]/;
+    const leadInRe = /(:|;|—|,|\bsuch as\b|\bas follows\b|\bthe following\b|\bincluding\b)\s*$/i;
+    const listLineRe = /^\s*(\d+[.)]\s+|[-•*]\s+|box\s+\d+\s*:|line\s+\d+\s*:)/i;
+    const reportingVerbRe = /\b(reads?|states?|stated|says?|said|writes?|wrote|provides?|provided|declares?|declared|explains?|explained|asks?|asked|begins?|began|continues?|continued|quotes?|quoted|proclaims?|proclaimed|notes?|noted)\b/i;
 
     function startsWithOpenQuote(s) {
-      return openQuoteRe.test(String(s || '').trimStart());
+      return openQuoteRe.test(String(s || "").trimStart());
     }
 
     function endsWithStrongStop(s) {
-      return strongStopRe.test(String(s || '').trim());
+      return strongStopRe.test(String(s || "").trim());
     }
 
     function endsWithLeadIn(s) {
-      return leadInRe.test(String(s || '').trim());
+      return leadInRe.test(String(s || "").trim());
     }
 
     function looksLikeListBlock(s) {
-      const lines = String(s || '').split(/
-/).map(x => x.trim()).filter(Boolean);
+      const lines = String(s || "")
+        .split(/\n+/)
+        .map(x => x.trim())
+        .filter(Boolean);
       if (!lines.length) return false;
       return lines.some(line => listLineRe.test(line));
     }
 
     function looksLikeQuoteBlock(s) {
-      const t = String(s || '').trim();
+      const t = String(s || "").trim();
       if (!t) return false;
       if (startsWithOpenQuote(t)) return true;
       const straight = (t.match(/"/g) || []).length;
-      const openCurly = (t.match(/[“]/g) || []).length;
-      const closeCurly = (t.match(/[”]/g) || []).length;
+      const openCurly = (t.match(/“/g) || []).length;
+      const closeCurly = (t.match(/”/g) || []).length;
       if (straight >= 2) return true;
       if (openCurly + closeCurly >= 2) return true;
       return false;
     }
 
     function looksLikeStatementBlock(s) {
-      const t = String(s || '').trim();
+      const t = String(s || "").trim();
       if (!t) return false;
       const semis = (t.match(/;/g) || []).length;
       const colons = (t.match(/:/g) || []).length;
       const words = t.split(/\s+/).filter(Boolean).length;
       if (semis >= 2 && words >= 18) return true;
       if (colons >= 1 && semis >= 1 && words >= 18) return true;
-      if (words >= 20 && /(shall|whereas|thereof|therein|thereby|hereby|herein|pursuant|therefore)/i.test(t)) return true;
+      if (
+        words >= 20 &&
+        /\b(shall|whereas|thereof|therein|thereby|hereby|herein|pursuant|therefore)\b/i.test(t)
+      ) return true;
       return false;
     }
 
@@ -2110,25 +2115,27 @@ function writeAnchorsToCache(pageHash, payload) {
     }
 
     function hasUnclosedDoubleQuote(text) {
-      const s = String(text || '');
+      const s = String(text || "");
       const straight = (s.match(/"/g) || []).length;
-      const openCurly = (s.match(/[“]/g) || []).length;
-      const closeCurly = (s.match(/[”]/g) || []).length;
+      const openCurly = (s.match(/“/g) || []).length;
+      const closeCurly = (s.match(/”/g) || []).length;
       return (straight % 2 === 1) || (openCurly > closeCurly);
     }
 
     function looksFormalExtractStart(tail) {
-      const t = String(tail || '').trim();
+      const t = String(tail || "").trim();
       if (!t) return false;
       const words = t.split(/\s+/).filter(Boolean);
       if (words.length < 12) return false;
-      const startsFormal = startsWithOpenQuote(t) || /^[A-Z\(\[]/.test(t);
-      const hasFormalTexture = /[;:]/.test(t) || /(shall|whereas|thereof|therein|thereby|hereby|herein|pursuant|therefore|which|that)/i.test(t);
+      const startsFormal = startsWithOpenQuote(t) || /^[A-Z(\[]/.test(t);
+      const hasFormalTexture =
+        /[;:]/.test(t) ||
+        /\b(shall|whereas|thereof|therein|thereby|hereby|herein|pursuant|therefore|which|that)\b/i.test(t);
       return startsFormal && hasFormalTexture;
     }
 
     function splitInlineProtectedSubBlocks(block) {
-      const src = String(block || '').trim();
+      const src = String(block || "").trim();
       if (!src) return [];
       const parts = [];
       let remaining = src;
@@ -2141,7 +2148,7 @@ function writeAnchorsToCache(pageHash, payload) {
         const punctRe = /[:,;]\s+/g;
         let m;
         while ((m = punctRe.exec(remaining)) !== null) {
-          const cut = m.index + 1; // keep the punctuation with the lead-in clause
+          const cut = m.index + 1; // keep punctuation with lead-in clause
           const head = remaining.slice(0, cut).trim();
           const tail = remaining.slice(m.index + m[0].length).trim();
           if (!head || !tail) continue;
@@ -2157,8 +2164,10 @@ function writeAnchorsToCache(pageHash, payload) {
         }
 
         if (splitAt < 0) {
-          const quoteIdx = remaining.search(/(?:^|\s)(["“][^"“]{80,})/);
-          if (quoteIdx > 24) splitAt = quoteIdx;
+          const quoteMatch = /(?:^|\s)(["“][^"”]{80,})/.exec(remaining);
+          if (quoteMatch && typeof quoteMatch.index === "number" && quoteMatch.index > 24) {
+            splitAt = quoteMatch.index;
+          }
         }
 
         if (splitAt < 0) {
@@ -2181,16 +2190,14 @@ function writeAnchorsToCache(pageHash, payload) {
     }
 
     function findBestCut(text, maxIdx) {
-      const t = String(text || '');
+      const t = String(text || "");
       const limit = Math.min(maxIdx, t.length);
       const slice = t.slice(0, limit);
 
-      const para = slice.lastIndexOf('
-
-');
+      const para = slice.lastIndexOf("\n\n");
       if (para > minChars) return para;
 
-      const re = /[.!?]["'”’\)\]\}]*\s+/g;
+      const re = /[.!?]["'”’)\]\}]*\s+/g;
       let m;
       let best = -1;
       while ((m = re.exec(slice)) !== null) {
@@ -2200,46 +2207,48 @@ function writeAnchorsToCache(pageHash, payload) {
       }
       if (best > 0) return best;
 
-      const semi = slice.lastIndexOf('; ');
+      const semi = slice.lastIndexOf("; ");
       if (semi > minChars) return semi + 1;
 
-      const ws = slice.lastIndexOf(' ');
+      const ws = slice.lastIndexOf(" ");
       if (ws > minChars) return ws;
 
       return Math.min(limit, Math.max(minChars, Math.round(target)));
     }
 
     function findForwardSentenceStop(text, startIdx, maxExtra = 1200) {
-      const t = String(text || '');
+      const t = String(text || "");
       const start = Math.max(0, Math.min(startIdx, t.length));
       const end = Math.min(t.length, start + Math.max(120, maxExtra));
       if (end <= start) return -1;
       const slice = t.slice(start, end);
 
-      const stopRe = /[.!?]["'”’\)\]\}]*\s+/g;
-      const stop = stopRe.exec(slice);
-      if (stop) return start + stopRe.lastIndex;
+      const stopRe = /[.!?]["'”’)\]\}]*\s+/g;
+      if (stopRe.exec(slice)) return start + stopRe.lastIndex;
 
-      const para = slice.indexOf('
-
-');
+      const para = slice.indexOf("\n\n");
       if (para >= 0) return start + para;
 
-      const semi = slice.indexOf('; ');
+      const semi = slice.indexOf("; ");
       if (semi >= 0) return start + semi + 1;
 
       return -1;
     }
 
     function forceSplitOversizedBlock(text) {
-      let remaining = String(text || '').trim();
+      let remaining = String(text || "").trim();
+
       while (remaining.length > hardMax) {
         let cut = findBestCut(remaining, hardMax);
         let page = remaining.slice(0, cut).trim();
         let rem = remaining.slice(cut).trim();
 
         if (rem && (!endsWithStrongStop(page) || hasUnclosedDoubleQuote(page))) {
-          const fwd = findForwardSentenceStop(remaining, cut, Math.max(1200, remaining.length - cut));
+          const fwd = findForwardSentenceStop(
+            remaining,
+            cut,
+            Math.max(1200, remaining.length - cut)
+          );
           if (fwd > cut) {
             cut = fwd;
             page = remaining.slice(0, cut).trim();
@@ -2259,13 +2268,15 @@ function writeAnchorsToCache(pageHash, payload) {
         if (page) pagesOut.push(page);
         remaining = rem;
       }
+
       return remaining;
     }
 
-    let buf = '';
+    let buf = "";
     let bufProtected = false;
+
     const cleanBlocks = (blocks || [])
-      .map(b => String(b || '').trim())
+      .map(b => String(b || "").trim())
       .filter(Boolean)
       .flatMap(splitInlineProtectedSubBlocks)
       .filter(Boolean);
@@ -2285,9 +2296,7 @@ function writeAnchorsToCache(pageHash, payload) {
         continue;
       }
 
-      const candidate = `${buf}
-
-${block}`;
+      const candidate = `${buf}\n\n${block}`;
 
       if (candidate.length <= target) {
         buf = candidate;
@@ -2305,20 +2314,9 @@ ${block}`;
         endsWithStrongStop(buf) &&
         !continuationRisk;
 
-      if (blockProtected && safeToFinalizeBuf) {
+      if ((blockProtected || bufProtected) && safeToFinalizeBuf) {
         pagesOut.push(buf.trim());
-        if (block.length > hardMax) {
-          buf = forceSplitOversizedBlock(block);
-          bufProtected = isProtectedBlock(buf);
-        } else {
-          buf = block;
-          bufProtected = true;
-        }
-        continue;
-      }
 
-      if (bufProtected && safeToFinalizeBuf) {
-        pagesOut.push(buf.trim());
         if (block.length > hardMax) {
           buf = forceSplitOversizedBlock(block);
           bufProtected = isProtectedBlock(buf);
@@ -2337,6 +2335,7 @@ ${block}`;
 
       if (safeToFinalizeBuf) {
         pagesOut.push(buf.trim());
+
         if (block.length > hardMax) {
           buf = forceSplitOversizedBlock(block);
           bufProtected = isProtectedBlock(buf);
@@ -2349,6 +2348,7 @@ ${block}`;
 
       buf = candidate;
       bufProtected = bufProtected || blockProtected;
+
       if (buf.length > hardMax) {
         buf = forceSplitOversizedBlock(buf);
         bufProtected = isProtectedBlock(buf);
@@ -2361,16 +2361,20 @@ ${block}`;
     for (let j = 0; j < pagesOut.length; j++) {
       const p = pagesOut[j];
       if (!p) continue;
+
       if (p.length >= minChars || merged.length === 0) {
         merged.push(p);
         continue;
       }
 
       const prev = merged[merged.length - 1];
-      const combined = `${prev}
+      const combined = `${prev}\n\n${p}`;
 
-${p}`;
-      if (combined.length <= hardMax && endsWithStrongStop(prev) && !startsWithOpenQuote(p)) {
+      if (
+        combined.length <= hardMax &&
+        endsWithStrongStop(prev) &&
+        !startsWithOpenQuote(p)
+      ) {
         merged[merged.length - 1] = combined.trim();
         continue;
       }
