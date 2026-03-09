@@ -562,30 +562,12 @@ body {
     @media (max-width: 900px) {
       .import-picker {
         grid-template-columns: 1fr;
-        grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
         height: min(62vh, 560px);
       }
 
-      .import-picker-left,
-      .import-picker-right {
-        min-height: 0;
-        height: 100%;
-      }
-
-      .import-toc {
-        flex: 1 1 auto;
-        max-height: none;
-      }
-
-      .import-preview-body { max-height: none; }
-
-      /* When stacked vertically, keep the TOC pane at 60% of the picker/modal working height. */
       .import-picker-left {
+        height: 60%;
         min-height: 60%;
-      }
-
-      .import-picker-right {
-        margin-top: 0;
       }
     }
 
