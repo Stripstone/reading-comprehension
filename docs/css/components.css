@@ -574,7 +574,7 @@ body {
       .import-picker-right { min-height: 0; }
 
       /* Give the contents pane more room and keep each pane internally scrollable */
-      .import-picker-left { max-height: 55vh; }
+      .import-picker-left { max-height: 70vh; }
       .import-picker-right { max-height: 38vh; margin-top: 12px; }
       .import-toc { -webkit-overflow-scrolling: touch; }
     }
