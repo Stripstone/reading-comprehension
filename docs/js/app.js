@@ -2015,90 +2015,149 @@ function writeAnchorsToCache(pageHash, payload) {
     return out;
   }
 
-  // ===================================
-  // EPUB paging (simple upstream approach)
-  // - Treat chapter text as a stream (not paragraphs).
-  // - Chunk by size with overlap (like a feed).
-  // - Nudge cut forward to a real sentence terminator when it’s nearby.
-  // This is intentionally simple and robust for dirty EPUB/PDF conversions.
-  // ===================================
   function chunkBlocksToPages(blocks, targetChars = 1600) {
+    // Locked behavior (v2): Never break mid-sentence.
+    // - Prefer paragraph boundary.
+    // - Otherwise break at a true sentence terminator: . ? ! …
+    // - Search backward from target cutoff first.
+    // - Only if none found, search forward up to a capped distance.
+    // - Ignore fake terminators like abbreviations, decimals, and citation-style periods.
+    // - If still nothing is found, fallback to paragraph/whitespace (rare).
+
     const target = Math.max(400, targetChars | 0);
-    const overlap = Math.min(260, Math.max(120, Math.round(target * 0.12))); // ~12% overlap, capped
-    const maxForward = 220; // max chars to scan forward for .?!…
-    const minStep = Math.max(80, Math.round(target * 0.35)); // prevent tiny pages
+    const hardMax = Math.round(target * 1.35);
+    const maxForward = Math.round(target * 0.35);
+    const minChars = Math.round(target * 0.65);
 
-    // Stream normalize: collapse all whitespace so soft wraps don't create fake paragraphs.
-    const stream = (blocks || [])
-      .map(b => String(b || ''))
-      .join(' ')
-      .replace(/\r\n?/g, '\n')
-      .replace(/\s+/g, ' ')
-      .trim();
+    const closers = new Set(['"', "'", '”', '’', ')', ']', '}', '»']);
+    const abbrevTokenRe = /\b(?:mr|mrs|ms|dr|prof|sr|jr|st|vs|etc|e\.g|i\.e)$/i;
+    const multiDotCapsRe = /\b(?:[A-Z]\.){2,}[A-Z]?$/; // U.S. / U.S.C.
 
-    if (!stream) return [];
-
-    const isTerminator = (t, i) => {
-      const ch = t[i];
-      if (ch === '?' || ch === '!' || ch === '…') return true;
-      if (ch !== '.') return false;
-      // Ignore decimals like 3.14
+    function isDecimalDot(t, i) {
       const a = t[i - 1] || '';
       const b = t[i + 1] || '';
-      if (/\d/.test(a) && /\d/.test(b)) return false;
-      // Ignore common abbrevs/citations (small heuristic)
-      const look = t.slice(Math.max(0, i - 10), i + 1);
-      if (/\b(?:mr|mrs|ms|dr|prof|sr|jr|st|vs|etc|e\.g|i\.e)\.$/i.test(look)) return false;
-      if (/\b(?:[A-Z]\.){2,}[A-Z]?\.$/.test(look)) return false; // U.S. / U.S.C.
-      return true;
-    };
+      return /\d/.test(a) && /\d/.test(b);
+    }
 
-    const advanceAfter = (t, idx) => {
+    function isLikelyAbbrevOrCitation(t, i) {
+      const look = t.slice(Math.max(0, i - 14), i).trim();
+      const lastToken = look.split(/\s+/).pop() || '';
+      if (abbrevTokenRe.test(lastToken)) return true;
+      if (multiDotCapsRe.test(look)) return true;
+      return false;
+    }
+
+    function isTrueSentenceDot(t, i) {
+      if (t[i] !== '.') return false;
+      // Ellipsis "..." counts as a terminator at the third dot.
+      if (i >= 2 && t[i - 1] === '.' && t[i - 2] === '.') return true;
+      if (isDecimalDot(t, i)) return false;
+      if (isLikelyAbbrevOrCitation(t, i)) return false;
+      return true;
+    }
+
+    function isSentenceTerminator(t, i) {
+      const ch = t[i];
+      if (ch === '?' || ch === '!' || ch === '…') return true;
+      if (ch === '.') return isTrueSentenceDot(t, i);
+      return false;
+    }
+
+    function advancePastClosersAndSpace(t, idx) {
       let j = idx + 1;
-      while (j < t.length && /[\"'”’\)\]\}»]/.test(t[j])) j++;
+      while (j < t.length && closers.has(t[j])) j++;
       while (j < t.length && /\s/.test(t[j])) j++;
       return j;
-    };
+    }
 
-    const nudgeToWhitespace = (t, start, rawCut) => {
-      // Prefer cutting at whitespace to avoid mid-word splits.
-      const limitBack = Math.max(start + minStep, rawCut - 60);
-      for (let i = rawCut; i >= limitBack; i--) {
-        if (t[i] === ' ') return i + 1;
-      }
-      return rawCut;
-    };
+    function findBackwardParagraphBoundary(t, from, start) {
+      const slice = t.slice(start, from);
+      const rel = slice.lastIndexOf('\\n\\n');
+      if (rel === -1) return -1;
+      return start + rel + 2;
+    }
 
-    const nudgeForwardToTerminator = (t, rawCut) => {
-      const limit = Math.min(t.length, rawCut + maxForward);
-      for (let i = rawCut; i < limit; i++) {
-        if (isTerminator(t, i)) return advanceAfter(t, i);
+    function findForwardParagraphBoundary(t, from, to) {
+      const slice = t.slice(from, to);
+      const rel = slice.indexOf('\\n\\n');
+      if (rel === -1) return -1;
+      return from + rel + 2;
+    }
+
+    function findBackwardTerminator(t, from, start, minPos) {
+      for (let i = from - 1; i >= start; i--) {
+        if (!isSentenceTerminator(t, i)) continue;
+        const end = advancePastClosersAndSpace(t, i);
+        if (end >= minPos) return end;
       }
-      return rawCut;
-    };
+      return -1;
+    }
+
+    function findForwardTerminator(t, from, to, minPos) {
+      for (let i = from; i < to; i++) {
+        if (!isSentenceTerminator(t, i)) continue;
+        const end = advancePastClosersAndSpace(t, i);
+        if (end >= minPos) return end;
+      }
+      return -1;
+    }
+
+    function fallbackWhitespace(t, to, start, minPos) {
+      const slice = t.slice(start, to);
+      const rel = slice.lastIndexOf(' ');
+      if (rel === -1) return to;
+      const idx = start + rel;
+      return Math.max(idx, minPos);
+    }
 
     const pagesOut = [];
+    const cleanBlocks = (blocks || []).map(b => String(b || '').trim()).filter(Boolean);
+    const text = cleanBlocks.join('\\n\\n').replace(/\\n{3,}/g, '\\n\\n').trim();
+
     let pos = 0;
-    while (pos < stream.length) {
-      const remaining = stream.length - pos;
+    while (pos < text.length) {
+      const remaining = text.length - pos;
       if (remaining <= target) {
-        pagesOut.push(stream.slice(pos).trim());
+        pagesOut.push(text.slice(pos).trim());
         break;
       }
 
-      let cut = pos + target;
-      cut = nudgeToWhitespace(stream, pos, cut);
-      cut = nudgeForwardToTerminator(stream, cut);
-      if (cut <= pos + minStep) cut = Math.min(stream.length, pos + target);
+      const cutoff = pos + target;
+      const hardLimit = Math.min(pos + hardMax, text.length);
+      const forwardLimit = Math.min(pos + target + maxForward, hardLimit);
+      const minPos = pos + minChars;
 
-      pagesOut.push(stream.slice(pos, cut).trim());
+      // 1) Prefer paragraph boundary.
+      let cut = findBackwardParagraphBoundary(text, cutoff, pos);
+      if (cut !== -1 && cut < minPos) cut = -1;
 
-      // Overlap: begin next chunk slightly before the cut.
-      let nextPos = Math.max(pos + minStep, cut - overlap);
-      // Move to a word boundary.
-      while (nextPos < stream.length && stream[nextPos] !== ' ' && stream[nextPos - 1] !== ' ') nextPos++;
-      while (nextPos < stream.length && stream[nextPos] === ' ') nextPos++;
-      pos = nextPos;
+      // 2) Otherwise sentence terminator (backward first).
+      if (cut === -1) {
+        cut = findBackwardTerminator(text, cutoff, pos, minPos);
+      }
+
+      // 3) Only if none found: search forward up to cap.
+      if (cut === -1) {
+        cut = findForwardParagraphBoundary(text, cutoff, forwardLimit);
+        if (cut !== -1 && cut < minPos) cut = -1;
+      }
+      if (cut === -1) {
+        cut = findForwardTerminator(text, cutoff, forwardLimit, minPos);
+      }
+
+      // 4) Final fallback (rare): paragraph boundary anywhere before hardLimit, then whitespace.
+      if (cut === -1) {
+        const paraAny = findBackwardParagraphBoundary(text, hardLimit, pos);
+        if (paraAny !== -1 && paraAny >= minPos) cut = paraAny;
+      }
+      if (cut === -1) {
+        cut = fallbackWhitespace(text, hardLimit, pos, minPos);
+      }
+
+      const page = text.slice(pos, cut).trim();
+      if (page) pagesOut.push(page);
+      pos = cut;
+      while (pos < text.length && /\s/.test(text[pos])) pos++;
     }
 
     return pagesOut;

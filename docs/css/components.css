@@ -565,43 +565,18 @@ body {
     }
 
     @media (max-width: 900px) {
-      /* Mobile/tablet: stack panes vertically and give the TOC real room. */
-      .import-picker {
-        grid-template-columns: 1fr;
-        height: auto;
-        gap: 12px;
-      }
+      /* Mobile/tablet: stack panes and keep both usable (no squeezed top pane) */
+      .import-picker { grid-template-columns: 1fr; height: auto; }
 
-      /* Let panes size naturally; only the inner content regions should scroll. */
+      /* Remove desktop min-heights that can force the lower pane to dominate */
       .import-picker-left,
-      .import-picker-right {
-        min-height: 0;
-        max-height: none;
-      }
+      .import-picker-right { min-height: 0; }
+      .import-picker-right { min-height: 0; }
 
-      /* Keep the contents pane large enough to show several items at once. */
-      .import-picker-left {
-        min-height: 52vh;
-      }
-
-      .import-picker-right {
-        margin-top: 0;
-        min-height: 28vh;
-      }
-
-      .import-toc {
-        flex: 1 1 auto;
-        min-height: 32vh;
-        max-height: 52vh;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-      }
-
-      .import-preview-body {
-        max-height: 28vh;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-      }
+      /* Give the contents pane more room and keep each pane internally scrollable */
+      .import-picker-left { max-height: 55vh; }
+      .import-picker-right { max-height: 38vh; margin-top: 12px; }
+      .import-toc { -webkit-overflow-scrolling: touch; }
     }
 
     /* Mobile-only hamburger (not tablet) */
@@ -2152,32 +2127,4 @@ body {
   padding: 0 2px;
   background-color: rgba(255, 230, 120, var(--tts-alpha));
   transition: background-color 220ms ease;
-}
-
-
-@media (max-width: 520px) {
-  .import-modal {
-    width: min(980px, 98vw);
-  }
-
-  .modal {
-    max-height: 92vh;
-  }
-
-  .modal-body {
-    padding: 12px 14px 14px 14px;
-  }
-
-  .import-picker-left {
-    min-height: 56vh;
-  }
-
-  .import-toc {
-    min-height: 36vh;
-    max-height: 56vh;
-  }
-
-  .import-preview-body {
-    max-height: 24vh;
-  }
 }
