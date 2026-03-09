@@ -328,8 +328,7 @@ body {
       display: grid;
       grid-template-columns: 1.25fr 0.75fr;
       gap: 14px;
-      /* Keep both panes fixed inside the modal; internal areas scroll. */
-      height: min(56vh, 560px);
+      height: min(62vh, 560px);
     }
 
     .import-picker-left,
@@ -341,12 +340,7 @@ body {
       overflow: hidden;
       display: flex;
       flex-direction: column;
-    }
-
-    .import-picker-right {
-      display: flex;
-      flex-direction: column;
-      min-height: 420px;
+      height: 100%;
     }
 
     .import-picker-head {
@@ -387,7 +381,8 @@ body {
     }
 
     .import-toc {
-      flex: 1;
+      flex: 1 1 auto;
+      max-height: none;
       overflow: auto;
       padding: 6px 8px 10px 8px;
     }
@@ -566,16 +561,11 @@ body {
 
     @media (max-width: 900px) {
       .import-picker { grid-template-columns: 1fr; }
-      .import-picker { height: auto; }
+      .import-toc { max-height: 56vh; }
+      .import-preview-body { max-height: 34vh; }
 
-      /* Mobile/tablet: keep the chapter list panel tall enough to be usable. */
-      .import-picker-left { min-height: 65vh; }
-
-      /* Preserve a solid preview area below the chapter list. */
-      .import-picker-right {
-        min-height: 420px;
-        margin-top: 12px;
-      }
+      /* When stacked vertically, add breathing room so panels don't feel overlapped */
+      .import-picker-right { margin-top: 12px; }
     }
 
     /* Mobile-only hamburger (not tablet) */
@@ -1920,6 +1910,8 @@ body {
       border-radius: 14px;
       background: rgba(255,255,255,0.35);
       box-shadow: var(--shadow-sm);
+      flex: 1 1 auto;
+      overflow: auto;
     }
 
     .import-advanced-title {
@@ -2057,7 +2049,7 @@ body {
 
 @media (max-width: 520px) {
   html {
-    zoom: 0.80;
+    zoom: 0.90;
   }
 }
 
