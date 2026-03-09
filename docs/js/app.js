@@ -2038,25 +2038,26 @@ function writeAnchorsToCache(pageHash, payload) {
   }
 
   function chunkBlocksToPages(blocks, targetChars = 1600) {
-    // Locked behavior (v1):
-    // - Target stable page size, but only break on paragraph boundary or sentence end (.?! + optional closing quote/bracket)
-    // - Do NOT break when it would split a continuation:
-    //   - next chunk starts with opening quote/paren/bracket
-    //   - current ends with lead-in token (':', ';', em-dash, ',', 'such as', 'the following', 'including', ...)
-    //   - inside an instruction/list block
-    // - Guardrails: allow overflow up to hard max; then pick least-bad safe stop.
-    // - Cleanup: merge micro-pages (< ~65% target) into neighbors when safe.
+    // Locked behavior (v2): page by blocks first.
+    //
+    // Core rules:
+    // - Prefer paragraph/block boundaries over raw character cuts.
+    // - Treat quote/list/statement-like blocks as protected.
+    // - Do not split a protected block unless that single block is too large for one page.
+    // - When forced to split, only cut at strong stops (paragraph / sentence).
+    // - Avoid tiny continuation fragments and micro-pages.
 
     const pagesOut = [];
     const target = Math.max(400, targetChars | 0);
     const softMax = Math.round(target * 1.15);
     const hardMax = Math.round(target * 1.35);
     const minChars = Math.round(target * 0.65);
+    const tinyTail = Math.max(160, Math.round(target * 0.22));
 
     const strongStopRe = /[.!?]["'”’\)\]\}]*\s*$/;
     const openQuoteRe = /^\s*["“'\(\[]/;
     const leadInRe = /(\:|\;|—|\,|\bsuch as\b|\bas follows\b|\bthe following\b|\bincluding\b)\s*$/i;
-    const listLineRe = /^\s*(\d+[\.|\)]\s+|box\s+\d+\s*:|line\s+\d+\s*:|part\s+[ivxlcdm]+\b)/i;
+    const listLineRe = /^\s*(\d+[.|\)]\s+|[-•*]\s+|box\s+\d+\s*:|line\s+\d+\s*:)/i;
 
     function startsWithOpenQuote(s) {
       return openQuoteRe.test(String(s || '').trimStart());
@@ -2070,15 +2071,45 @@ function writeAnchorsToCache(pageHash, payload) {
       return leadInRe.test(String(s || '').trim());
     }
 
-    function lastNonEmptyLine(s) {
+    function looksLikeListBlock(s) {
       const lines = String(s || '').split(/\n/).map(x => x.trim()).filter(Boolean);
-      return lines.length ? lines[lines.length - 1] : '';
+      if (!lines.length) return false;
+      return lines.some(line => listLineRe.test(line));
     }
 
-    function looksLikeListContinuation(bufText, nextText) {
-      const lastLine = lastNonEmptyLine(bufText);
-      const nextLine = String(nextText || '').split(/\n/).map(x => x.trim()).filter(Boolean)[0] || '';
-      return listLineRe.test(lastLine) || listLineRe.test(nextLine);
+    function looksLikeQuoteBlock(s) {
+      const t = String(s || '').trim();
+      if (!t) return false;
+      if (startsWithOpenQuote(t)) return true;
+      const straight = (t.match(/"/g) || []).length;
+      const openCurly = (t.match(/[“]/g) || []).length;
+      const closeCurly = (t.match(/[”]/g) || []).length;
+      if (straight >= 2) return true;
+      if (openCurly + closeCurly >= 2) return true;
+      return false;
+    }
+
+    function looksLikeStatementBlock(s) {
+      const t = String(s || '').trim();
+      if (!t) return false;
+      const semis = (t.match(/;/g) || []).length;
+      const colons = (t.match(/:/g) || []).length;
+      const words = t.split(/\s+/).filter(Boolean).length;
+      if (semis >= 2 && words >= 18) return true;
+      if (colons >= 1 && semis >= 1 && words >= 18) return true;
+      return false;
+    }
+
+    function isProtectedBlock(s) {
+      return looksLikeQuoteBlock(s) || looksLikeListBlock(s) || looksLikeStatementBlock(s);
+    }
+
+    function hasUnclosedDoubleQuote(text) {
+      const s = String(text || '');
+      const straight = (s.match(/"/g) || []).length;
+      const openCurly = (s.match(/[“]/g) || []).length;
+      const closeCurly = (s.match(/[”]/g) || []).length;
+      return (straight % 2 === 1) || (openCurly > closeCurly);
     }
 
     function findBestCut(text, maxIdx) {
@@ -2086,11 +2117,9 @@ function writeAnchorsToCache(pageHash, payload) {
       const limit = Math.min(maxIdx, t.length);
       const slice = t.slice(0, limit);
 
-      // Prefer paragraph boundary near the end.
       const para = slice.lastIndexOf('\n\n');
       if (para > minChars) return para;
 
-      // Prefer strong sentence endings.
       const re = /[.!?]["'”’\)\]\}]*\s+/g;
       let m;
       let best = -1;
@@ -2101,7 +2130,9 @@ function writeAnchorsToCache(pageHash, payload) {
       }
       if (best > 0) return best;
 
-      // Fallback: whitespace.
+      const semi = slice.lastIndexOf('; ');
+      if (semi > minChars) return semi + 1;
+
       const ws = slice.lastIndexOf(' ');
       if (ws > minChars) return ws;
 
@@ -2115,135 +2146,147 @@ function writeAnchorsToCache(pageHash, payload) {
       if (end <= start) return -1;
       const slice = t.slice(start, end);
 
-      // Prefer a real sentence stop first.
       const stopRe = /[.!?]["'”’\)\]\}]*\s+/g;
       const stop = stopRe.exec(slice);
       if (stop) return start + stopRe.lastIndex;
 
-      // Fallback: paragraph boundary so we never strand a continuation at the top of the next page.
       const para = slice.indexOf('\n\n');
       if (para >= 0) return start + para;
+
+      const semi = slice.indexOf('; ');
+      if (semi >= 0) return start + semi + 1;
 
       return -1;
     }
 
-    function hasUnclosedDoubleQuote(text) {
-      const s = String(text || '');
-      const straight = (s.match(/"/g) || []).length;
-      const openCurly = (s.match(/[“]/g) || []).length;
-      const closeCurly = (s.match(/[”]/g) || []).length;
-      return (straight % 2 === 1) || (openCurly > closeCurly);
+    function forceSplitOversizedBlock(text) {
+      let remaining = String(text || '').trim();
+      while (remaining.length > hardMax) {
+        let cut = findBestCut(remaining, hardMax);
+        let page = remaining.slice(0, cut).trim();
+        let rem = remaining.slice(cut).trim();
+
+        if (rem && (!endsWithStrongStop(page) || hasUnclosedDoubleQuote(page))) {
+          const fwd = findForwardSentenceStop(remaining, cut, Math.max(1200, remaining.length - cut));
+          if (fwd > cut) {
+            cut = fwd;
+            page = remaining.slice(0, cut).trim();
+            rem = remaining.slice(cut).trim();
+          }
+        }
+
+        if (rem && rem.length < tinyTail) {
+          const fwd = findForwardSentenceStop(remaining, cut, Math.max(tinyTail, hardMax));
+          if (fwd > cut) {
+            cut = fwd;
+            page = remaining.slice(0, cut).trim();
+            rem = remaining.slice(cut).trim();
+          }
+        }
+
+        if (page) pagesOut.push(page);
+        remaining = rem;
+      }
+      return remaining;
     }
 
-
     let buf = '';
+    let bufProtected = false;
     const cleanBlocks = (blocks || []).map(b => String(b || '').trim()).filter(Boolean);
-    let i = 0;
-    while (i < cleanBlocks.length) {
-      const b = cleanBlocks[i];
-      const nextBlock = (i + 1 < cleanBlocks.length) ? cleanBlocks[i + 1] : '';
-      const candidate = buf ? (buf + '\n\n' + b) : b;
 
-      // Keep filling up to target.
+    for (let i = 0; i < cleanBlocks.length; i++) {
+      const block = cleanBlocks[i];
+      const blockProtected = isProtectedBlock(block);
+
+      if (!buf) {
+        if (block.length > hardMax) {
+          buf = forceSplitOversizedBlock(block);
+          bufProtected = isProtectedBlock(buf);
+        } else {
+          buf = block;
+          bufProtected = blockProtected;
+        }
+        continue;
+      }
+
+      const candidate = `${buf}\n\n${block}`;
+
       if (candidate.length <= target) {
         buf = candidate;
-        i++;
+        bufProtected = bufProtected || blockProtected;
         continue;
       }
 
-      // If buffer is empty and a single block is huge, force split at best cut.
-      if (!buf) {
-        let cut = findBestCut(candidate, hardMax);
-        let page = candidate.slice(0, cut).trim();
-        let rem = candidate.slice(cut).trim();
-
-        // A huge single paragraph still must finish at a real sentence stop when one is nearby.
-        if (rem && (!endsWithStrongStop(page) || hasUnclosedDoubleQuote(page))) {
-          const fwd = findForwardSentenceStop(candidate, cut, Math.max(1200, candidate.length - cut));
-          if (fwd > cut) {
-            cut = fwd;
-            page = candidate.slice(0, cut).trim();
-            rem = candidate.slice(cut).trim();
-          }
-        }
-
-        if (page) pagesOut.push(page);
-        buf = rem;
-        i++;
-        continue;
-      }
-
-      // We crossed target with the next block. Decide whether to finalize buf or continue.
-      const continuation =
-        startsWithOpenQuote(b) ||
-        startsWithOpenQuote(nextBlock) ||
+      const continuationRisk =
         endsWithLeadIn(buf) ||
-        looksLikeListContinuation(buf, b) ||
+        startsWithOpenQuote(block) ||
         hasUnclosedDoubleQuote(buf);
 
-      const safeToBreak =
+      const safeToFinalizeBuf =
+        buf.length >= minChars &&
         endsWithStrongStop(buf) &&
-        !endsWithLeadIn(buf) &&
-        !startsWithOpenQuote(b) &&
-        !looksLikeListContinuation(buf, b) &&
-        !hasUnclosedDoubleQuote(buf);
+        !continuationRisk;
 
-      if (buf.length >= target && safeToBreak && !continuation) {
+      // Protected blocks stay whole whenever possible.
+      // If adding one would overflow, finish the current page and move the protected
+      // block to the next page instead of splitting it across pages.
+      if (blockProtected && safeToFinalizeBuf) {
         pagesOut.push(buf.trim());
-        buf = '';
+        if (block.length > hardMax) {
+          buf = forceSplitOversizedBlock(block);
+          bufProtected = isProtectedBlock(buf);
+        } else {
+          buf = block;
+          bufProtected = true;
+        }
         continue;
       }
 
-      // Otherwise, treat it as continuation: append and allow overflow up to hard max.
+      // If current page is already a protected run, do not keep stretching it forever.
+      // Finalize it once it is reasonably full and the boundary is clean.
+      if (bufProtected && safeToFinalizeBuf) {
+        pagesOut.push(buf.trim());
+        if (block.length > hardMax) {
+          buf = forceSplitOversizedBlock(block);
+          bufProtected = isProtectedBlock(buf);
+        } else {
+          buf = block;
+          bufProtected = blockProtected;
+        }
+        continue;
+      }
+
+      // Normal block: allow modest overflow to avoid premature micro-pages / sentence cuts.
+      if (!blockProtected && candidate.length <= softMax) {
+        buf = candidate;
+        bufProtected = bufProtected || blockProtected;
+        continue;
+      }
+
+      if (safeToFinalizeBuf) {
+        pagesOut.push(buf.trim());
+        if (block.length > hardMax) {
+          buf = forceSplitOversizedBlock(block);
+          bufProtected = isProtectedBlock(buf);
+        } else {
+          buf = block;
+          bufProtected = blockProtected;
+        }
+        continue;
+      }
+
+      // Last resort: append and force a cut from the combined text.
       buf = candidate;
-      i++;
-
-      if (buf.length >= hardMax) {
-        // Forced cut: choose best cut <= hardMax, but avoid leaving a remainder starting with an opening quote.
-        let cut = findBestCut(buf, hardMax);
-        let page = buf.slice(0, cut).trim();
-        let rem = buf.slice(cut).trim();
-
-        // If we cut mid-sentence due to lack of strong stop before hardMax, search slightly forward
-        // for the next real sentence stop. This prevents "institution of / slavery" type splits.
-        if (rem && (!endsWithStrongStop(page) || hasUnclosedDoubleQuote(page))) {
-          const fwd = findForwardSentenceStop(buf, cut, 1200);
-          if (fwd > cut) {
-            cut = fwd;
-            page = buf.slice(0, cut).trim();
-            rem = buf.slice(cut).trim();
-          }
-        }
-
-        // If remainder starts with an opening quote/paren/bracket, or the page still has an open quote,
-        // keep the quoted thought together if at all possible.
-        if (rem && (startsWithOpenQuote(rem) || hasUnclosedDoubleQuote(page))) {
-          // First try moving the cut forward to include the quoted sentence (topic continuity).
-          const fwd = findForwardSentenceStop(buf, cut, 1200);
-          if (fwd > cut) {
-            cut = fwd;
-            page = buf.slice(0, cut).trim();
-            rem = buf.slice(cut).trim();
-          }
-          // If still starts with quote, backtrack to earlier safe cut.
-          if (rem && startsWithOpenQuote(rem)) {
-            const earlier = findBestCut(buf, Math.max(minChars + 50, cut - 120));
-            if (earlier > minChars && earlier < cut) {
-              cut = earlier;
-              page = buf.slice(0, cut).trim();
-              rem = buf.slice(cut).trim();
-            }
-          }
-        }
-
-        if (page) pagesOut.push(page);
-        buf = rem;
+      bufProtected = bufProtected || blockProtected;
+      if (buf.length > hardMax) {
+        buf = forceSplitOversizedBlock(buf);
+        bufProtected = isProtectedBlock(buf);
       }
     }
 
     if (buf.trim()) pagesOut.push(buf.trim());
 
-    // Cleanup micro-pages by merging into neighbors when safe.
+    // Cleanup: merge micro-pages into neighbors when it does not cause another bad split.
     const merged = [];
     for (let j = 0; j < pagesOut.length; j++) {
       const p = pagesOut[j];
@@ -2252,15 +2295,17 @@ function writeAnchorsToCache(pageHash, payload) {
         merged.push(p);
         continue;
       }
-      // Try merge with previous first.
+
       const prev = merged[merged.length - 1];
-      if ((prev.length + 2 + p.length) <= hardMax) {
-        merged[merged.length - 1] = (prev + '\n\n' + p).trim();
+      const combined = `${prev}\n\n${p}`;
+      if (combined.length <= hardMax && endsWithStrongStop(prev) && !startsWithOpenQuote(p)) {
+        merged[merged.length - 1] = combined.trim();
         continue;
       }
-      // Otherwise merge with next by deferring: keep as-is.
+
       merged.push(p);
     }
+
     return merged;
   }
 
