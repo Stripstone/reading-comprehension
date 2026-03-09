@@ -2037,30 +2037,31 @@ function writeAnchorsToCache(pageHash, payload) {
     return false;
   }
 
-  function chunkBlocksToPages(blocks, targetChars = 1600) {
-    // Locked behavior (v4): page by structural units, not raw character flow.
+  
+function chunkBlocksToPages(blocks, targetChars = 1600) {
+    // Locked behavior (v5): page by structural units, not raw character flow.
     //
     // Goals:
-    // - Preserve paragraph integrity whenever possible.
-    // - Treat quote/list/statement-like material as protected.
-    // - Keep protected regions together unless a single protected region is itself oversized.
-    // - When forced to split, cut only at strong stops and avoid false sentence stops (Mr., U.S., etc.).
+    // - Keep pages clustered near target size.
+    // - Protect quote/list/statement-like units as units.
+    // - Only split a protected unit when that single unit is itself oversized.
+    // - When forced to split, cut at strong stops and avoid false sentence stops.
     // - Avoid micro-pages and tiny continuation tails.
 
     const pagesOut = [];
-    const target = Math.max(400, targetChars | 0);
-    const softMax = Math.round(target * 1.12);
-    const hardMax = Math.round(target * 1.35);
-    const protectedHardMax = Math.round(target * 1.6);
-    const minChars = Math.round(target * 0.68);
-    const tinyTail = Math.max(180, Math.round(target * 0.24));
+    const target = Math.max(500, targetChars | 0);
+    const softMax = Math.round(target * 1.08);
+    const hardMax = Math.round(target * 1.18);
+    const protectedHardMax = Math.round(target * 1.28);
+    const minChars = Math.round(target * 0.72);
+    const tinyTail = Math.max(180, Math.round(target * 0.22));
 
     const openQuoteRe = /^\s*["“'([{]/;
     const listLineRe = /^\s*(\d+[.)]\s+|[-•*]\s+|box\s+\d+\s*:|part\s+\d+\b|part\s+[ivxlcdm]+\b|line\s+\d+\s*:)/i;
     const reportingVerbRe = /\b(reads?|states?|stated|says?|said|writes?|wrote|provides?|provided|declares?|declared|explains?|explained|asks?|asked|begins?|began|continues?|continued|quotes?|quoted|proclaims?|proclaimed|notes?|noted|defines?|defined|describes?|described)\b/i;
     const definitionLeadRe = /\b(defined\s+as|definition\s+of|means\s*[–-]?|shall\s+mean|reads\s*[,:]|states\s*[,:]|which\s+reads\s*[,:]|which\s+states\s*[,:]|as\s+follows\s*[:;]?|the\s+following\s*[:;]?|quote\s*[,:])\b/i;
     const citationTextureRe = /\b(shall|whereas|thereof|therein|thereby|hereby|herein|pursuant|therefore|wherein|therewith|whereof|provided|article|section|title)\b/i;
-    const falseStopTailRe = /(?:\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Mt|No|Art|Sec|Ch|Vol|pp|p|v|vs|etc|cf|al|fig|dept|u\.s|u\.s\.a|u\.k|e\.g|i\.e)\.|\b[A-Z]\.|\b[A-Z][a-z]{0,2}\.)["'”’)]*$/i;
+    const falseStopTailRe = /(?:\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Mt|No|Art|Sec|Ch|Vol|pp|p|v|vs|etc|cf|al|fig|dept|u\.s|u\.s\.a|u\.k|e\.g|i\.e)\.|\b[A-Z]\.\s*$|\b[A-Z][a-z]{0,2}\.)["'”’)]*$/i;
 
     function normalizeBlockText(s) {
       return String(s || '').replace(/\s+/g, ' ').trim();
@@ -2081,7 +2082,7 @@ function writeAnchorsToCache(pageHash, payload) {
     function isFalseSentenceStop(text) {
       const trimmed = String(text || '').trim();
       if (!trimmed) return false;
-      const tail = trimmed.slice(Math.max(0, trimmed.length - 24));
+      const tail = trimmed.slice(Math.max(0, trimmed.length - 32));
       return falseStopTailRe.test(tail);
     }
 
@@ -2097,7 +2098,7 @@ function writeAnchorsToCache(pageHash, payload) {
       const trimmed = String(s || '').trim();
       if (!trimmed) return false;
       if (/[,:;—-]\s*$/.test(trimmed)) return true;
-      const tail = trimmed.slice(Math.max(0, trimmed.length - 140));
+      const tail = trimmed.slice(Math.max(0, trimmed.length - 160));
       return definitionLeadRe.test(tail) || reportingVerbRe.test(tail);
     }
 
@@ -2129,11 +2130,11 @@ function writeAnchorsToCache(pageHash, payload) {
       const hasDefinitionLead = definitionLeadRe.test(t);
       const hasCitationTexture = citationTextureRe.test(t);
       const hasReporting = reportingVerbRe.test(t);
-      if (hasDefinitionLead && words >= 12) return true;
-      if (hasReporting && /[,:;]/.test(t) && words >= 18) return true;
-      if ((semis >= 2 || (colons >= 1 && semis >= 1)) && words >= 18) return true;
-      if (hasCitationTexture && /[,:;]/.test(t) && words >= 18) return true;
-      if (startsWithOpenQuote(t) && words >= 12) return true;
+      if (hasDefinitionLead && words >= 10) return true;
+      if (hasReporting && /[,:;]/.test(t) && words >= 14) return true;
+      if ((semis >= 2 || (colons >= 1 && semis >= 1)) && words >= 16) return true;
+      if (hasCitationTexture && /[,:;]/.test(t) && words >= 16) return true;
+      if (startsWithOpenQuote(t) && words >= 10) return true;
       return false;
     }
 
@@ -2147,10 +2148,7 @@ function writeAnchorsToCache(pageHash, payload) {
       const words = t.split(/\s+/).filter(Boolean);
       if (words.length < 10) return false;
       const startsFormal = startsWithOpenQuote(t) || /^[A-Z([\]]/.test(t) || listLineRe.test(t);
-      const hasFormalTexture =
-        /[;:]/.test(t) ||
-        definitionLeadRe.test(t) ||
-        citationTextureRe.test(t);
+      const hasFormalTexture = /[;:]/.test(t) || definitionLeadRe.test(t) || citationTextureRe.test(t);
       return startsFormal && hasFormalTexture;
     }
 
@@ -2174,7 +2172,7 @@ function writeAnchorsToCache(pageHash, payload) {
           if (!head || !tail) continue;
           if (head.length < 18 || tail.length < 80) continue;
 
-          const headTail = head.slice(Math.max(0, head.length - 160));
+          const headTail = head.slice(Math.max(0, head.length - 180));
           const strongLeadIn = definitionLeadRe.test(headTail) || reportingVerbRe.test(headTail) || /[:;]\s*$/.test(head);
           if (!strongLeadIn) continue;
           if (!looksFormalExtractStart(tail)) continue;
@@ -2257,99 +2255,95 @@ function writeAnchorsToCache(pageHash, payload) {
       return list.map(u => u.text).join('\n\n').trim();
     }
 
-    function findBackwardCut(text, maxIdx, { allowSemi = true } = {}) {
-      const t = String(text || '');
-      const limit = Math.min(maxIdx, t.length);
-      const slice = t.slice(0, limit);
+    function chooseCut(text, desired, maxLimit, { protectedMode = false } = {}) {
+      const t = normalizeBlockText(text);
+      if (!t) return -1;
+      const minCut = Math.min(Math.max(minChars, Math.round(target * 0.55)), Math.max(80, t.length - 1));
+      const windowBack = protectedMode ? Math.round(target * 0.35) : Math.round(target * 0.28);
+      const start = Math.max(minCut, desired - windowBack);
+      const end = Math.min(t.length, maxLimit);
 
-      let best = -1;
-      const stopRe = /[.!?]["'”’)\]}]*\s+/g;
+      const candidates = [];
+
+      function addCandidate(pos, strength) {
+        if (!Number.isFinite(pos) || pos <= 0 || pos >= t.length) return;
+        if (pos < minCut || pos > end) return;
+        const page = t.slice(0, pos).trim();
+        const rem = t.slice(pos).trim();
+        if (!page || !rem) return;
+        let score = strength;
+        score -= Math.abs(pos - desired) * 0.02;
+        if (endsWithStrongStop(page)) score += 24;
+        if (hasUnclosedDoubleQuote(page)) score -= 18;
+        if (endsWithLeadIn(page)) score -= 22;
+        if (startsWithOpenQuote(rem)) score -= 14;
+        if (rem.length < tinyTail) score -= 26;
+        if (page.length < minChars) score -= 18;
+        candidates.push({ pos, score });
+      }
+
       let m;
-      while ((m = stopRe.exec(slice)) !== null) {
-        const endPos = stopRe.lastIndex;
-        const candidate = slice.slice(0, endPos).trim();
-        if (endPos < minChars) continue;
-        if (!endsWithStrongStop(candidate)) continue;
-        best = endPos;
-      }
-      if (best > 0) return best;
-
-      const para = slice.lastIndexOf('\n\n');
-      if (para > minChars) return para;
-
-      if (allowSemi) {
-        const semi = slice.lastIndexOf('; ');
-        if (semi > minChars) return semi + 1;
+      const stopRe = /[.!?]["'”’)\]}]*(?:\s+|$)/g;
+      while ((m = stopRe.exec(t)) !== null) {
+        const pos = stopRe.lastIndex;
+        if (pos < start || pos > end) continue;
+        const page = t.slice(0, pos).trim();
+        if (!endsWithStrongStop(page)) continue;
+        addCandidate(pos, protectedMode ? 88 : 74);
       }
 
-      const ws = slice.lastIndexOf(' ');
-      if (ws > minChars) return ws;
-      return -1;
-    }
-
-    function findForwardCut(text, startIdx, maxExtra = 1400, { allowSemi = true } = {}) {
-      const t = String(text || '');
-      const start = Math.max(0, Math.min(startIdx, t.length));
-      const end = Math.min(t.length, start + Math.max(240, maxExtra));
-      if (end <= start) return -1;
-      const slice = t.slice(start, end);
-
-      const stopRe = /[.!?]["'”’)\]}]*\s+/g;
-      let m;
-      while ((m = stopRe.exec(slice)) !== null) {
-        const candidateEnd = start + stopRe.lastIndex;
-        const candidate = t.slice(0, candidateEnd).trim();
-        if (endsWithStrongStop(candidate)) return candidateEnd;
+      const paraRe = /\n\n/g;
+      while ((m = paraRe.exec(t)) !== null) {
+        const pos = m.index;
+        if (pos < start || pos > end) continue;
+        addCandidate(pos, protectedMode ? 72 : 62);
       }
 
-      const para = slice.indexOf('\n\n');
-      if (para >= 0) return start + para;
-
-      if (allowSemi) {
-        const semi = slice.indexOf('; ');
-        if (semi >= 0) return start + semi + 1;
+      if (!protectedMode) {
+        const semiRe = /;\s+/g;
+        while ((m = semiRe.exec(t)) !== null) {
+          const pos = m.index + 1;
+          if (pos < start || pos > end) continue;
+          addCandidate(pos, 46);
+        }
       }
 
-      return -1;
+      if (!candidates.length) {
+        const fwdEnd = Math.min(t.length, maxLimit);
+        const fwdSlice = t.slice(desired, fwdEnd);
+        const stopRe2 = /[.!?]["'”’)\]}]*(?:\s+|$)/g;
+        while ((m = stopRe2.exec(fwdSlice)) !== null) {
+          const pos = desired + stopRe2.lastIndex;
+          const page = t.slice(0, pos).trim();
+          if (!endsWithStrongStop(page)) continue;
+          addCandidate(pos, protectedMode ? 66 : 56);
+          if (candidates.length) break;
+        }
+      }
+
+      if (!candidates.length) {
+        const ws = t.lastIndexOf(' ', Math.min(end, desired));
+        if (ws > minCut) addCandidate(ws, 10);
+      }
+
+      if (!candidates.length) return -1;
+      candidates.sort((a, b) => b.score - a.score || a.pos - b.pos);
+      return candidates[0].pos;
     }
 
     function splitOversizedText(text, { protectedMode = false } = {}) {
       let remaining = normalizeBlockText(text);
-      const hardLimit = protectedMode ? protectedHardMax : hardMax;
-      const allowSemi = !protectedMode;
-
-      while (remaining.length > hardLimit) {
-        let cut = findBackwardCut(remaining, hardLimit, { allowSemi });
-        if (cut < 0) {
-          cut = protectedMode
-            ? findForwardCut(remaining, hardLimit, hardLimit, { allowSemi: false })
-            : findForwardCut(remaining, Math.round(target), hardLimit, { allowSemi });
-        }
-        if (cut < 0) cut = Math.min(remaining.length, hardLimit);
-
-        let page = remaining.slice(0, cut).trim();
-        let rem = remaining.slice(cut).trim();
-
-        if (protectedMode && rem) {
-          const shouldPushForward =
-            !endsWithStrongStop(page) ||
-            hasUnclosedDoubleQuote(page) ||
-            rem.length < tinyTail ||
-            startsWithOpenQuote(rem);
-          if (shouldPushForward) {
-            const fwd = findForwardCut(remaining, cut, hardLimit, { allowSemi: false });
-            if (fwd > cut) {
-              page = remaining.slice(0, fwd).trim();
-              rem = remaining.slice(fwd).trim();
-            }
-          }
-        }
-
-        if (!page || page === remaining) break;
+      const maxLimit = protectedMode ? protectedHardMax : hardMax;
+      while (remaining.length > maxLimit) {
+        const desired = Math.min(target, maxLimit);
+        let cut = chooseCut(remaining, desired, maxLimit, { protectedMode });
+        if (cut < 0) cut = Math.min(remaining.length, maxLimit);
+        const page = remaining.slice(0, cut).trim();
+        const rem = remaining.slice(cut).trim();
+        if (!page || !rem || page === remaining) break;
         pagesOut.push(page);
         remaining = rem;
       }
-
       return remaining;
     }
 
@@ -2394,8 +2388,10 @@ function writeAnchorsToCache(pageHash, payload) {
     }
 
     for (const unit of units) {
+      const unitLimit = unit.protected ? protectedHardMax : hardMax;
+
       if (!bufText) {
-        if (unit.text.length > (unit.protected ? protectedHardMax : hardMax)) {
+        if (unit.text.length > unitLimit) {
           const remainder = splitOversizedText(unit.text, { protectedMode: unit.protected });
           setBufFromText(remainder, unit.protected);
         } else {
@@ -2407,8 +2403,8 @@ function writeAnchorsToCache(pageHash, payload) {
       const candidateUnits = bufUnits.concat(unit);
       const candidateText = joinUnits(candidateUnits);
       const candidateProtected = bufProtected || unit.protected;
-      const candidateLimit = candidateProtected ? protectedHardMax : hardMax;
 
+      // Happy path: still under target.
       if (candidateText.length <= target) {
         appendUnit(unit);
         continue;
@@ -2420,20 +2416,35 @@ function writeAnchorsToCache(pageHash, payload) {
         !endsWithLeadIn(bufText) &&
         !hasUnclosedDoubleQuote(bufText);
 
-      const canGrowSoft =
+      // Mild overflow is okay only for normal prose and only when the current page already ends cleanly.
+      const canAbsorbSoftOverflow =
         !candidateProtected &&
+        currentSafe &&
         candidateText.length <= softMax &&
-        !endsWithLeadIn(bufText) &&
-        !startsWithOpenQuote(unit.text);
+        !startsWithOpenQuote(unit.text) &&
+        !listLineRe.test(unit.text);
 
-      if (canGrowSoft) {
+      if (canAbsorbSoftOverflow) {
         appendUnit(unit);
         continue;
       }
 
+      // Protect the specific incoming protected unit: if current page is already viable, break BEFORE it.
+      if (unit.protected && bufText.length >= minChars) {
+        finalizeBuf();
+        if (unit.text.length > unitLimit) {
+          const remainder = splitOversizedText(unit.text, { protectedMode: true });
+          setBufFromText(remainder, true);
+        } else {
+          setBufFromUnit(unit);
+        }
+        continue;
+      }
+
+      // If current page already ends cleanly, prefer to release it rather than keep merging.
       if (currentSafe) {
         finalizeBuf();
-        if (unit.text.length > (unit.protected ? protectedHardMax : hardMax)) {
+        if (unit.text.length > unitLimit) {
           const remainder = splitOversizedText(unit.text, { protectedMode: unit.protected });
           setBufFromText(remainder, unit.protected);
         } else {
@@ -2442,27 +2453,22 @@ function writeAnchorsToCache(pageHash, payload) {
         continue;
       }
 
-      if (candidateText.length <= candidateLimit) {
+      // If the current page is too short, allow one protected continuation,
+      // but do NOT keep inflating the entire page buffer far past target.
+      const mergeCap = candidateProtected ? protectedHardMax : hardMax;
+      if (candidateText.length <= mergeCap) {
         appendUnit(unit);
-        continue;
-      }
-
-      if (bufText.length >= minChars) {
-        finalizeBuf();
-        if (unit.text.length > (unit.protected ? protectedHardMax : hardMax)) {
-          const remainder = splitOversizedText(unit.text, { protectedMode: unit.protected });
-          setBufFromText(remainder, unit.protected);
-        } else {
-          setBufFromUnit(unit);
+        // As soon as we become page-sized, release at the next loop rather than continue overfilling.
+        if (bufText.length >= softMax && endsWithStrongStop(bufText) && !hasUnclosedDoubleQuote(bufText) && !endsWithLeadIn(bufText)) {
+          finalizeBuf();
         }
         continue;
       }
 
+      // Last resort: current page is still short and over limit. Split the current buffer cleanly.
       appendUnit(unit);
-      if (bufText.length > candidateLimit) {
-        const remainder = splitOversizedText(bufText, { protectedMode: bufProtected });
-        setBufFromText(remainder, bufProtected);
-      }
+      const remainder = splitOversizedText(bufText, { protectedMode: bufProtected });
+      setBufFromText(remainder, bufProtected);
     }
 
     if (bufText.trim()) pagesOut.push(bufText.trim());
@@ -2494,7 +2500,8 @@ function writeAnchorsToCache(pageHash, payload) {
     return merged;
   }
 
-  function buildMarkdownBookFromSections(sections, { pageChars = 1600 } = {}) {
+  function buildMarkdownBookFromSections
+(sections, { pageChars = 1600 } = {}) {
     const out = [];
     (sections || []).forEach((sec) => {
       const title = (sec?.title || 'Untitled Section').trim();
