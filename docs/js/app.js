@@ -2016,209 +2016,141 @@ function writeAnchorsToCache(pageHash, payload) {
   }
 
   function chunkBlocksToPages(blocks, targetChars = 1600) {
-    // Locked behavior (v1):
-    // - Target stable page size, but only break on paragraph boundary or sentence end (.?! + optional closing quote/bracket)
-    // - Do NOT break when it would split a continuation:
-    //   - next chunk starts with opening quote/paren/bracket
-    //   - current ends with lead-in token (':', ';', em-dash, ',', 'such as', 'the following', 'including', ...)
-    //   - inside an instruction/list block
-    // - Guardrails: allow overflow up to hard max; then pick least-bad safe stop.
-    // - Cleanup: merge micro-pages (< ~65% target) into neighbors when safe.
+    // Locked behavior (v2): Never break while a sentence is continuing.
+    // Priority:
+    //   1) Paragraph boundary (\n\n)
+    //   2) Sentence terminator (. ? ! …)
+    // If no valid terminator exists near the cutoff: search backward; if none, search forward until the next terminator.
+    // Ignore likely non-terminator periods: abbreviations (Dr., Mr., U.S.), decimals (3.14), citations (U.S.C.).
 
     const pagesOut = [];
-    const target = Math.max(400, targetChars | 0);
-    const softMax = Math.round(target * 1.15);
-    const hardMax = Math.round(target * 1.35);
+    const target = Math.max(600, targetChars | 0);
     const minChars = Math.round(target * 0.65);
+    const hardMax = Math.round(target * 1.35);
+    const maxForward = Math.round(target * 0.35);
 
-    const strongStopRe = /[.!?]["'”’\)\]\}]*\s*$/;
-    const openQuoteRe = /^\s*["“'\(\[]/;
-    const leadInRe = /(\:|\;|—|\,|\bsuch as\b|\bas follows\b|\bthe following\b|\bincluding\b)\s*$/i;
-    const listLineRe = /^\s*(\d+[\.|\)]\s+|box\s+\d+\s*:|line\s+\d+\s*:|part\s+[ivxlcdm]+\b)/i;
+    const ABBREV = new Set(['mr','mrs','ms','dr','prof','sr','jr','st','vs','etc','e.g','i.e']);
 
-    function startsWithOpenQuote(s) {
-      return openQuoteRe.test(String(s || '').trimStart());
+    function isPeriodDecimal(t, i) {
+      const prev = t[i - 1] || '';
+      const next = t[i + 1] || '';
+      return /\d/.test(prev) && /\d/.test(next);
     }
 
-    function endsWithStrongStop(s) {
-      return strongStopRe.test(String(s || '').trim());
+    function looksLikeAbbrevOrCitation(t, i) {
+      const left = t.slice(Math.max(0, i - 14), i + 1);
+      if (/\b([A-Za-z]\.){2,}$/.test(left)) return true; // U.S. / U.S.C.
+      const m = left.match(/\b([A-Za-z]{1,4})\.$/);
+      if (m && ABBREV.has(m[1].toLowerCase())) return true;
+      if (/\bU\.S\.C\.$/i.test(left) || /\bU\.S\.$/i.test(left)) return true;
+      return false;
     }
 
-    function endsWithLeadIn(s) {
-      return leadInRe.test(String(s || '').trim());
+    function nextMeaningfulChar(t, i) {
+      let j = i + 1;
+      while (j < t.length && /[\s\"'”’\)\]\}]/.test(t[j])) j++;
+      return t[j] || '';
     }
 
-    function lastNonEmptyLine(s) {
-      const lines = String(s || '').split(/\n/).map(x => x.trim()).filter(Boolean);
-      return lines.length ? lines[lines.length - 1] : '';
+    function isValidSentenceEnd(t, i) {
+      const ch = t[i];
+      if (ch === '?' || ch === '!' || ch === '…') return true;
+      if (ch !== '.') return false;
+      if (isPeriodDecimal(t, i)) return false;
+      if (looksLikeAbbrevOrCitation(t, i)) return false;
+      const nxt = nextMeaningfulChar(t, i);
+      if (!nxt) return true;
+      if (/[a-z]/.test(nxt)) return false;
+      return true;
     }
 
-    function looksLikeListContinuation(bufText, nextText) {
-      const lastLine = lastNonEmptyLine(bufText);
-      const nextLine = String(nextText || '').split(/\n/).map(x => x.trim()).filter(Boolean)[0] || '';
-      return listLineRe.test(lastLine) || listLineRe.test(nextLine);
-    }
-
-    function findBestCut(text, maxIdx) {
+    function findBreakIndex(text, desired) {
       const t = String(text || '');
-      const limit = Math.min(maxIdx, t.length);
-      const slice = t.slice(0, limit);
+      if (!t) return 0;
+      const cutoff = Math.min(Math.max(desired, 0), t.length);
 
-      // Prefer paragraph boundary near the end.
-      const para = slice.lastIndexOf('\n\n');
-      if (para > minChars) return para;
+      // Paragraph boundary backward
+      const para = t.lastIndexOf('\n\n', cutoff);
+      if (para >= minChars) return para;
 
-      // Prefer strong sentence endings.
-      const re = /[.!?]["'”’\)\]\}]*\s+/g;
-      let m;
-      let best = -1;
-      while ((m = re.exec(slice)) !== null) {
-        const endPos = re.lastIndex;
-        if (endPos < minChars) continue;
-        best = endPos;
-      }
-      if (best > 0) return best;
-
-      // Fallback: whitespace.
-      const ws = slice.lastIndexOf(' ');
-      if (ws > minChars) return ws;
-
-      return Math.min(limit, Math.max(minChars, Math.round(target)));
-    }
-
-    // When we're forced to cut near hardMax, avoid awkward splits like:
-    //   "... institution of" | "slavery ..."  or  "... we will wholly" | "discontinue ..."
-    // We keep this intentionally narrow and deterministic for build safety.
-    function adjustCutForAwkwardSplit(fullText, cutIdx) {
-      const t = String(fullText || '');
-      let cut = Math.max(0, Math.min(cutIdx, t.length));
-      let page = t.slice(0, cut).trimEnd();
-      let rem = t.slice(cut).trimStart();
-      if (!page || !rem) return cut;
-
-      const first = rem[0] || '';
-      // Only apply when remainder starts with lowercase (continuation).
-      if (!/[a-z]/.test(first)) return cut;
-
-      const words = page.split(/\s+/).filter(Boolean);
-      const lastWord = (words[words.length - 1] || '').toLowerCase();
-
-      const badEndWords = new Set([
-        // prepositions / conjunctions
-        'of','to','and','or','but','with','for','in','on','at','by','from','as','into','over','under','within','without',
-        // articles / demonstratives
-        'the','a','an','this','that','these','those',
-        // adverbs that frequently dangle
-        'wholly','fully','partly','largely','mostly'
-      ]);
-      if (!badEndWords.has(lastWord)) return cut;
-
-      // Backtrack to the whitespace BEFORE the last word.
-      const lastWordStart = page.lastIndexOf(' ' + words[words.length - 1]);
-      if (lastWordStart <= 0) return cut;
-      const newCut = lastWordStart;
-
-      // Don't create a tiny page while adjusting.
-      if (newCut >= Math.round(minChars * 0.85)) return newCut;
-      return cut;
-    }
-
-    let buf = '';
-    const cleanBlocks = (blocks || []).map(b => String(b || '').trim()).filter(Boolean);
-    let i = 0;
-    while (i < cleanBlocks.length) {
-      const b = cleanBlocks[i];
-      const nextBlock = (i + 1 < cleanBlocks.length) ? cleanBlocks[i + 1] : '';
-      const candidate = buf ? (buf + '\n\n' + b) : b;
-
-      // Keep filling up to target.
-      if (candidate.length <= target) {
-        buf = candidate;
-        i++;
-        continue;
-      }
-
-      // If buffer is empty and a single block is huge, force split at best cut.
-      if (!buf) {
-        const cut = findBestCut(candidate, hardMax);
-        const page = candidate.slice(0, cut).trim();
-        const rem = candidate.slice(cut).trim();
-        if (page) pagesOut.push(page);
-        buf = rem;
-        i++;
-        continue;
-      }
-
-      // We crossed target with the next block. Decide whether to finalize buf or continue.
-      const continuation =
-        startsWithOpenQuote(b) ||
-        startsWithOpenQuote(nextBlock) ||
-        endsWithLeadIn(buf) ||
-        looksLikeListContinuation(buf, b);
-
-      const safeToBreak = endsWithStrongStop(buf) && !endsWithLeadIn(buf) && !startsWithOpenQuote(b) && !looksLikeListContinuation(buf, b);
-
-      if (buf.length >= target && safeToBreak && !continuation) {
-        pagesOut.push(buf.trim());
-        buf = '';
-        continue;
-      }
-
-      // Otherwise, treat it as continuation: append and allow overflow up to hard max.
-      buf = candidate;
-      i++;
-
-      if (buf.length >= hardMax) {
-        // Forced cut: choose best cut <= hardMax, but avoid leaving a remainder starting with an opening quote.
-        let cut = findBestCut(buf, hardMax);
-        let page = buf.slice(0, cut).trim();
-        let rem = buf.slice(cut).trim();
-
-        // If we cut on whitespace and the page ends with a dangling lead-in word ("of", "with", "wholly", ...)
-        // while the remainder starts lowercase, backtrack slightly.
-        const adjusted = adjustCutForAwkwardSplit(buf, cut);
-        if (adjusted !== cut) {
-          cut = adjusted;
-          page = buf.slice(0, cut).trim();
-          rem = buf.slice(cut).trim();
-        }
-
-        // If remainder starts with an opening quote/paren/bracket, backtrack to an earlier cut if possible.
-        if (rem && startsWithOpenQuote(rem)) {
-          const earlier = findBestCut(buf, Math.max(minChars + 50, cut - 80));
-          if (earlier > minChars && earlier < cut) {
-            cut = earlier;
-            page = buf.slice(0, cut).trim();
-            rem = buf.slice(cut).trim();
+      // Sentence terminator backward
+      for (let i = cutoff; i >= minChars; i--) {
+        const ch = t[i];
+        if (ch === '.' || ch === '?' || ch === '!' || ch === '…') {
+          if (isValidSentenceEnd(t, i)) {
+            let j = i + 1;
+            while (j < t.length && /[\s\"'”’\)\]\}]/.test(t[j])) j++;
+            return j;
           }
         }
+      }
 
+      // Sentence terminator forward
+      const forwardLimit = Math.min(t.length, Math.min(hardMax, cutoff + maxForward));
+      for (let i = cutoff; i < forwardLimit; i++) {
+        const ch = t[i];
+        if (ch === '.' || ch === '?' || ch === '!' || ch === '…') {
+          if (isValidSentenceEnd(t, i)) {
+            let j = i + 1;
+            while (j < t.length && /[\s\"'”’\)\]\}]/.test(t[j])) j++;
+            return j;
+          }
+        }
+      }
+
+      // Rare fallback: if we're over hard max, cut at last whitespace <= hard max.
+      if (t.length >= hardMax) {
+        const slice = t.slice(0, hardMax);
+        const ws = slice.lastIndexOf(' ');
+        return ws > minChars ? ws : hardMax;
+      }
+      return t.length;
+    }
+
+    let acc = '';
+    const cleanBlocks = (blocks || []).map(b => String(b || '').trim()).filter(Boolean);
+    for (const b of cleanBlocks) {
+      acc = acc ? (acc + '\n\n' + b) : b;
+
+      while (acc.length >= target) {
+        const cut = findBreakIndex(acc, target);
+        if (cut <= 0 || cut >= acc.length) break;
+        const page = acc.slice(0, cut).trim();
         if (page) pagesOut.push(page);
-        buf = rem;
+        acc = acc.slice(cut).trim();
+      }
+
+      while (acc.length > hardMax) {
+        const cut = findBreakIndex(acc, hardMax);
+        const page = acc.slice(0, cut).trim();
+        if (page) pagesOut.push(page);
+        acc = acc.slice(cut).trim();
       }
     }
 
-    if (buf.trim()) pagesOut.push(buf.trim());
+    if (acc.trim()) pagesOut.push(acc.trim());
 
-    // Cleanup micro-pages by merging into neighbors when safe.
-    const merged = [];
-    for (let j = 0; j < pagesOut.length; j++) {
-      const p = pagesOut[j];
-      if (!p) continue;
-      if (p.length >= minChars || merged.length === 0) {
+    // Merge micro-pages
+    if (pagesOut.length >= 2) {
+      const merged = [];
+      for (let j = 0; j < pagesOut.length; j++) {
+        const p = pagesOut[j];
+        if (!p) continue;
+        if (p.length >= minChars || merged.length === 0) {
+          merged.push(p);
+          continue;
+        }
+        const prev = merged[merged.length - 1];
+        if ((prev.length + 2 + p.length) <= hardMax) {
+          merged[merged.length - 1] = (prev + '\n\n' + p).trim();
+          continue;
+        }
         merged.push(p);
-        continue;
       }
-      // Try merge with previous first.
-      const prev = merged[merged.length - 1];
-      if ((prev.length + 2 + p.length) <= hardMax) {
-        merged[merged.length - 1] = (prev + '\n\n' + p).trim();
-        continue;
-      }
-      // Otherwise merge with next by deferring: keep as-is.
-      merged.push(p);
+      return merged;
     }
-    return merged;
+
+    return pagesOut;
   }
 
   function buildMarkdownBookFromSections(sections, { pageChars = 1600 } = {}) {
