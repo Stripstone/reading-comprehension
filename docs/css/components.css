@@ -562,12 +562,21 @@ body {
     @media (max-width: 900px) {
       .import-picker {
         grid-template-columns: 1fr;
-        height: min(62vh, 560px);
+        height: auto;
+        gap: 14px;
       }
 
       .import-picker-left {
-        height: 60%;
-        min-height: 60%;
+        height: min(48vh, 492px);
+        min-height: min(48vh, 492px);
+        max-height: min(48vh, 492px);
+      }
+
+      .import-picker-right {
+        height: min(62vh, 560px);
+        min-height: min(62vh, 560px);
+        max-height: min(62vh, 560px);
+        margin-top: 0;
       }
     }
 
