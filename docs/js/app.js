@@ -2016,138 +2016,148 @@ function writeAnchorsToCache(pageHash, payload) {
   }
 
   function chunkBlocksToPages(blocks, targetChars = 1600) {
-    // Locked behavior (v2): Never break while a sentence is continuing.
-    // Priority:
-    //   1) Paragraph boundary (\n\n)
-    //   2) Sentence terminator (. ? ! …)
-    // If no valid terminator exists near the cutoff: search backward; if none, search forward until the next terminator.
-    // Ignore likely non-terminator periods: abbreviations (Dr., Mr., U.S.), decimals (3.14), citations (U.S.C.).
+    // Locked behavior (v2): Never break mid-sentence.
+    // - Prefer paragraph boundary.
+    // - Otherwise break at a true sentence terminator: . ? ! …
+    // - Search backward from target cutoff first.
+    // - Only if none found, search forward up to a capped distance.
+    // - Ignore fake terminators like abbreviations, decimals, and citation-style periods.
+    // - If still nothing is found, fallback to paragraph/whitespace (rare).
 
-    const pagesOut = [];
-    const target = Math.max(600, targetChars | 0);
-    const minChars = Math.round(target * 0.65);
+    const target = Math.max(400, targetChars | 0);
     const hardMax = Math.round(target * 1.35);
     const maxForward = Math.round(target * 0.35);
+    const minChars = Math.round(target * 0.65);
 
-    const ABBREV = new Set(['mr','mrs','ms','dr','prof','sr','jr','st','vs','etc','e.g','i.e']);
+    const closers = new Set(['"', "'", '”', '’', ')', ']', '}', '»']);
+    const abbrevTokenRe = /\b(?:mr|mrs|ms|dr|prof|sr|jr|st|vs|etc|e\.g|i\.e)$/i;
+    const multiDotCapsRe = /\b(?:[A-Z]\.){2,}[A-Z]?$/; // U.S. / U.S.C.
 
-    function isPeriodDecimal(t, i) {
-      const prev = t[i - 1] || '';
-      const next = t[i + 1] || '';
-      return /\d/.test(prev) && /\d/.test(next);
+    function isDecimalDot(t, i) {
+      const a = t[i - 1] || '';
+      const b = t[i + 1] || '';
+      return /\d/.test(a) && /\d/.test(b);
     }
 
-    function looksLikeAbbrevOrCitation(t, i) {
-      const left = t.slice(Math.max(0, i - 14), i + 1);
-      if (/\b([A-Za-z]\.){2,}$/.test(left)) return true; // U.S. / U.S.C.
-      const m = left.match(/\b([A-Za-z]{1,4})\.$/);
-      if (m && ABBREV.has(m[1].toLowerCase())) return true;
-      if (/\bU\.S\.C\.$/i.test(left) || /\bU\.S\.$/i.test(left)) return true;
+    function isLikelyAbbrevOrCitation(t, i) {
+      const look = t.slice(Math.max(0, i - 14), i).trim();
+      const lastToken = look.split(/\s+/).pop() || '';
+      if (abbrevTokenRe.test(lastToken)) return true;
+      if (multiDotCapsRe.test(look)) return true;
       return false;
     }
 
-    function nextMeaningfulChar(t, i) {
-      let j = i + 1;
-      while (j < t.length && /[\s\"'”’\)\]\}]/.test(t[j])) j++;
-      return t[j] || '';
-    }
-
-    function isValidSentenceEnd(t, i) {
-      const ch = t[i];
-      if (ch === '?' || ch === '!' || ch === '…') return true;
-      if (ch !== '.') return false;
-      if (isPeriodDecimal(t, i)) return false;
-      if (looksLikeAbbrevOrCitation(t, i)) return false;
-      const nxt = nextMeaningfulChar(t, i);
-      if (!nxt) return true;
-      if (/[a-z]/.test(nxt)) return false;
+    function isTrueSentenceDot(t, i) {
+      if (t[i] !== '.') return false;
+      // Ellipsis "..." counts as a terminator at the third dot.
+      if (i >= 2 && t[i - 1] === '.' && t[i - 2] === '.') return true;
+      if (isDecimalDot(t, i)) return false;
+      if (isLikelyAbbrevOrCitation(t, i)) return false;
       return true;
     }
 
-    function findBreakIndex(text, desired) {
-      const t = String(text || '');
-      if (!t) return 0;
-      const cutoff = Math.min(Math.max(desired, 0), t.length);
-
-      // Paragraph boundary backward
-      const para = t.lastIndexOf('\n\n', cutoff);
-      if (para >= minChars) return para;
-
-      // Sentence terminator backward
-      for (let i = cutoff; i >= minChars; i--) {
-        const ch = t[i];
-        if (ch === '.' || ch === '?' || ch === '!' || ch === '…') {
-          if (isValidSentenceEnd(t, i)) {
-            let j = i + 1;
-            while (j < t.length && /[\s\"'”’\)\]\}]/.test(t[j])) j++;
-            return j;
-          }
-        }
-      }
-
-      // Sentence terminator forward
-      const forwardLimit = Math.min(t.length, Math.min(hardMax, cutoff + maxForward));
-      for (let i = cutoff; i < forwardLimit; i++) {
-        const ch = t[i];
-        if (ch === '.' || ch === '?' || ch === '!' || ch === '…') {
-          if (isValidSentenceEnd(t, i)) {
-            let j = i + 1;
-            while (j < t.length && /[\s\"'”’\)\]\}]/.test(t[j])) j++;
-            return j;
-          }
-        }
-      }
-
-      // Rare fallback: if we're over hard max, cut at last whitespace <= hard max.
-      if (t.length >= hardMax) {
-        const slice = t.slice(0, hardMax);
-        const ws = slice.lastIndexOf(' ');
-        return ws > minChars ? ws : hardMax;
-      }
-      return t.length;
+    function isSentenceTerminator(t, i) {
+      const ch = t[i];
+      if (ch === '?' || ch === '!' || ch === '…') return true;
+      if (ch === '.') return isTrueSentenceDot(t, i);
+      return false;
     }
 
-    let acc = '';
+    function advancePastClosersAndSpace(t, idx) {
+      let j = idx + 1;
+      while (j < t.length && closers.has(t[j])) j++;
+      while (j < t.length && /\s/.test(t[j])) j++;
+      return j;
+    }
+
+    function findBackwardParagraphBoundary(t, from, start) {
+      const slice = t.slice(start, from);
+      const rel = slice.lastIndexOf('\\n\\n');
+      if (rel === -1) return -1;
+      return start + rel + 2;
+    }
+
+    function findForwardParagraphBoundary(t, from, to) {
+      const slice = t.slice(from, to);
+      const rel = slice.indexOf('\\n\\n');
+      if (rel === -1) return -1;
+      return from + rel + 2;
+    }
+
+    function findBackwardTerminator(t, from, start, minPos) {
+      for (let i = from - 1; i >= start; i--) {
+        if (!isSentenceTerminator(t, i)) continue;
+        const end = advancePastClosersAndSpace(t, i);
+        if (end >= minPos) return end;
+      }
+      return -1;
+    }
+
+    function findForwardTerminator(t, from, to, minPos) {
+      for (let i = from; i < to; i++) {
+        if (!isSentenceTerminator(t, i)) continue;
+        const end = advancePastClosersAndSpace(t, i);
+        if (end >= minPos) return end;
+      }
+      return -1;
+    }
+
+    function fallbackWhitespace(t, to, start, minPos) {
+      const slice = t.slice(start, to);
+      const rel = slice.lastIndexOf(' ');
+      if (rel === -1) return to;
+      const idx = start + rel;
+      return Math.max(idx, minPos);
+    }
+
+    const pagesOut = [];
     const cleanBlocks = (blocks || []).map(b => String(b || '').trim()).filter(Boolean);
-    for (const b of cleanBlocks) {
-      acc = acc ? (acc + '\n\n' + b) : b;
+    const text = cleanBlocks.join('\\n\\n').replace(/\\n{3,}/g, '\\n\\n').trim();
 
-      while (acc.length >= target) {
-        const cut = findBreakIndex(acc, target);
-        if (cut <= 0 || cut >= acc.length) break;
-        const page = acc.slice(0, cut).trim();
-        if (page) pagesOut.push(page);
-        acc = acc.slice(cut).trim();
+    let pos = 0;
+    while (pos < text.length) {
+      const remaining = text.length - pos;
+      if (remaining <= target) {
+        pagesOut.push(text.slice(pos).trim());
+        break;
       }
 
-      while (acc.length > hardMax) {
-        const cut = findBreakIndex(acc, hardMax);
-        const page = acc.slice(0, cut).trim();
-        if (page) pagesOut.push(page);
-        acc = acc.slice(cut).trim();
-      }
-    }
+      const cutoff = pos + target;
+      const hardLimit = Math.min(pos + hardMax, text.length);
+      const forwardLimit = Math.min(pos + target + maxForward, hardLimit);
+      const minPos = pos + minChars;
 
-    if (acc.trim()) pagesOut.push(acc.trim());
+      // 1) Prefer paragraph boundary.
+      let cut = findBackwardParagraphBoundary(text, cutoff, pos);
+      if (cut !== -1 && cut < minPos) cut = -1;
 
-    // Merge micro-pages
-    if (pagesOut.length >= 2) {
-      const merged = [];
-      for (let j = 0; j < pagesOut.length; j++) {
-        const p = pagesOut[j];
-        if (!p) continue;
-        if (p.length >= minChars || merged.length === 0) {
-          merged.push(p);
-          continue;
-        }
-        const prev = merged[merged.length - 1];
-        if ((prev.length + 2 + p.length) <= hardMax) {
-          merged[merged.length - 1] = (prev + '\n\n' + p).trim();
-          continue;
-        }
-        merged.push(p);
+      // 2) Otherwise sentence terminator (backward first).
+      if (cut === -1) {
+        cut = findBackwardTerminator(text, cutoff, pos, minPos);
       }
-      return merged;
+
+      // 3) Only if none found: search forward up to cap.
+      if (cut === -1) {
+        cut = findForwardParagraphBoundary(text, cutoff, forwardLimit);
+        if (cut !== -1 && cut < minPos) cut = -1;
+      }
+      if (cut === -1) {
+        cut = findForwardTerminator(text, cutoff, forwardLimit, minPos);
+      }
+
+      // 4) Final fallback (rare): paragraph boundary anywhere before hardLimit, then whitespace.
+      if (cut === -1) {
+        const paraAny = findBackwardParagraphBoundary(text, hardLimit, pos);
+        if (paraAny !== -1 && paraAny >= minPos) cut = paraAny;
+      }
+      if (cut === -1) {
+        cut = fallbackWhitespace(text, hardLimit, pos, minPos);
+      }
+
+      const page = text.slice(pos, cut).trim();
+      if (page) pagesOut.push(page);
+      pos = cut;
+      while (pos < text.length && /\s/.test(text[pos])) pos++;
     }
 
     return pagesOut;

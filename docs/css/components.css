@@ -573,9 +573,10 @@ body {
       .import-picker-right { min-height: 0; }
       .import-picker-right { min-height: 0; }
 
-      /* Cap pane heights so both are interactive, each with its own internal scroll */
-      .import-picker-left { max-height: 44vh; }
-      .import-picker-right { max-height: 44vh; margin-top: 12px; }
+      /* Give the contents pane more room and keep each pane internally scrollable */
+      .import-picker-left { max-height: 55vh; }
+      .import-picker-right { max-height: 38vh; margin-top: 12px; }
+      .import-toc { -webkit-overflow-scrolling: touch; }
     }
 
     /* Mobile-only hamburger (not tablet) */
@@ -2064,26 +2065,6 @@ body {
   .support-footer-inner { justify-content: flex-start; }
 }
 
-/* =========================================
-   Mobile: more real-estate (stronger zoom-out)
-   ========================================= */
-
-@media (max-width: 520px) {
-  html {
-    zoom: 0.90;
-  }
-}
-
-/* iOS Safari fallback */
-@supports (-webkit-touch-callout: none) {
-  @media (max-width: 520px) {
-    body {
-      transform: scale(0.88);
-      transform-origin: top center;
-      width: calc(100% / 0.88);
-    }
-  }
-}
 
 /* tighten spacing slightly so the zoom feels intentional */
 @media (max-width: 520px) {
