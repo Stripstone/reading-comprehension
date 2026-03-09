@@ -1981,13 +1981,17 @@ function writeAnchorsToCache(pageHash, payload) {
   // Import cleanup helpers (deterministic, build-safe)
   function fixLeadingDropCapSpacing(text) {
     let s = String(text || '');
-    // Drop-cap join (locked): only when it is clearly NOT a standalone word.
-    // Prevent regressions like: "A certified" -> "Acertified" and "I do" -> "Ido".
+    // Drop-cap join (locked): only repair obvious one-letter ornamental splits at block start.
+    // Keep true standalone words intact, especially articles/pronouns like "A" and "I".
     const skip = new Set(['A', 'I']);
-    // "T he" -> "The" (start of block)
-    s = s.replace(/^([A-Z])\s+([a-z])/g, (m, cap, low) => (skip.has(cap) ? m : (cap + low)));
-    // "\" T he" -> "\"The" (quote/paren variants)
-    s = s.replace(/^(["“'\(\[]\s*)([A-Z])\s+([a-z])/g, (m, pre, cap, low) => (skip.has(cap) ? m : (pre + cap + low)));
+    const joinLeadingDropCap = (source) => source.replace(
+      /^(?:(["“\'\(\[]\s*))?([A-Z])\s+([a-z][a-z]+)(?=\b)/,
+      (m, pre = '', cap, frag) => {
+        if (skip.has(cap)) return m;
+        return `${pre}${cap}${frag}`;
+      }
+    );
+    s = joinLeadingDropCap(s);
     return s;
   }
 
@@ -2104,17 +2108,33 @@ function writeAnchorsToCache(pageHash, payload) {
       return Math.min(limit, Math.max(minChars, Math.round(target)));
     }
 
-    function findForwardSentenceStop(text, startIdx, maxExtra = 260) {
+    function findForwardSentenceStop(text, startIdx, maxExtra = 1200) {
       const t = String(text || '');
       const start = Math.max(0, Math.min(startIdx, t.length));
-      const end = Math.min(t.length, start + Math.max(40, maxExtra));
+      const end = Math.min(t.length, start + Math.max(120, maxExtra));
       if (end <= start) return -1;
       const slice = t.slice(start, end);
-      const re = /[.!?]["'”’\)\]\}]*\s+/g;
-      const m = re.exec(slice);
-      if (!m) return -1;
-      return start + re.lastIndex;
+
+      // Prefer a real sentence stop first.
+      const stopRe = /[.!?]["'”’\)\]\}]*\s+/g;
+      const stop = stopRe.exec(slice);
+      if (stop) return start + stopRe.lastIndex;
+
+      // Fallback: paragraph boundary so we never strand a continuation at the top of the next page.
+      const para = slice.indexOf('\n\n');
+      if (para >= 0) return start + para;
+
+      return -1;
     }
+
+    function hasUnclosedDoubleQuote(text) {
+      const s = String(text || '');
+      const straight = (s.match(/"/g) || []).length;
+      const openCurly = (s.match(/[“]/g) || []).length;
+      const closeCurly = (s.match(/[”]/g) || []).length;
+      return (straight % 2 === 1) || (openCurly > closeCurly);
+    }
+
 
     let buf = '';
     const cleanBlocks = (blocks || []).map(b => String(b || '').trim()).filter(Boolean);
@@ -2133,9 +2153,20 @@ function writeAnchorsToCache(pageHash, payload) {
 
       // If buffer is empty and a single block is huge, force split at best cut.
       if (!buf) {
-        const cut = findBestCut(candidate, hardMax);
-        const page = candidate.slice(0, cut).trim();
-        const rem = candidate.slice(cut).trim();
+        let cut = findBestCut(candidate, hardMax);
+        let page = candidate.slice(0, cut).trim();
+        let rem = candidate.slice(cut).trim();
+
+        // A huge single paragraph still must finish at a real sentence stop when one is nearby.
+        if (rem && (!endsWithStrongStop(page) || hasUnclosedDoubleQuote(page))) {
+          const fwd = findForwardSentenceStop(candidate, cut, Math.max(1200, candidate.length - cut));
+          if (fwd > cut) {
+            cut = fwd;
+            page = candidate.slice(0, cut).trim();
+            rem = candidate.slice(cut).trim();
+          }
+        }
+
         if (page) pagesOut.push(page);
         buf = rem;
         i++;
@@ -2147,9 +2178,15 @@ function writeAnchorsToCache(pageHash, payload) {
         startsWithOpenQuote(b) ||
         startsWithOpenQuote(nextBlock) ||
         endsWithLeadIn(buf) ||
-        looksLikeListContinuation(buf, b);
+        looksLikeListContinuation(buf, b) ||
+        hasUnclosedDoubleQuote(buf);
 
-      const safeToBreak = endsWithStrongStop(buf) && !endsWithLeadIn(buf) && !startsWithOpenQuote(b) && !looksLikeListContinuation(buf, b);
+      const safeToBreak =
+        endsWithStrongStop(buf) &&
+        !endsWithLeadIn(buf) &&
+        !startsWithOpenQuote(b) &&
+        !looksLikeListContinuation(buf, b) &&
+        !hasUnclosedDoubleQuote(buf);
 
       if (buf.length >= target && safeToBreak && !continuation) {
         pagesOut.push(buf.trim());
@@ -2169,8 +2206,8 @@ function writeAnchorsToCache(pageHash, payload) {
 
         // If we cut mid-sentence due to lack of strong stop before hardMax, search slightly forward
         // for the next real sentence stop. This prevents "institution of / slavery" type splits.
-        if (rem && !endsWithStrongStop(page)) {
-          const fwd = findForwardSentenceStop(buf, cut, 260);
+        if (rem && (!endsWithStrongStop(page) || hasUnclosedDoubleQuote(page))) {
+          const fwd = findForwardSentenceStop(buf, cut, 1200);
           if (fwd > cut) {
             cut = fwd;
             page = buf.slice(0, cut).trim();
@@ -2178,10 +2215,11 @@ function writeAnchorsToCache(pageHash, payload) {
           }
         }
 
-        // If remainder starts with an opening quote/paren/bracket, backtrack to an earlier cut if possible.
-        if (rem && startsWithOpenQuote(rem)) {
+        // If remainder starts with an opening quote/paren/bracket, or the page still has an open quote,
+        // keep the quoted thought together if at all possible.
+        if (rem && (startsWithOpenQuote(rem) || hasUnclosedDoubleQuote(page))) {
           // First try moving the cut forward to include the quoted sentence (topic continuity).
-          const fwd = findForwardSentenceStop(buf, cut, 260);
+          const fwd = findForwardSentenceStop(buf, cut, 1200);
           if (fwd > cut) {
             cut = fwd;
             page = buf.slice(0, cut).trim();

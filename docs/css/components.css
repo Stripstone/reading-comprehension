@@ -562,11 +562,14 @@ body {
     @media (max-width: 900px) {
       .import-picker {
         grid-template-columns: 1fr;
-        height: auto;
+        grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
+        height: min(62vh, 560px);
       }
 
-      .import-picker-left {
-        min-height: 55vh;
+      .import-picker-left,
+      .import-picker-right {
+        min-height: 0;
+        height: 100%;
       }
 
       .import-toc {
@@ -574,12 +577,15 @@ body {
         max-height: none;
       }
 
-      .import-preview-body { max-height: 34vh; }
+      .import-preview-body { max-height: none; }
 
-      /* When stacked vertically, add breathing room so panels don't feel overlapped */
+      /* When stacked vertically, keep the TOC pane at 60% of the picker/modal working height. */
+      .import-picker-left {
+        min-height: 60%;
+      }
+
       .import-picker-right {
-        margin-top: 12px;
-        height: auto;
+        margin-top: 0;
       }
     }
 
