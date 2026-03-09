@@ -2038,11 +2038,13 @@ function writeAnchorsToCache(pageHash, payload) {
   }
 
   function chunkBlocksToPages(blocks, targetChars = 1600) {
-    // Locked behavior (v2): page by blocks first.
+    // Locked behavior (v3): page by blocks first, and promote inline statement extracts
+    // into protected sub-blocks before chunking.
     //
     // Core rules:
     // - Prefer paragraph/block boundaries over raw character cuts.
     // - Treat quote/list/statement-like blocks as protected.
+    // - Promote inline quoted/statement extracts into their own protected blocks.
     // - Do not split a protected block unless that single block is too large for one page.
     // - When forced to split, only cut at strong stops (paragraph / sentence).
     // - Avoid tiny continuation fragments and micro-pages.
@@ -2056,8 +2058,9 @@ function writeAnchorsToCache(pageHash, payload) {
 
     const strongStopRe = /[.!?]["'”’\)\]\}]*\s*$/;
     const openQuoteRe = /^\s*["“'\(\[]/;
-    const leadInRe = /(\:|\;|—|\,|\bsuch as\b|\bas follows\b|\bthe following\b|\bincluding\b)\s*$/i;
+    const leadInRe = /(\:|\;|—|\,|such as|as follows|the following|including)\s*$/i;
     const listLineRe = /^\s*(\d+[.|\)]\s+|[-•*]\s+|box\s+\d+\s*:|line\s+\d+\s*:)/i;
+    const reportingVerbRe = /(reads?|states?|stated|says?|said|writes?|wrote|provides?|provided|declares?|declared|explains?|explained|asks?|asked|begins?|began|continues?|continued|quotes?|quoted|proclaims?|proclaimed|notes?|noted)/i;
 
     function startsWithOpenQuote(s) {
       return openQuoteRe.test(String(s || '').trimStart());
@@ -2072,7 +2075,8 @@ function writeAnchorsToCache(pageHash, payload) {
     }
 
     function looksLikeListBlock(s) {
-      const lines = String(s || '').split(/\n/).map(x => x.trim()).filter(Boolean);
+      const lines = String(s || '').split(/
+/).map(x => x.trim()).filter(Boolean);
       if (!lines.length) return false;
       return lines.some(line => listLineRe.test(line));
     }
@@ -2097,6 +2101,7 @@ function writeAnchorsToCache(pageHash, payload) {
       const words = t.split(/\s+/).filter(Boolean).length;
       if (semis >= 2 && words >= 18) return true;
       if (colons >= 1 && semis >= 1 && words >= 18) return true;
+      if (words >= 20 && /(shall|whereas|thereof|therein|thereby|hereby|herein|pursuant|therefore)/i.test(t)) return true;
       return false;
     }
 
@@ -2112,12 +2117,77 @@ function writeAnchorsToCache(pageHash, payload) {
       return (straight % 2 === 1) || (openCurly > closeCurly);
     }
 
+    function looksFormalExtractStart(tail) {
+      const t = String(tail || '').trim();
+      if (!t) return false;
+      const words = t.split(/\s+/).filter(Boolean);
+      if (words.length < 12) return false;
+      const startsFormal = startsWithOpenQuote(t) || /^[A-Z\(\[]/.test(t);
+      const hasFormalTexture = /[;:]/.test(t) || /(shall|whereas|thereof|therein|thereby|hereby|herein|pursuant|therefore|which|that)/i.test(t);
+      return startsFormal && hasFormalTexture;
+    }
+
+    function splitInlineProtectedSubBlocks(block) {
+      const src = String(block || '').trim();
+      if (!src) return [];
+      const parts = [];
+      let remaining = src;
+      let guard = 0;
+
+      while (remaining && guard < 8) {
+        guard += 1;
+        let splitAt = -1;
+
+        const punctRe = /[:,;]\s+/g;
+        let m;
+        while ((m = punctRe.exec(remaining)) !== null) {
+          const cut = m.index + 1; // keep the punctuation with the lead-in clause
+          const head = remaining.slice(0, cut).trim();
+          const tail = remaining.slice(m.index + m[0].length).trim();
+          if (!head || !tail) continue;
+          if (head.length < 18 || tail.length < 80) continue;
+
+          const headTail = head.slice(Math.max(0, head.length - 120));
+          const strongLeadIn = reportingVerbRe.test(headTail) || /[:;]\s*$/.test(head);
+          if (!strongLeadIn) continue;
+          if (!looksFormalExtractStart(tail)) continue;
+
+          splitAt = cut;
+          break;
+        }
+
+        if (splitAt < 0) {
+          const quoteIdx = remaining.search(/(?:^|\s)(["“][^"“]{80,})/);
+          if (quoteIdx > 24) splitAt = quoteIdx;
+        }
+
+        if (splitAt < 0) {
+          parts.push(remaining.trim());
+          break;
+        }
+
+        const head = remaining.slice(0, splitAt).trim();
+        const tail = remaining.slice(splitAt).trim();
+        if (!head || !tail) {
+          parts.push(remaining.trim());
+          break;
+        }
+
+        parts.push(head);
+        remaining = tail;
+      }
+
+      return parts.filter(Boolean);
+    }
+
     function findBestCut(text, maxIdx) {
       const t = String(text || '');
       const limit = Math.min(maxIdx, t.length);
       const slice = t.slice(0, limit);
 
-      const para = slice.lastIndexOf('\n\n');
+      const para = slice.lastIndexOf('
+
+');
       if (para > minChars) return para;
 
       const re = /[.!?]["'”’\)\]\}]*\s+/g;
@@ -2150,7 +2220,9 @@ function writeAnchorsToCache(pageHash, payload) {
       const stop = stopRe.exec(slice);
       if (stop) return start + stopRe.lastIndex;
 
-      const para = slice.indexOf('\n\n');
+      const para = slice.indexOf('
+
+');
       if (para >= 0) return start + para;
 
       const semi = slice.indexOf('; ');
@@ -2192,7 +2264,11 @@ function writeAnchorsToCache(pageHash, payload) {
 
     let buf = '';
     let bufProtected = false;
-    const cleanBlocks = (blocks || []).map(b => String(b || '').trim()).filter(Boolean);
+    const cleanBlocks = (blocks || [])
+      .map(b => String(b || '').trim())
+      .filter(Boolean)
+      .flatMap(splitInlineProtectedSubBlocks)
+      .filter(Boolean);
 
     for (let i = 0; i < cleanBlocks.length; i++) {
       const block = cleanBlocks[i];
@@ -2209,7 +2285,9 @@ function writeAnchorsToCache(pageHash, payload) {
         continue;
       }
 
-      const candidate = `${buf}\n\n${block}`;
+      const candidate = `${buf}
+
+${block}`;
 
       if (candidate.length <= target) {
         buf = candidate;
@@ -2227,9 +2305,6 @@ function writeAnchorsToCache(pageHash, payload) {
         endsWithStrongStop(buf) &&
         !continuationRisk;
 
-      // Protected blocks stay whole whenever possible.
-      // If adding one would overflow, finish the current page and move the protected
-      // block to the next page instead of splitting it across pages.
       if (blockProtected && safeToFinalizeBuf) {
         pagesOut.push(buf.trim());
         if (block.length > hardMax) {
@@ -2242,8 +2317,6 @@ function writeAnchorsToCache(pageHash, payload) {
         continue;
       }
 
-      // If current page is already a protected run, do not keep stretching it forever.
-      // Finalize it once it is reasonably full and the boundary is clean.
       if (bufProtected && safeToFinalizeBuf) {
         pagesOut.push(buf.trim());
         if (block.length > hardMax) {
@@ -2256,7 +2329,6 @@ function writeAnchorsToCache(pageHash, payload) {
         continue;
       }
 
-      // Normal block: allow modest overflow to avoid premature micro-pages / sentence cuts.
       if (!blockProtected && candidate.length <= softMax) {
         buf = candidate;
         bufProtected = bufProtected || blockProtected;
@@ -2275,7 +2347,6 @@ function writeAnchorsToCache(pageHash, payload) {
         continue;
       }
 
-      // Last resort: append and force a cut from the combined text.
       buf = candidate;
       bufProtected = bufProtected || blockProtected;
       if (buf.length > hardMax) {
@@ -2286,7 +2357,6 @@ function writeAnchorsToCache(pageHash, payload) {
 
     if (buf.trim()) pagesOut.push(buf.trim());
 
-    // Cleanup: merge micro-pages into neighbors when it does not cause another bad split.
     const merged = [];
     for (let j = 0; j < pagesOut.length; j++) {
       const p = pagesOut[j];
@@ -2297,7 +2367,9 @@ function writeAnchorsToCache(pageHash, payload) {
       }
 
       const prev = merged[merged.length - 1];
-      const combined = `${prev}\n\n${p}`;
+      const combined = `${prev}
+
+${p}`;
       if (combined.length <= hardMax && endsWithStrongStop(prev) && !startsWithOpenQuote(p)) {
         merged[merged.length - 1] = combined.trim();
         continue;
