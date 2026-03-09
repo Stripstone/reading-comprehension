@@ -574,7 +574,7 @@ body {
       .import-picker-right { min-height: 0; }
 
       /* Cap pane heights so both are interactive, each with its own internal scroll */
-      .import-picker-left { max-height: 34vh; }
+      .import-picker-left { max-height: 44vh; }
       .import-picker-right { max-height: 44vh; margin-top: 12px; }
     }
 
