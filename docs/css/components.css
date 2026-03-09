@@ -569,6 +569,20 @@ body {
         height: 60%;
         min-height: 60%;
       }
+
+      .import-picker-right {
+        min-height: 40%;
+        max-height: min(40%, 260px);
+      }
+
+      .import-toc {
+        flex: 1 1 auto;
+        max-height: none;
+      }
+
+      .import-preview-body {
+        max-height: min(40vh, 260px);
+      }
     }
 
     /* Mobile-only hamburger (not tablet) */
