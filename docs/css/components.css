@@ -573,9 +573,9 @@ body {
       }
 
       .import-picker-right {
-        height: min(32vh, 280px);
-        min-height: min(32vh, 280px);
-        max-height: min(32vh, 280px);
+        height: min(24vh, 210px);
+        min-height: min(24vh, 210px);
+        max-height: min(24vh, 210px);
         margin-top: 0;
       }
     }
