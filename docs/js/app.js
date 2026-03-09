@@ -1981,11 +1981,40 @@ function writeAnchorsToCache(pageHash, payload) {
   // Import cleanup helpers (deterministic, build-safe)
   function fixLeadingDropCapSpacing(text) {
     let s = String(text || '');
+    // Drop-cap join (locked): only when it is clearly NOT a standalone word.
+    // Prevent regressions like: "A certified" -> "Acertified" and "I do" -> "Ido".
+    const skip = new Set(['A', 'I']);
     // "T he" -> "The" (start of block)
-    s = s.replace(/^([A-Z])\s+([a-z])/g, '$1$2');
+    s = s.replace(/^([A-Z])\s+([a-z])/g, (m, cap, low) => (skip.has(cap) ? m : (cap + low)));
     // "\" T he" -> "\"The" (quote/paren variants)
-    s = s.replace(/^(["“'\(\[]\s*)([A-Z])\s+([a-z])/g, '$1$2$3');
+    s = s.replace(/^(["“'\(\[]\s*)([A-Z])\s+([a-z])/g, (m, pre, cap, low) => (skip.has(cap) ? m : (pre + cap + low)));
     return s;
+  }
+
+  function mergeFragmentedBlocks(blocks) {
+    // Conservative: merge only obvious converter fragmentation.
+    const out = [];
+    const listLineRe = /^\s*(\d+[\.|\)]\s+|box\s+\d+\s*:|line\s+\d+\s*:|part\s+[ivxlcdm]+\b)/i;
+    const strongEndRe = /[.!?]["'”’\)\]\}]*\s*$/;
+    const startsLowerRe = /^\s*[a-z]/;
+
+    for (let i = 0; i < (blocks || []).length; i++) {
+      const cur = String(blocks[i] || '').trim();
+      if (!cur) continue;
+      if (out.length === 0) { out.push(cur); continue; }
+
+      const prev = out[out.length - 1];
+      // Do not merge lists/instruction-like lines.
+      if (listLineRe.test(prev) || listLineRe.test(cur)) { out.push(cur); continue; }
+
+      // Merge short previous fragments that don't end a sentence, followed by lowercase start.
+      if (prev.length < 55 && !strongEndRe.test(prev) && startsLowerRe.test(cur)) {
+        out[out.length - 1] = (prev + ' ' + cur).replace(/\s+/g, ' ').trim();
+        continue;
+      }
+      out.push(cur);
+    }
+    return out;
   }
 
   function isDecorativeSpacedHeading(text) {
@@ -2075,6 +2104,18 @@ function writeAnchorsToCache(pageHash, payload) {
       return Math.min(limit, Math.max(minChars, Math.round(target)));
     }
 
+    function findForwardSentenceStop(text, startIdx, maxExtra = 260) {
+      const t = String(text || '');
+      const start = Math.max(0, Math.min(startIdx, t.length));
+      const end = Math.min(t.length, start + Math.max(40, maxExtra));
+      if (end <= start) return -1;
+      const slice = t.slice(start, end);
+      const re = /[.!?]["'”’\)\]\}]*\s+/g;
+      const m = re.exec(slice);
+      if (!m) return -1;
+      return start + re.lastIndex;
+    }
+
     let buf = '';
     const cleanBlocks = (blocks || []).map(b => String(b || '').trim()).filter(Boolean);
     let i = 0;
@@ -2126,13 +2167,34 @@ function writeAnchorsToCache(pageHash, payload) {
         let page = buf.slice(0, cut).trim();
         let rem = buf.slice(cut).trim();
 
-        // If remainder starts with an opening quote/paren/bracket, backtrack to an earlier cut if possible.
-        if (rem && startsWithOpenQuote(rem)) {
-          const earlier = findBestCut(buf, Math.max(minChars + 50, cut - 80));
-          if (earlier > minChars && earlier < cut) {
-            cut = earlier;
+        // If we cut mid-sentence due to lack of strong stop before hardMax, search slightly forward
+        // for the next real sentence stop. This prevents "institution of / slavery" type splits.
+        if (rem && !endsWithStrongStop(page)) {
+          const fwd = findForwardSentenceStop(buf, cut, 260);
+          if (fwd > cut) {
+            cut = fwd;
             page = buf.slice(0, cut).trim();
             rem = buf.slice(cut).trim();
+          }
+        }
+
+        // If remainder starts with an opening quote/paren/bracket, backtrack to an earlier cut if possible.
+        if (rem && startsWithOpenQuote(rem)) {
+          // First try moving the cut forward to include the quoted sentence (topic continuity).
+          const fwd = findForwardSentenceStop(buf, cut, 260);
+          if (fwd > cut) {
+            cut = fwd;
+            page = buf.slice(0, cut).trim();
+            rem = buf.slice(cut).trim();
+          }
+          // If still starts with quote, backtrack to earlier safe cut.
+          if (rem && startsWithOpenQuote(rem)) {
+            const earlier = findBestCut(buf, Math.max(minChars + 50, cut - 120));
+            if (earlier > minChars && earlier < cut) {
+              cut = earlier;
+              page = buf.slice(0, cut).trim();
+              rem = buf.slice(cut).trim();
+            }
           }
         }
 
@@ -2309,10 +2371,10 @@ function writeAnchorsToCache(pageHash, payload) {
       for (let s = it.spineIndex; s < endSpine; s++) {
         const href = spine[s];
         const html = await zipReadText(zip, href);
-        extractTextBlocksFromHtml(html)
+        const cleaned = extractTextBlocksFromHtml(html)
           .map(fixLeadingDropCapSpacing)
-          .filter(b => b && (!cleanupHeadings || !isDecorativeSpacedHeading(b)))
-          .forEach(b => blocks.push(b));
+          .filter(b => b && (!cleanupHeadings || !isDecorativeSpacedHeading(b)));
+        mergeFragmentedBlocks(cleaned).forEach(b => blocks.push(b));
       }
       sections.push({ title: it.title, blocks });
       done++;

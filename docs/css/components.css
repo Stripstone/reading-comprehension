@@ -560,12 +560,27 @@ body {
     }
 
     @media (max-width: 900px) {
-      .import-picker { grid-template-columns: 1fr; }
-      .import-toc { max-height: 56vh; }
+      .import-picker {
+        grid-template-columns: 1fr;
+        height: auto;
+      }
+
+      .import-picker-left {
+        min-height: 55vh;
+      }
+
+      .import-toc {
+        flex: 1 1 auto;
+        max-height: none;
+      }
+
       .import-preview-body { max-height: 34vh; }
 
       /* When stacked vertically, add breathing room so panels don't feel overlapped */
-      .import-picker-right { margin-top: 12px; }
+      .import-picker-right {
+        margin-top: 12px;
+        height: auto;
+      }
     }
 
     /* Mobile-only hamburger (not tablet) */
