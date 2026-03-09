@@ -2038,104 +2038,124 @@ function writeAnchorsToCache(pageHash, payload) {
   }
 
   function chunkBlocksToPages(blocks, targetChars = 1600) {
-    // Locked behavior (v3): page by blocks first, and promote inline statement extracts
-    // into protected sub-blocks before chunking.
+    // Locked behavior (v4): page by structural units, not raw character flow.
     //
-    // Core rules:
-    // - Prefer paragraph/block boundaries over raw character cuts.
-    // - Treat quote/list/statement-like blocks as protected.
-    // - Promote inline quoted/statement extracts into their own protected blocks.
-    // - Do not split a protected block unless that single block is too large for one page.
-    // - When forced to split, only cut at strong stops (paragraph / sentence).
-    // - Avoid tiny continuation fragments and micro-pages.
+    // Goals:
+    // - Preserve paragraph integrity whenever possible.
+    // - Treat quote/list/statement-like material as protected.
+    // - Keep protected regions together unless a single protected region is itself oversized.
+    // - When forced to split, cut only at strong stops and avoid false sentence stops (Mr., U.S., etc.).
+    // - Avoid micro-pages and tiny continuation tails.
 
     const pagesOut = [];
     const target = Math.max(400, targetChars | 0);
-    const softMax = Math.round(target * 1.15);
+    const softMax = Math.round(target * 1.12);
     const hardMax = Math.round(target * 1.35);
-    const minChars = Math.round(target * 0.65);
-    const tinyTail = Math.max(160, Math.round(target * 0.22));
+    const protectedHardMax = Math.round(target * 1.6);
+    const minChars = Math.round(target * 0.68);
+    const tinyTail = Math.max(180, Math.round(target * 0.24));
 
-    const strongStopRe = /[.!?]["'”’)\]\}]*\s*$/;
-    const openQuoteRe = /^\s*["“'(\[]/;
-    const leadInRe = /(:|;|—|,|\bsuch as\b|\bas follows\b|\bthe following\b|\bincluding\b)\s*$/i;
-    const listLineRe = /^\s*(\d+[.)]\s+|[-•*]\s+|box\s+\d+\s*:|line\s+\d+\s*:)/i;
-    const reportingVerbRe = /\b(reads?|states?|stated|says?|said|writes?|wrote|provides?|provided|declares?|declared|explains?|explained|asks?|asked|begins?|began|continues?|continued|quotes?|quoted|proclaims?|proclaimed|notes?|noted)\b/i;
+    const openQuoteRe = /^\s*["“'([{]/;
+    const listLineRe = /^\s*(\d+[.)]\s+|[-•*]\s+|box\s+\d+\s*:|part\s+\d+\b|part\s+[ivxlcdm]+\b|line\s+\d+\s*:)/i;
+    const reportingVerbRe = /\b(reads?|states?|stated|says?|said|writes?|wrote|provides?|provided|declares?|declared|explains?|explained|asks?|asked|begins?|began|continues?|continued|quotes?|quoted|proclaims?|proclaimed|notes?|noted|defines?|defined|describes?|described)\b/i;
+    const definitionLeadRe = /\b(defined\s+as|definition\s+of|means\s*[–-]?|shall\s+mean|reads\s*[,:]|states\s*[,:]|which\s+reads\s*[,:]|which\s+states\s*[,:]|as\s+follows\s*[:;]?|the\s+following\s*[:;]?|quote\s*[,:])\b/i;
+    const citationTextureRe = /\b(shall|whereas|thereof|therein|thereby|hereby|herein|pursuant|therefore|wherein|therewith|whereof|provided|article|section|title)\b/i;
+    const falseStopTailRe = /(?:\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Mt|No|Art|Sec|Ch|Vol|pp|p|v|vs|etc|cf|al|fig|dept|u\.s|u\.s\.a|u\.k|e\.g|i\.e)\.|\b[A-Z]\.|\b[A-Z][a-z]{0,2}\.)["'”’)]*$/i;
+
+    function normalizeBlockText(s) {
+      return String(s || '').replace(/\s+/g, ' ').trim();
+    }
 
     function startsWithOpenQuote(s) {
-      return openQuoteRe.test(String(s || "").trimStart());
-    }
-
-    function endsWithStrongStop(s) {
-      return strongStopRe.test(String(s || "").trim());
-    }
-
-    function endsWithLeadIn(s) {
-      return leadInRe.test(String(s || "").trim());
-    }
-
-    function looksLikeListBlock(s) {
-      const lines = String(s || "")
-        .split(/\n+/)
-        .map(x => x.trim())
-        .filter(Boolean);
-      if (!lines.length) return false;
-      return lines.some(line => listLineRe.test(line));
-    }
-
-    function looksLikeQuoteBlock(s) {
-      const t = String(s || "").trim();
-      if (!t) return false;
-      if (startsWithOpenQuote(t)) return true;
-      const straight = (t.match(/"/g) || []).length;
-      const openCurly = (t.match(/“/g) || []).length;
-      const closeCurly = (t.match(/”/g) || []).length;
-      if (straight >= 2) return true;
-      if (openCurly + closeCurly >= 2) return true;
-      return false;
-    }
-
-    function looksLikeStatementBlock(s) {
-      const t = String(s || "").trim();
-      if (!t) return false;
-      const semis = (t.match(/;/g) || []).length;
-      const colons = (t.match(/:/g) || []).length;
-      const words = t.split(/\s+/).filter(Boolean).length;
-      if (semis >= 2 && words >= 18) return true;
-      if (colons >= 1 && semis >= 1 && words >= 18) return true;
-      if (
-        words >= 20 &&
-        /\b(shall|whereas|thereof|therein|thereby|hereby|herein|pursuant|therefore)\b/i.test(t)
-      ) return true;
-      return false;
-    }
-
-    function isProtectedBlock(s) {
-      return looksLikeQuoteBlock(s) || looksLikeListBlock(s) || looksLikeStatementBlock(s);
+      return openQuoteRe.test(String(s || '').trimStart());
     }
 
     function hasUnclosedDoubleQuote(text) {
-      const s = String(text || "");
+      const s = String(text || '');
       const straight = (s.match(/"/g) || []).length;
       const openCurly = (s.match(/“/g) || []).length;
       const closeCurly = (s.match(/”/g) || []).length;
       return (straight % 2 === 1) || (openCurly > closeCurly);
     }
 
+    function isFalseSentenceStop(text) {
+      const trimmed = String(text || '').trim();
+      if (!trimmed) return false;
+      const tail = trimmed.slice(Math.max(0, trimmed.length - 24));
+      return falseStopTailRe.test(tail);
+    }
+
+    function endsWithStrongStop(s) {
+      const trimmed = String(s || '').trim();
+      if (!trimmed) return false;
+      if (!/[.!?]["'”’)\]}]*$/.test(trimmed)) return false;
+      if (isFalseSentenceStop(trimmed)) return false;
+      return true;
+    }
+
+    function endsWithLeadIn(s) {
+      const trimmed = String(s || '').trim();
+      if (!trimmed) return false;
+      if (/[,:;—-]\s*$/.test(trimmed)) return true;
+      const tail = trimmed.slice(Math.max(0, trimmed.length - 140));
+      return definitionLeadRe.test(tail) || reportingVerbRe.test(tail);
+    }
+
+    function looksLikeListBlock(s) {
+      const lines = String(s || '').split(/\n+/).map(x => x.trim()).filter(Boolean);
+      if (!lines.length) return false;
+      const hits = lines.filter(line => listLineRe.test(line)).length;
+      return hits >= 1 && (hits >= 2 || lines.length === 1 || hits / lines.length >= 0.5);
+    }
+
+    function looksLikeQuoteBlock(s) {
+      const t = String(s || '').trim();
+      if (!t) return false;
+      if (startsWithOpenQuote(t)) return true;
+      const straight = (t.match(/"/g) || []).length;
+      const openCurly = (t.match(/“/g) || []).length;
+      const closeCurly = (t.match(/”/g) || []).length;
+      if (straight >= 2 || openCurly + closeCurly >= 2) return true;
+      if (hasUnclosedDoubleQuote(t) && t.length >= 80) return true;
+      return false;
+    }
+
+    function looksLikeStatementBlock(s) {
+      const t = String(s || '').trim();
+      if (!t) return false;
+      const words = t.split(/\s+/).filter(Boolean).length;
+      const semis = (t.match(/;/g) || []).length;
+      const colons = (t.match(/:/g) || []).length;
+      const hasDefinitionLead = definitionLeadRe.test(t);
+      const hasCitationTexture = citationTextureRe.test(t);
+      const hasReporting = reportingVerbRe.test(t);
+      if (hasDefinitionLead && words >= 12) return true;
+      if (hasReporting && /[,:;]/.test(t) && words >= 18) return true;
+      if ((semis >= 2 || (colons >= 1 && semis >= 1)) && words >= 18) return true;
+      if (hasCitationTexture && /[,:;]/.test(t) && words >= 18) return true;
+      if (startsWithOpenQuote(t) && words >= 12) return true;
+      return false;
+    }
+
+    function isProtectedBlock(s) {
+      return looksLikeListBlock(s) || looksLikeQuoteBlock(s) || looksLikeStatementBlock(s);
+    }
+
     function looksFormalExtractStart(tail) {
-      const t = String(tail || "").trim();
+      const t = String(tail || '').trim();
       if (!t) return false;
       const words = t.split(/\s+/).filter(Boolean);
-      if (words.length < 12) return false;
-      const startsFormal = startsWithOpenQuote(t) || /^[A-Z(\[]/.test(t);
+      if (words.length < 10) return false;
+      const startsFormal = startsWithOpenQuote(t) || /^[A-Z([\]]/.test(t) || listLineRe.test(t);
       const hasFormalTexture =
         /[;:]/.test(t) ||
-        /\b(shall|whereas|thereof|therein|thereby|hereby|herein|pursuant|therefore|which|that)\b/i.test(t);
+        definitionLeadRe.test(t) ||
+        citationTextureRe.test(t);
       return startsFormal && hasFormalTexture;
     }
 
     function splitInlineProtectedSubBlocks(block) {
-      const src = String(block || "").trim();
+      const src = normalizeBlockText(block);
       if (!src) return [];
       const parts = [];
       let remaining = src;
@@ -2148,14 +2168,14 @@ function writeAnchorsToCache(pageHash, payload) {
         const punctRe = /[:,;]\s+/g;
         let m;
         while ((m = punctRe.exec(remaining)) !== null) {
-          const cut = m.index + 1; // keep punctuation with lead-in clause
+          const cut = m.index + 1;
           const head = remaining.slice(0, cut).trim();
           const tail = remaining.slice(m.index + m[0].length).trim();
           if (!head || !tail) continue;
           if (head.length < 18 || tail.length < 80) continue;
 
-          const headTail = head.slice(Math.max(0, head.length - 120));
-          const strongLeadIn = reportingVerbRe.test(headTail) || /[:;]\s*$/.test(head);
+          const headTail = head.slice(Math.max(0, head.length - 160));
+          const strongLeadIn = definitionLeadRe.test(headTail) || reportingVerbRe.test(headTail) || /[:;]\s*$/.test(head);
           if (!strongLeadIn) continue;
           if (!looksFormalExtractStart(tail)) continue;
 
@@ -2164,8 +2184,8 @@ function writeAnchorsToCache(pageHash, payload) {
         }
 
         if (splitAt < 0) {
-          const quoteMatch = /(?:^|\s)(["“][^"”]{80,})/.exec(remaining);
-          if (quoteMatch && typeof quoteMatch.index === "number" && quoteMatch.index > 24) {
+          const quoteMatch = /(?:^|\s)(["“][^"”]{90,})/.exec(remaining);
+          if (quoteMatch && typeof quoteMatch.index === 'number' && quoteMatch.index > 24) {
             splitAt = quoteMatch.index;
           }
         }
@@ -2189,197 +2209,286 @@ function writeAnchorsToCache(pageHash, payload) {
       return parts.filter(Boolean);
     }
 
-    function findBestCut(text, maxIdx) {
-      const t = String(text || "");
+    function makeUnit(text, forcedProtected = null) {
+      const normalized = normalizeBlockText(text);
+      if (!normalized) return null;
+      const protectedFlag = forcedProtected == null ? isProtectedBlock(normalized) : !!forcedProtected;
+      return { text: normalized, protected: protectedFlag };
+    }
+
+    const rawUnits = [];
+    for (const block of (blocks || [])) {
+      const normalized = normalizeBlockText(block);
+      if (!normalized) continue;
+      const splitParts = splitInlineProtectedSubBlocks(normalized);
+      if (splitParts.length > 1) {
+        for (let i = 0; i < splitParts.length; i++) {
+          const part = splitParts[i];
+          const unit = makeUnit(part, i > 0 ? true : null);
+          if (unit) rawUnits.push(unit);
+        }
+      } else {
+        const unit = makeUnit(normalized);
+        if (unit) rawUnits.push(unit);
+      }
+    }
+
+    if (!rawUnits.length) return [];
+
+    const units = [];
+    for (let i = 0; i < rawUnits.length; i++) {
+      const cur = rawUnits[i];
+      if (!cur) continue;
+      const prev = units[units.length - 1];
+      if (
+        prev &&
+        cur.protected &&
+        !prev.protected &&
+        (endsWithLeadIn(prev.text) || hasUnclosedDoubleQuote(prev.text))
+      ) {
+        prev.text = `${prev.text} ${cur.text}`.replace(/\s+/g, ' ').trim();
+        prev.protected = true;
+        continue;
+      }
+      units.push({ text: cur.text, protected: !!cur.protected });
+    }
+
+    function joinUnits(list) {
+      return list.map(u => u.text).join('\n\n').trim();
+    }
+
+    function findBackwardCut(text, maxIdx, { allowSemi = true } = {}) {
+      const t = String(text || '');
       const limit = Math.min(maxIdx, t.length);
       const slice = t.slice(0, limit);
 
-      const para = slice.lastIndexOf("\n\n");
-      if (para > minChars) return para;
-
-      const re = /[.!?]["'”’)\]\}]*\s+/g;
-      let m;
       let best = -1;
-      while ((m = re.exec(slice)) !== null) {
-        const endPos = re.lastIndex;
+      const stopRe = /[.!?]["'”’)\]}]*\s+/g;
+      let m;
+      while ((m = stopRe.exec(slice)) !== null) {
+        const endPos = stopRe.lastIndex;
+        const candidate = slice.slice(0, endPos).trim();
         if (endPos < minChars) continue;
+        if (!endsWithStrongStop(candidate)) continue;
         best = endPos;
       }
       if (best > 0) return best;
 
-      const semi = slice.lastIndexOf("; ");
-      if (semi > minChars) return semi + 1;
+      const para = slice.lastIndexOf('\n\n');
+      if (para > minChars) return para;
 
-      const ws = slice.lastIndexOf(" ");
+      if (allowSemi) {
+        const semi = slice.lastIndexOf('; ');
+        if (semi > minChars) return semi + 1;
+      }
+
+      const ws = slice.lastIndexOf(' ');
       if (ws > minChars) return ws;
-
-      return Math.min(limit, Math.max(minChars, Math.round(target)));
+      return -1;
     }
 
-    function findForwardSentenceStop(text, startIdx, maxExtra = 1200) {
-      const t = String(text || "");
+    function findForwardCut(text, startIdx, maxExtra = 1400, { allowSemi = true } = {}) {
+      const t = String(text || '');
       const start = Math.max(0, Math.min(startIdx, t.length));
-      const end = Math.min(t.length, start + Math.max(120, maxExtra));
+      const end = Math.min(t.length, start + Math.max(240, maxExtra));
       if (end <= start) return -1;
       const slice = t.slice(start, end);
 
-      const stopRe = /[.!?]["'”’)\]\}]*\s+/g;
-      if (stopRe.exec(slice)) return start + stopRe.lastIndex;
+      const stopRe = /[.!?]["'”’)\]}]*\s+/g;
+      let m;
+      while ((m = stopRe.exec(slice)) !== null) {
+        const candidateEnd = start + stopRe.lastIndex;
+        const candidate = t.slice(0, candidateEnd).trim();
+        if (endsWithStrongStop(candidate)) return candidateEnd;
+      }
 
-      const para = slice.indexOf("\n\n");
+      const para = slice.indexOf('\n\n');
       if (para >= 0) return start + para;
 
-      const semi = slice.indexOf("; ");
-      if (semi >= 0) return start + semi + 1;
+      if (allowSemi) {
+        const semi = slice.indexOf('; ');
+        if (semi >= 0) return start + semi + 1;
+      }
 
       return -1;
     }
 
-    function forceSplitOversizedBlock(text) {
-      let remaining = String(text || "").trim();
+    function splitOversizedText(text, { protectedMode = false } = {}) {
+      let remaining = normalizeBlockText(text);
+      const hardLimit = protectedMode ? protectedHardMax : hardMax;
+      const allowSemi = !protectedMode;
 
-      while (remaining.length > hardMax) {
-        let cut = findBestCut(remaining, hardMax);
+      while (remaining.length > hardLimit) {
+        let cut = findBackwardCut(remaining, hardLimit, { allowSemi });
+        if (cut < 0) {
+          cut = protectedMode
+            ? findForwardCut(remaining, hardLimit, hardLimit, { allowSemi: false })
+            : findForwardCut(remaining, Math.round(target), hardLimit, { allowSemi });
+        }
+        if (cut < 0) cut = Math.min(remaining.length, hardLimit);
+
         let page = remaining.slice(0, cut).trim();
         let rem = remaining.slice(cut).trim();
 
-        if (rem && (!endsWithStrongStop(page) || hasUnclosedDoubleQuote(page))) {
-          const fwd = findForwardSentenceStop(
-            remaining,
-            cut,
-            Math.max(1200, remaining.length - cut)
-          );
-          if (fwd > cut) {
-            cut = fwd;
-            page = remaining.slice(0, cut).trim();
-            rem = remaining.slice(cut).trim();
+        if (protectedMode && rem) {
+          const shouldPushForward =
+            !endsWithStrongStop(page) ||
+            hasUnclosedDoubleQuote(page) ||
+            rem.length < tinyTail ||
+            startsWithOpenQuote(rem);
+          if (shouldPushForward) {
+            const fwd = findForwardCut(remaining, cut, hardLimit, { allowSemi: false });
+            if (fwd > cut) {
+              page = remaining.slice(0, fwd).trim();
+              rem = remaining.slice(fwd).trim();
+            }
           }
         }
 
-        if (rem && rem.length < tinyTail) {
-          const fwd = findForwardSentenceStop(remaining, cut, Math.max(tinyTail, hardMax));
-          if (fwd > cut) {
-            cut = fwd;
-            page = remaining.slice(0, cut).trim();
-            rem = remaining.slice(cut).trim();
-          }
-        }
-
-        if (page) pagesOut.push(page);
+        if (!page || page === remaining) break;
+        pagesOut.push(page);
         remaining = rem;
       }
 
       return remaining;
     }
 
-    let buf = "";
+    let bufUnits = [];
+    let bufText = '';
     let bufProtected = false;
 
-    const cleanBlocks = (blocks || [])
-      .map(b => String(b || "").trim())
-      .filter(Boolean)
-      .flatMap(splitInlineProtectedSubBlocks)
-      .filter(Boolean);
+    function resetBuf() {
+      bufUnits = [];
+      bufText = '';
+      bufProtected = false;
+    }
 
-    for (let i = 0; i < cleanBlocks.length; i++) {
-      const block = cleanBlocks[i];
-      const blockProtected = isProtectedBlock(block);
+    function setBufFromUnit(unit) {
+      resetBuf();
+      if (!unit) return;
+      bufUnits = [unit];
+      bufText = unit.text;
+      bufProtected = !!unit.protected;
+    }
 
-      if (!buf) {
-        if (block.length > hardMax) {
-          buf = forceSplitOversizedBlock(block);
-          bufProtected = isProtectedBlock(buf);
+    function appendUnit(unit) {
+      if (!unit) return;
+      bufUnits.push(unit);
+      bufText = joinUnits(bufUnits);
+      bufProtected = bufProtected || !!unit.protected;
+    }
+
+    function finalizeBuf() {
+      if (!bufText) return;
+      pagesOut.push(bufText.trim());
+      resetBuf();
+    }
+
+    function setBufFromText(text, protectedFlag) {
+      const unit = makeUnit(text, protectedFlag);
+      if (!unit) {
+        resetBuf();
+        return;
+      }
+      setBufFromUnit(unit);
+    }
+
+    for (const unit of units) {
+      if (!bufText) {
+        if (unit.text.length > (unit.protected ? protectedHardMax : hardMax)) {
+          const remainder = splitOversizedText(unit.text, { protectedMode: unit.protected });
+          setBufFromText(remainder, unit.protected);
         } else {
-          buf = block;
-          bufProtected = blockProtected;
+          setBufFromUnit(unit);
         }
         continue;
       }
 
-      const candidate = `${buf}\n\n${block}`;
+      const candidateUnits = bufUnits.concat(unit);
+      const candidateText = joinUnits(candidateUnits);
+      const candidateProtected = bufProtected || unit.protected;
+      const candidateLimit = candidateProtected ? protectedHardMax : hardMax;
 
-      if (candidate.length <= target) {
-        buf = candidate;
-        bufProtected = bufProtected || blockProtected;
+      if (candidateText.length <= target) {
+        appendUnit(unit);
         continue;
       }
 
-      const continuationRisk =
-        endsWithLeadIn(buf) ||
-        startsWithOpenQuote(block) ||
-        hasUnclosedDoubleQuote(buf);
+      const currentSafe =
+        bufText.length >= minChars &&
+        endsWithStrongStop(bufText) &&
+        !endsWithLeadIn(bufText) &&
+        !hasUnclosedDoubleQuote(bufText);
 
-      const safeToFinalizeBuf =
-        buf.length >= minChars &&
-        endsWithStrongStop(buf) &&
-        !continuationRisk;
+      const canGrowSoft =
+        !candidateProtected &&
+        candidateText.length <= softMax &&
+        !endsWithLeadIn(bufText) &&
+        !startsWithOpenQuote(unit.text);
 
-      if ((blockProtected || bufProtected) && safeToFinalizeBuf) {
-        pagesOut.push(buf.trim());
+      if (canGrowSoft) {
+        appendUnit(unit);
+        continue;
+      }
 
-        if (block.length > hardMax) {
-          buf = forceSplitOversizedBlock(block);
-          bufProtected = isProtectedBlock(buf);
+      if (currentSafe) {
+        finalizeBuf();
+        if (unit.text.length > (unit.protected ? protectedHardMax : hardMax)) {
+          const remainder = splitOversizedText(unit.text, { protectedMode: unit.protected });
+          setBufFromText(remainder, unit.protected);
         } else {
-          buf = block;
-          bufProtected = blockProtected;
+          setBufFromUnit(unit);
         }
         continue;
       }
 
-      if (!blockProtected && candidate.length <= softMax) {
-        buf = candidate;
-        bufProtected = bufProtected || blockProtected;
+      if (candidateText.length <= candidateLimit) {
+        appendUnit(unit);
         continue;
       }
 
-      if (safeToFinalizeBuf) {
-        pagesOut.push(buf.trim());
-
-        if (block.length > hardMax) {
-          buf = forceSplitOversizedBlock(block);
-          bufProtected = isProtectedBlock(buf);
+      if (bufText.length >= minChars) {
+        finalizeBuf();
+        if (unit.text.length > (unit.protected ? protectedHardMax : hardMax)) {
+          const remainder = splitOversizedText(unit.text, { protectedMode: unit.protected });
+          setBufFromText(remainder, unit.protected);
         } else {
-          buf = block;
-          bufProtected = blockProtected;
+          setBufFromUnit(unit);
         }
         continue;
       }
 
-      buf = candidate;
-      bufProtected = bufProtected || blockProtected;
-
-      if (buf.length > hardMax) {
-        buf = forceSplitOversizedBlock(buf);
-        bufProtected = isProtectedBlock(buf);
+      appendUnit(unit);
+      if (bufText.length > candidateLimit) {
+        const remainder = splitOversizedText(bufText, { protectedMode: bufProtected });
+        setBufFromText(remainder, bufProtected);
       }
     }
 
-    if (buf.trim()) pagesOut.push(buf.trim());
+    if (bufText.trim()) pagesOut.push(bufText.trim());
 
     const merged = [];
-    for (let j = 0; j < pagesOut.length; j++) {
-      const p = pagesOut[j];
+    for (let i = 0; i < pagesOut.length; i++) {
+      const p = normalizeBlockText(pagesOut[i]);
       if (!p) continue;
-
-      if (p.length >= minChars || merged.length === 0) {
+      if (!merged.length) {
         merged.push(p);
         continue;
       }
 
       const prev = merged[merged.length - 1];
       const combined = `${prev}\n\n${p}`;
-
       if (
+        p.length < minChars &&
         combined.length <= hardMax &&
         endsWithStrongStop(prev) &&
-        !startsWithOpenQuote(p)
+        !startsWithOpenQuote(p) &&
+        !listLineRe.test(p)
       ) {
         merged[merged.length - 1] = combined.trim();
-        continue;
+      } else {
+        merged.push(p);
       }
-
-      merged.push(p);
     }
 
     return merged;
