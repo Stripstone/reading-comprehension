@@ -1964,7 +1964,7 @@ function writeAnchorsToCache(pageHash, payload) {
     const blocks = [];
     const candidates = root.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li');
     candidates.forEach((el) => {
-      let txt = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      const txt = (el.textContent || '').replace(/\s+/g, ' ').trim();
       if (!txt) return;
       // Ignore obvious nav junk
       if (txt.length < 2) return;
@@ -1978,41 +1978,30 @@ function writeAnchorsToCache(pageHash, payload) {
     return blocks;
   }
 
-  // Import-time text normalization (build-safe)
-  function fixDropCapsInLine(s) {
-    const str = String(s || '');
-    // Start-of-line drop cap: "M ost" -> "Most" (also handles opening quotes)
-    return str
-      .replace(/^(\s*["“']\s*)([A-Z])\s+([a-z])/g, (m, q, a, b) => `${q}${a}${b}`)
-      .replace(/^(\s*)([A-Z])\s+([a-z])/g, (m, p, a, b) => `${p}${a}${b}`);
+  // Import cleanup helpers (deterministic, build-safe)
+  function fixLeadingDropCapSpacing(text) {
+    let s = String(text || '');
+    // "T he" -> "The" (start of block)
+    s = s.replace(/^([A-Z])\s+([a-z])/g, '$1$2');
+    // "\" T he" -> "\"The" (quote/paren variants)
+    s = s.replace(/^(["“'\(\[]\s*)([A-Z])\s+([a-z])/g, '$1$2$3');
+    return s;
   }
 
-  function isDecorativeSpacedHeading(s) {
-    const str = String(s || '').trim();
-    if (!str) return false;
-    if (str.length > 80) return false;
-    // If it contains lowercase early, it's not a decorative spaced heading.
-    if (/[a-z]/.test(str)) return false;
-    // Many single-letter tokens separated by spaces: "C H A P T E R O N E"
-    const tokens = str.split(/\s+/).filter(Boolean);
-    if (tokens.length < 6) return false;
-    const singleLetter = tokens.filter(t => /^[A-Z]$/.test(t)).length;
-    const letters = tokens.join('');
-    // Require high ratio of single-letter tokens.
-    if (singleLetter / tokens.length < 0.8) return false;
-    // Require mostly letters.
-    if (!/^[A-Z0-9]+$/.test(letters)) return false;
-    return true;
-  }
+  function isDecorativeSpacedHeading(text) {
+    const s = String(text || '').trim();
+    if (!s) return false;
+    if (s.length > 80) return false;
+    if (/[a-z]/.test(s)) return false; // if it has lowercase, it's not the decorative spaced heading style
 
-  function normalizeImportedBlocks(blocks, { cleanupHeadings = true } = {}) {
-    const out = [];
-    for (const b of (blocks || [])) {
-      let line = fixDropCapsInLine(b);
-      if (cleanupHeadings && isDecorativeSpacedHeading(line)) continue; // remove decorative heading
-      out.push(line);
-    }
-    return out;
+    // Many single-letter uppercase tokens separated by spaces (e.g., "C H A P T E R O N E")
+    const singleLetterTokens = (s.match(/\b[A-Z]\b/g) || []).length;
+    if (singleLetterTokens >= 6) return true;
+
+    // Or a tight pattern of "A B C D" letters across the line
+    if (/^(?:[A-Z]\s+){5,}[A-Z]$/.test(s)) return true;
+
+    return false;
   }
 
   function chunkBlocksToPages(blocks, targetChars = 1600) {
@@ -2288,7 +2277,7 @@ function writeAnchorsToCache(pageHash, payload) {
     return { metadata: md, items, spineHrefs };
   }
 
-  async function epubToMarkdownFromSelected(zip, tocItems, selectedIds, spineHrefs, { pageChars = 1600, cleanupHeadings = true, onProgress = null } = {}) {
+  async function epubToMarkdownFromSelected(zip, tocItems, selectedIds, spineHrefs, { pageChars = 1600, cleanupHeadings = false, onProgress = null } = {}) {
     // Extract each selected TOC item as a range in spine order: from its start file until next TOC start.
     const toc = (tocItems || [])
       .slice()
@@ -2320,9 +2309,12 @@ function writeAnchorsToCache(pageHash, payload) {
       for (let s = it.spineIndex; s < endSpine; s++) {
         const href = spine[s];
         const html = await zipReadText(zip, href);
-        extractTextBlocksFromHtml(html).forEach(b => blocks.push(b));
+        extractTextBlocksFromHtml(html)
+          .map(fixLeadingDropCapSpacing)
+          .filter(b => b && (!cleanupHeadings || !isDecorativeSpacedHeading(b)))
+          .forEach(b => blocks.push(b));
       }
-      sections.push({ title: it.title, blocks: normalizeImportedBlocks(blocks, { cleanupHeadings }) });
+      sections.push({ title: it.title, blocks });
       done++;
       if (typeof onProgress === 'function') onProgress({ done, total: chosen.length });
     }
@@ -4130,7 +4122,7 @@ function writeAnchorsToCache(pageHash, payload) {
 
       // Hide selection tools when in advanced mode to avoid cramped layout.
       const tools = document.querySelector('.import-picker-tools');
-      if (tools) tools.style.display = _advancedMode ? 'none' : 'flex';
+      if (tools) tools.style.display = _advancedMode ? 'none' : '';
 
       if (advancedToggleBtn) advancedToggleBtn.textContent = _advancedMode ? 'Contents' : 'Advanced';
     }
@@ -4244,11 +4236,14 @@ function writeAnchorsToCache(pageHash, payload) {
             if (typeof start === 'number') {
               for (let s = start; s < end; s++) {
                 const html = await zipReadText(_zip, spine[s]);
-                extractTextBlocksFromHtml(html).forEach(b => blocks.push(b));
+                const cleanupHeadings = !!cleanupHeadingsChk?.checked;
+                extractTextBlocksFromHtml(html)
+                  .map(fixLeadingDropCapSpacing)
+                  .filter(b => b && (!cleanupHeadings || !isDecorativeSpacedHeading(b)))
+                  .forEach(b => blocks.push(b));
               }
             }
-            const cleaned = normalizeImportedBlocks(blocks, { cleanupHeadings: cleanupHeadingsChk ? !!cleanupHeadingsChk.checked : true });
-            const sample = (cleaned || []).slice(0, 10).join('\n\n');
+            const sample = (blocks || []).slice(0, 10).join('\n\n');
             if (previewBody) previewBody.textContent = sample || '(No preview available)';
           } catch (e) {
             if (previewBody) previewBody.textContent = '(Preview failed to load)';
@@ -4364,8 +4359,8 @@ function writeAnchorsToCache(pageHash, payload) {
 
         // Build markdown
         const pageChars = parseInt(pageSizeSel?.value || '1600', 10) || 1600;
-        const cleanupHeadings = cleanupHeadingsChk ? !!cleanupHeadingsChk.checked : true;
         // keepParasChk is currently informational; paragraph preservation is the default behavior.
+        const cleanupHeadings = !!cleanupHeadingsChk?.checked;
 
         const md = await epubToMarkdownFromSelected(
           _zip,

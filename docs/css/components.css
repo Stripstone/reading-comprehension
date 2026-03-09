@@ -569,7 +569,7 @@ body {
       .import-picker { height: auto; }
 
       /* Mobile/tablet: keep the chapter list panel tall enough to be usable. */
-      .import-picker-left { min-height: 55vh; }
+      .import-picker-left { min-height: 65vh; }
 
       /* Preserve a solid preview area below the chapter list. */
       .import-picker-right {
@@ -2057,7 +2057,7 @@ body {
 
 @media (max-width: 520px) {
   html {
-    zoom: 0.90;
+    zoom: 0.80;
   }
 }
 
