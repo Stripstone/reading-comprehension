@@ -2086,6 +2086,43 @@ function writeAnchorsToCache(pageHash, payload) {
       return Math.min(limit, Math.max(minChars, Math.round(target)));
     }
 
+    // When we're forced to cut near hardMax, avoid awkward splits like:
+    //   "... institution of" | "slavery ..."  or  "... we will wholly" | "discontinue ..."
+    // We keep this intentionally narrow and deterministic for build safety.
+    function adjustCutForAwkwardSplit(fullText, cutIdx) {
+      const t = String(fullText || '');
+      let cut = Math.max(0, Math.min(cutIdx, t.length));
+      let page = t.slice(0, cut).trimEnd();
+      let rem = t.slice(cut).trimStart();
+      if (!page || !rem) return cut;
+
+      const first = rem[0] || '';
+      // Only apply when remainder starts with lowercase (continuation).
+      if (!/[a-z]/.test(first)) return cut;
+
+      const words = page.split(/\s+/).filter(Boolean);
+      const lastWord = (words[words.length - 1] || '').toLowerCase();
+
+      const badEndWords = new Set([
+        // prepositions / conjunctions
+        'of','to','and','or','but','with','for','in','on','at','by','from','as','into','over','under','within','without',
+        // articles / demonstratives
+        'the','a','an','this','that','these','those',
+        // adverbs that frequently dangle
+        'wholly','fully','partly','largely','mostly'
+      ]);
+      if (!badEndWords.has(lastWord)) return cut;
+
+      // Backtrack to the whitespace BEFORE the last word.
+      const lastWordStart = page.lastIndexOf(' ' + words[words.length - 1]);
+      if (lastWordStart <= 0) return cut;
+      const newCut = lastWordStart;
+
+      // Don't create a tiny page while adjusting.
+      if (newCut >= Math.round(minChars * 0.85)) return newCut;
+      return cut;
+    }
+
     let buf = '';
     const cleanBlocks = (blocks || []).map(b => String(b || '').trim()).filter(Boolean);
     let i = 0;
@@ -2136,6 +2173,15 @@ function writeAnchorsToCache(pageHash, payload) {
         let cut = findBestCut(buf, hardMax);
         let page = buf.slice(0, cut).trim();
         let rem = buf.slice(cut).trim();
+
+        // If we cut on whitespace and the page ends with a dangling lead-in word ("of", "with", "wholly", ...)
+        // while the remainder starts lowercase, backtrack slightly.
+        const adjusted = adjustCutForAwkwardSplit(buf, cut);
+        if (adjusted !== cut) {
+          cut = adjusted;
+          page = buf.slice(0, cut).trim();
+          rem = buf.slice(cut).trim();
+        }
 
         // If remainder starts with an opening quote/paren/bracket, backtrack to an earlier cut if possible.
         if (rem && startsWithOpenQuote(rem)) {
