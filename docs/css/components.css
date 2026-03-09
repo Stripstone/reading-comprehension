@@ -569,7 +569,7 @@ body {
       .import-picker { height: auto; }
 
       /* Mobile/tablet: keep the chapter list panel tall enough to be usable. */
-      .import-picker-left { min-height: 55vh; }
+      .import-picker-left { min-height: 50vh; }
 
       /* Preserve a solid preview area below the chapter list. */
       .import-picker-right {
@@ -615,7 +615,7 @@ body {
 
     .modal {
       width: min(720px, 96vw);
-      max-height: min(80vh, 820px);
+      max-height: min(85vh, 820px);
       overflow: auto;
       border: 2px solid var(--border);
       border-radius: 14px;
