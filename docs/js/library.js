@@ -268,10 +268,9 @@
   function chunkBlocksToPages(blocks, targetChars = 1600) {
     // Authoritative paging rule:
     // - Prefer stable page size.
-    // - Real break points are only . ? !
+    // - Real break points are only . ? ! that end a sentence-shaped span.
     // - Do not break inside paired blocks like quotes, (), [], {}.
     // - Do not break inside list sequences when they can stay together.
-    // - Reject weak page endings that are still clearly mid-thought.
 
     const pagesOut = [];
     const target = Math.max(400, targetChars | 0);
@@ -279,10 +278,10 @@
     const hardMax = Math.round(target * 1.30);
     const minChars = Math.round(target * 0.65);
     const closers = new Set(['"', "'", '”', '’', ')', ']', '}']);
-    const listLineRe = /^\s*(?:\d+[.)]\s+|[-•*]\s+|box|line|part)/i;
-    const abbrevRe = /(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|U\.S|U\.K|No)\.$/i;
-    const weakEndWordRe = /(?:and|or|but|nor|for|so|yet|of|to|with|in|on|at|by|from|into|onto|over|under|between|through|during|without|within|about|upon|the|a|an|this|that|these|those|my|your|his|her|its|our|their|any|some|each|every|another|such|said|shall|will|would|could|should|than|as)$/i;
-    const weakEndPhraseRe = /(?:one of the|two of the|three of the|some of the|any of the|part of the|according to the|because of the|in the|on the|to the|for the|with the|from the|by the|under the|over the|his majesty the|her majesty the|as well as|such as|known as|referred to as|pursuant to|subject to|consistent with|in favor of|in favour of)\s*$/i;
+    const listLineRe = /^\s*(?:\d+[.)]\s+|[-•*]\s+|box\b|line\b|part\b)/i;
+    const abbrevRe = /\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|U\.S|U\.K|No)\.$/i;
+    const continuationWordRe = /\b(?:and|or|but|nor|so|yet|the|a|an|of|to|with|for|in|on|at|by|from|as|into|onto|upon|over|under|between|through|during|without|within|about|against|around|because|than|that|this|these|those|their|his|her|its|our|your|my)\s*$/i;
+    const continuationPhraseRe = /\b(?:known as|such as|because of|instead of|according to|in the|to the|of the|for the|with the|by the|from the|his majesty the|her majesty the|one of the|part of the|members of the|rates,|fees,|taxes,)\s*$/i;
 
     function isListLine(s) {
       return listLineRe.test(String(s || '').trim());
@@ -297,51 +296,67 @@
       return isListLine(prevText) || isListLine(nextText) || endsWithListLead(prevText);
     }
 
-    function trailingSentenceCharIndex(text) {
-      const t = String(text || '').trimEnd();
-      if (!t) return -1;
-      let i = t.length - 1;
-      while (i >= 0 && closers.has(t[i])) i -= 1;
-      if (i < 0) return -1;
-      return /[.?!]/.test(t[i]) ? i : -1;
+    function tailText(text, end, span = 96) {
+      return String(text || '').slice(Math.max(0, end - span), end).replace(/\s+/g, ' ').trim();
     }
 
-    function tailWords(text, maxWords = 6) {
-      const words = String(text || '')
-        .trim()
-        .replace(/[“”"'‘’()\[\]{}]+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .split(' ')
-        .filter(Boolean);
-      return words.slice(-maxWords).join(' ');
+    function headText(text, start, span = 72) {
+      const t = String(text || '');
+      return t.slice(start, Math.min(t.length, start + span)).replace(/\s+/g, ' ').trim();
     }
 
-    function isWeakPageEnd(text) {
-      const t = String(text || '').trim();
-      if (!t) return true;
-      if (/[,:;]\s*$/.test(t)) return true;
-      const stopIdx = trailingSentenceCharIndex(t);
-      if (stopIdx < 0) return true;
-      const beforeStop = t.slice(0, stopIdx + 1);
-      if (t[stopIdx] === '.' && abbrevRe.test(beforeStop.slice(-18))) return true;
+    function tokenAround(text, idx) {
+      const t = String(text || '');
+      let s = Math.max(0, idx);
+      let e = Math.min(t.length, idx + 1);
+      while (s > 0 && !/\s/.test(t[s - 1])) s -= 1;
+      while (e < t.length && !/\s/.test(t[e])) e += 1;
+      return t.slice(s, e);
+    }
 
-      const tail = tailWords(beforeStop, 7);
-      if (weakEndPhraseRe.test(tail)) return true;
-      const lastWord = tailWords(beforeStop, 1);
-      if (weakEndWordRe.test(lastWord)) return true;
-
-      const tailRaw = t.slice(Math.max(0, t.length - 32));
-      if (/["')\]\}”’]\s*[.?!]["')\]\}”’]*\s*$/.test(tailRaw)) {
-        const cleanTail = tailWords(beforeStop, 4);
-        if (weakEndPhraseRe.test(cleanTail) || weakEndWordRe.test(tailWords(beforeStop, 1))) return true;
-      }
+    function isInternalPunctuationToken(token) {
+      const tok = String(token || '').trim();
+      if (!tok) return false;
+      if (/^(?:[A-Za-z0-9-]+\.){2,}[A-Za-z0-9-]*$/.test(tok)) return true; // founders.archives.gov / I.R.S.
+      if (/^(?:[A-Z]\.){2,}[A-Z]?\.?$/.test(tok)) return true;
+      if (/^\d+\.\d+(?:\b|[,)])/.test(tok)) return true; // 322.04 / 4.1
       return false;
+    }
+
+    function nextLooksLikeContinuation(nextHead) {
+      const n = String(nextHead || '').trim();
+      if (!n) return false;
+      if (/^[a-z]/.test(n)) return true;
+      if (/^\d+(?:\.\d+)+(?:\b|\s|[,)])/.test(n)) return true;
+      if (/^[,)\];:]/.test(n)) return true;
+      if (/^(?:gov|com|org|net|edu|mil)\b/i.test(n)) return true;
+      if (/^(?:Form\b|which\b|that\b|who\b|whom\b|whose\b|where\b|when\b|while\b|because\b|and\b|or\b|but\b|nor\b)/.test(n)) return true;
+      return false;
+    }
+
+    function hasResolvedSentenceShape(text, idx, end) {
+      const t = String(text || '');
+      const tail = tailText(t, end, 96);
+      const next = headText(t, end, 72);
+      const stopToken = tokenAround(t, idx);
+      const prevTail = tail.replace(/[.!?]["'”’\)\]\}]*\s*$/, '').trim();
+
+      if (!tail) return false;
+      if (continuationWordRe.test(prevTail)) return false;
+      if (continuationPhraseRe.test(prevTail)) return false;
+      if (/[,:;]\s*$/.test(prevTail)) return false;
+      if (/\b§\s*\d+\.$/.test(tail) && /^\d/.test(next)) return false;
+      if (/\b(?:Section|Sec\.|Article|Art\.|No)\s+\d+\.$/i.test(tail) && /^\d/.test(next)) return false;
+      if (/\b(?:[A-Za-z0-9-]+\.)+[A-Za-z0-9-]*\.?$/.test(stopToken) && nextLooksLikeContinuation(next)) return false;
+      if (isInternalPunctuationToken(stopToken)) return false;
+      if (nextLooksLikeContinuation(next)) return false;
+      return true;
     }
 
     function isSentenceStopAt(text, idx) {
       const ch = text[idx];
       if (ch !== '.' && ch !== '?' && ch !== '!') return false;
-      const before = text.slice(Math.max(0, idx - 18), idx + 1);
+      const before = text.slice(Math.max(0, idx - 16), idx + 1);
       if (ch === '.' && abbrevRe.test(before)) return false;
       return true;
     }
@@ -376,7 +391,8 @@
         let end = i + 1;
         while (end < t.length && closers.has(t[end])) end += 1;
         while (end < t.length && /\s/.test(t[end])) end += 1;
-        if (!isWeakPageEnd(t.slice(0, end))) stops.push(end);
+        if (!hasResolvedSentenceShape(t, i, end)) continue;
+        stops.push(end);
       }
       return stops;
     }
@@ -412,8 +428,8 @@
       let page = t.slice(0, cut).trim();
       let rest = t.slice(cut).trim();
 
-      if ((page.length < minChars || isWeakPageEnd(page)) && rest) {
-        const forward = findForwardStop(t, Math.max(cut, target), Math.max(1800, t.length - cut));
+      if (page.length < minChars && rest) {
+        const forward = findForwardStop(t, cut, Math.max(1800, t.length - cut));
         if (forward > cut) {
           page = t.slice(0, forward).trim();
           rest = t.slice(forward).trim();
@@ -481,7 +497,7 @@
     for (let j = 0; j < pagesOut.length; j++) {
       const p = pagesOut[j];
       if (!p) continue;
-      if ((p.length >= minChars && !isWeakPageEnd(p)) || merged.length === 0) {
+      if (p.length >= minChars || merged.length === 0) {
         merged.push(p);
         continue;
       }
