@@ -166,11 +166,12 @@
     if (!t.trim()) return { type: 'unknown', tags: [] };
     const tags = [];
     let type = 'unknown';
-    if (/\bchapter\b|\bch\.?\s*\d+\b/.test(t) || /^chapter\s+\w+/.test(t)) { type = 'chapter'; tags.push('Chapter'); }
-    if (/\bintroduction\b|\bprologue\b|\bforeword\b/.test(t)) { type = 'intro'; tags.push('Intro'); }
-    if (/\backnowledg|\bdedication|\bcopyright|\bpermissions|\babout\b/.test(t)) { type = 'front_matter'; tags.push('Front'); }
-    if (/\bappendix\b|\breferences\b|\bbibliography\b|\bnotes\b/.test(t)) { type = 'appendix'; tags.push('Appendix'); }
-    if (/\bindex\b|\bglossary\b/.test(t)) { type = 'index'; tags.push('Index'); }
+    if (/\bmodule\s+\d+\b/.test(t)) { type = 'chapter'; tags.push('Module'); }
+    else if (/\bchapter\b|\bch\.?\s*\d+\b/.test(t) || /^chapter\s+\w+/.test(t)) { type = 'chapter'; tags.push('Chapter'); }
+    else if (/\bintroduction\b|\bprologue\b|\bforeword\b|\bcase study\b/.test(t)) { type = 'intro'; tags.push('Intro'); }
+    else if (/\backnowledg|\bdedication|\bcopyright|\bpermissions|\babout\b|\bcontents?\b/.test(t)) { type = 'front_matter'; tags.push('Front'); }
+    else if (/\bappendix\b|\breferences\b|\bbibliography\b|\bnotes\b/.test(t)) { type = 'appendix'; tags.push('Appendix'); }
+    else if (/\bindex\b|\bglossary\b/.test(t)) { type = 'index'; tags.push('Index'); }
     return { type, tags };
   }
 
@@ -380,6 +381,7 @@
     const abbrevWordRe = /\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|U\.S|U\.K|No|Inc|Ltd)\.$/i;
     const continuationWordRe = /\b(?:and|or|but|nor|for|so|yet|of|to|with|without|in|on|at|by|from|as|than|that|which|who|whom|whose|where|when|while|because|if|after|before|during|under|over|between|among|through|into|onto|about|against|around|across|within|toward|towards|the|a|an|this|that|these|those|my|your|his|her|its|our|their|some|any|each|every|another|other|such)\s*$/i;
     const danglingPhraseRe = /\b(?:known as|such as|because of|in the|to the|of the|with the|for the|on the|from the|at the|by the|one of the|part of the|his majesty the|their property and their)\s*$/i;
+    const cleanWordRe = /^[A-Za-z]+(?:['’][A-Za-z]+)?$/;
 
     function isListLine(s) {
       return listLineRe.test(String(s || '').trim());
@@ -397,12 +399,20 @@
     function isSentenceStopAt(text, idx) {
       const ch = text[idx];
       if (ch !== '.' && ch !== '?' && ch !== '!') return false;
-      const before = text.slice(Math.max(0, idx - 24), idx + 1);
-      const after = text.slice(idx + 1, idx + 18);
+      const before = text.slice(Math.max(0, idx - 40), idx + 1);
+      const after = text.slice(idx + 1, idx + 32);
+      const prevCh = idx > 0 ? text[idx - 1] : '';
+      const nextCh = idx + 1 < text.length ? text[idx + 1] : '';
+      const nextWord = (after.match(/^\s*([A-Za-z0-9][A-Za-z0-9.-]*)/) || [null, ''])[1];
       if (ch === '.' && abbrevWordRe.test(before)) return false;
+      if (ch === '.' && prevCh && /[A-Za-z0-9]/.test(prevCh) && nextCh && /[A-Za-z0-9]/.test(nextCh)) return false;
       if (ch === '.' && /(?:[A-Za-z]\.){2,}$/.test(before)) return false;
-      if (ch === '.' && /[A-Za-z0-9-]+\.[A-Za-z0-9.-]+$/.test(before) && /^\s*(?:gov|com|org|net|edu|io|co)\b/i.test(after)) return false;
-      if (ch === '.' && /(?:§\s*)?\d+\.\d+$/.test(before)) return false;
+      if (ch === '.' && /(?:^|\s)[A-Za-z]\.$/.test(before) && /^[A-Za-z]\./.test(after.trim())) return false;
+      if (ch === '.' && /(?:§\s*)?\d+\.$/.test(before) && /^\s*\d/.test(after)) return false;
+      if (ch === '.' && /(?:sec|section|art|article|no)\.?\s*\d+\.$/i.test(before) && /^\s*[A-Za-z0-9(]/.test(after)) return false;
+      if (ch === '.' && /[A-Za-z0-9-]+\.[A-Za-z0-9.-]+$/.test(before)) return false;
+      if (ch === '.' && nextWord && /^(?:gov|com|org|net|edu|io|co|us|uk)$/i.test(nextWord)) return false;
+      if (ch === '.' && /^\s*(?:Form\b|§\b|\d+(?:\.\d+)+(?:\s*\([a-z0-9]+\))*)/i.test(after)) return false;
       return true;
     }
 
@@ -472,6 +482,19 @@
       return false;
     }
 
+    function hasStrongSentenceShape(text) {
+      const left = String(text || '').replace(/\s+/g, ' ').trim();
+      if (!left) return false;
+      if (!/[.!?]["'”’)\]}]*\s*$/.test(left)) return false;
+      const body = left.replace(/[.!?]["'”’)\]}]*\s*$/, '').trim();
+      const trailing = body.split(/\s+/).slice(-5).filter(Boolean);
+      const clean = trailing.filter(w => cleanWordRe.test(w));
+      if (clean.length < 3) return false;
+      const recent = trailing.slice(-3);
+      if (!recent.every(w => cleanWordRe.test(w))) return false;
+      return true;
+    }
+
     function isValidCut(text, cut) {
       const left = text.slice(0, cut).trim();
       const right = text.slice(cut).trim();
@@ -481,6 +504,7 @@
       if (right && startsLikeContinuation(right)) return false;
       const endsTerminal = /[.!?]["'”’)\]}]*\s*$/.test(left);
       if (!endsTerminal && right && !looksLikeMajorHeading(right) && !isListLine(right)) return false;
+      if (endsTerminal && !hasStrongSentenceShape(left) && right && !looksLikeMajorHeading(right) && !isListLine(right)) return false;
       return true;
     }
 
@@ -507,8 +531,19 @@
       while ((idx = t.indexOf('\n\n', idx)) >= 0) { paras.push(idx + 2); idx += 2; }
       const validPara = paras.filter(c => c >= minChars && c <= hardMax && !startsLikeContinuation(t.slice(c)) && !endsLikeDanglingTail(t.slice(0, c)));
       if (validPara.length) return validPara[validPara.length - 1];
-      const ws = t.lastIndexOf(' ', Math.min(hardMax, t.length));
-      if (ws >= minChars && !startsLikeContinuation(t.slice(ws)) && !endsLikeDanglingTail(t.slice(0, ws))) return ws;
+
+      for (let pos = Math.min(hardMax, t.length - 1); pos >= minChars; pos--) {
+        if (t[pos] !== ' ') continue;
+        const left = t.slice(0, pos).trim();
+        const right = t.slice(pos).trim();
+        if (!left || !right) continue;
+        if (endsLikeDanglingTail(left)) continue;
+        if (startsLikeContinuation(right)) continue;
+        const lastToken = (left.match(/([A-Za-z0-9§][A-Za-z0-9.§'’\-]*)$/) || [null, ''])[1];
+        const firstToken = (right.match(/^([A-Za-z0-9§][A-Za-z0-9.§'’\-]*)/) || [null, ''])[1];
+        if (lastToken && /\.$/.test(lastToken) && firstToken && (/^(?:[A-Za-z]\.|\d)/.test(firstToken) || /^(?:gov|com|org|net|edu|io|co|Form)$/i.test(firstToken))) continue;
+        return pos;
+      }
       return Math.min(t.length, hardMax);
     }
 

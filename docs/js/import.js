@@ -164,6 +164,7 @@
     let _tocItems = []; // {id,title,href,selected,tags,type,preview}
     let _activeId = null;
     let _spineHrefs = [];
+    let _bookTitle = '';
 
     let _advancedMode = false;
 
@@ -285,15 +286,39 @@
               const ni = hrefToIndex.get(_normEpubHref(nxt.href));
               if (typeof ni === 'number' && typeof start === 'number' && ni > start) { end = ni; break; }
             }
+            let nextSameSpine = null;
+            for (let j = it._order + 1; j < _tocItems.length; j++) {
+              const nxt = _tocItems[j];
+              const ni = hrefToIndex.get(_normEpubHref(nxt.href));
+              if (typeof ni === 'number' && typeof start === 'number' && ni === start && Number.isFinite(nxt.blockIndex)) {
+                nextSameSpine = nxt;
+                break;
+              }
+              if (typeof ni === 'number' && typeof start === 'number' && ni > start) break;
+            }
             const blocks = [];
             if (typeof start === 'number') {
               for (let s = start; s < end; s++) {
                 const html = await zipReadText(_zip, spine[s]);
                 const cleanupHeadings = !!cleanupHeadingsChk?.checked;
-                extractTextBlocksFromHtml(html)
-                  .map(fixLeadingDropCapSpacing)
-                  .filter(b => b && (!cleanupHeadings || !isDecorativeSpacedHeading(b)))
-                  .forEach(b => blocks.push(b));
+                let cleaned = extractTextBlocksFromHtml(html)
+                  .map(b => cleanImportedBlock(b, { bookTitle: _bookTitle || '', artifactTitles: _tocItems.map(x => x.title) }))
+                  .filter(b => b && (!cleanupHeadings || !isDecorativeSpacedHeading(b)));
+                cleaned = mergeFragmentedBlocks(cleaned)
+                  .filter(b => b && (!cleanupHeadings || !isDecorativeSpacedHeading(b)));
+                let startIdx = 0;
+                let endIdx = cleaned.length;
+                if (s === start && Number.isFinite(it.blockIndex)) startIdx = Math.min(cleaned.length, Math.max(0, it.blockIndex));
+                if (s === start && nextSameSpine && Number.isFinite(nextSameSpine.blockIndex)) endIdx = Math.min(endIdx, Math.max(startIdx, nextSameSpine.blockIndex));
+                if (s === end - 1 && !nextSameSpine) {
+                  for (let j = it._order + 1; j < _tocItems.length; j++) {
+                    const nxt = _tocItems[j];
+                    const ni = hrefToIndex.get(_normEpubHref(nxt.href));
+                    if (typeof ni === 'number' && ni === s && Number.isFinite(nxt.blockIndex)) { endIdx = Math.min(endIdx, Math.max(startIdx, nxt.blockIndex)); break; }
+                    if (typeof ni === 'number' && ni > s) break;
+                  }
+                }
+                for (let bi = startIdx; bi < endIdx; bi++) blocks.push(cleaned[bi]);
               }
             }
             const sample = (blocks || []).slice(0, 10).join('\n\n');
@@ -313,6 +338,7 @@
       _zip = null;
       _tocItems = [];
       _activeId = null;
+      _bookTitle = _file ? _file.name.replace(/\.epub$/i, '').trim() : '';
       if (!scanBtn) return;
       if (!_file) {
         scanBtn.disabled = true;
@@ -340,6 +366,7 @@
         const { metadata, items, spineHrefs } = await epubParseToc(_zip, opfPath);
         _spineHrefs = Array.isArray(spineHrefs) ? spineHrefs : [];
         const baseTitle = (metadata?.title || _file.name.replace(/\.epub$/i, '')).trim();
+        _bookTitle = baseTitle;
 
         // Build toc list with ids
         _tocItems = (items || []).map((it, idx) => {
@@ -355,6 +382,7 @@
             id: `${idx}:${t}`,
             title: t,
             href: it.href,
+            blockIndex: Number.isFinite(it.blockIndex) ? it.blockIndex : null,
             _order: idx,
             type: cls.type,
             tags: cls.tags,
@@ -363,12 +391,13 @@
         }).filter(Boolean);
 
         // De-dupe obvious junk: empty titles, duplicates by href
-        const seenHref = new Set();
+        const seenLoc = new Set();
         _tocItems = _tocItems.filter((x) => {
           if (!x.title || x.title.length < 2) return false;
           if (!x.href) return false;
-          if (seenHref.has(x.href)) return false;
-          seenHref.add(x.href);
+          const locKey = `${x.href}|${Number.isFinite(x.blockIndex) ? x.blockIndex : ''}|${x.title.toLowerCase()}`;
+          if (seenLoc.has(locKey)) return false;
+          seenLoc.add(locKey);
           return true;
         });
 
