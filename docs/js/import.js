@@ -164,7 +164,6 @@
     let _tocItems = []; // {id,title,href,selected,tags,type,preview}
     let _activeId = null;
     let _spineHrefs = [];
-    let _bookTitle = '';
 
     let _advancedMode = false;
 
@@ -341,7 +340,6 @@
         const { metadata, items, spineHrefs } = await epubParseToc(_zip, opfPath);
         _spineHrefs = Array.isArray(spineHrefs) ? spineHrefs : [];
         const baseTitle = (metadata?.title || _file.name.replace(/\.epub$/i, '')).trim();
-        _bookTitle = baseTitle;
 
         // Build toc list with ids
         _tocItems = (items || []).map((it, idx) => {
@@ -425,7 +423,7 @@
           {
             pageChars,
             cleanupHeadings,
-            bookTitle: _bookTitle,
+            bookTitle: title,
             onProgress: ({ done, total }) => {
               const pct = total ? Math.round((done / total) * 80) : 0;
               setProgress(pct, `Extracting sections (${done}/${total})`, `${createdPages} pages created`);

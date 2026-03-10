@@ -221,12 +221,14 @@
     return Array.from(out).filter(x => x && x.split(/\s+/).length <= 6);
   }
 
+  
   function looksLikeMajorHeading(text) {
     const s = normalizeTocLabel(text);
     if (!s) return false;
     if (s.length > 140) return false;
-    if (/:$/.test(s) && !/^(module\s+\d+|appendix\s+[a-z]|case study|introduction|overview|glossary|references|bibliography|notes)/i.test(s)) return false;
-    if (/^(module\s+\d+|appendix\s+[a-z]|introduction|case study|overview|glossary|references|bibliography|notes|acknowledg)/i.test(s)) return true;
+    if (/^(participants?|sample|checklist|transcript|question\s+\d+|tips?)\b/i.test(s)) return false;
+    if (/:$/.test(s) && !/^(module\s+\d+|appendix\s+[a-z]|case study|introduction|overview|glossary|references|bibliography|notes)\b/i.test(s)) return false;
+    if (/^(module\s+\d+\b|appendix\s+[a-z]\b|introduction\b|case study\b|overview\b|glossary\b|references\b|bibliography\b|notes\b|acknowledg)/i.test(s)) return true;
     if (/^[A-Z][A-Za-z0-9'’\-]*(?:\s+[A-Z][A-Za-z0-9'’\-]*){1,8}$/.test(s) && !/[.!?]$/.test(s)) return true;
     return false;
   }
@@ -237,15 +239,24 @@
     for (const t of vars) {
       const e = escapeRegExp(t);
       if (!e) continue;
-      s = s.replace(new RegExp(`(^|\s)\d{1,3}\s+${e}(?=\s|$)`, 'gi'), ' ');
-      s = s.replace(new RegExp(`(^|\s)${e}\s+\d{1,3}(?=\s|$)`, 'gi'), ' ');
+      s = s.replace(new RegExp(`(^|\\s)\\d{1,3}\\s+${e}(?=\\s|$)`, 'gi'), ' ');
+      s = s.replace(new RegExp(`(^|\\s)${e}\\s+\\d{1,3}(?=\\s|$)`, 'gi'), ' ');
     }
     return s;
   }
 
+  
   function repairWrappedWordFragments(text) {
     let s = String(text || '');
-    s = s.replace(/([A-Za-z]{2,})-\s+([a-z]{2,})/g, (m, a, b) => {
+    // Preserve real hyphenated compounds that were split by a line wrap.
+    s = s.replace(/\b([A-Za-z]{2,})-\s+([A-Za-z]{2,}-[A-Za-z][A-Za-z\-]*)\b/g, '$1-$2');
+    // Repair ordinary wrapped words like iden- tifier, modera- tor, dis- cussion.
+    s = s.replace(/\b([A-Za-z]{2,})\s*-\s+([a-z]{2,})\b/g, (m, a, b) => {
+      const joined = `${a}${b}`;
+      if (joined.length > 28) return `${a}-${b}`;
+      return joined;
+    });
+    s = s.replace(/\b([A-Za-z]{2,})-\s+([a-z]{2,})\b/g, (m, a, b) => {
       const joined = `${a}${b}`;
       if (joined.length > 28) return `${a}-${b}`;
       return joined;
@@ -253,12 +264,17 @@
     return s;
   }
 
+  
   function cleanImportedBlock(text, { bookTitle = '', artifactTitles = [] } = {}) {
     let s = String(text || '').replace(/\s+/g, ' ').trim();
     if (!s) return '';
+
+    // Remove decorative spaced headings like "T I P S" before the real heading text.
+    s = s.replace(/^(?:[A-Z]\s+){2,}[A-Z](?=\s+[A-Z][a-z])\s+/, '');
+    s = s.replace(/\((?:contd\.?|continued)\)/gi, '');
     s = fixLeadingDropCapSpacing(s);
     s = repairWrappedWordFragments(s);
-    s = s.replace(/continued on page\s+\d+/gi, ' ');
+    s = s.replace(/\bcontinued on page\s+\d+\b/gi, ' ');
 
     const known = [];
     if (bookTitle) known.push(bookTitle);
@@ -267,12 +283,15 @@
 
     if (bookTitle) {
       const e = escapeRegExp(bookTitle);
-      s = s.replace(new RegExp(`^\s*\d{1,3}\s+${e}\s*`, 'i'), '');
-      s = s.replace(new RegExp(`^\s*${e}\s+\d{1,3}\s*`, 'i'), '');
-      s = s.replace(new RegExp(`\b${e}\b`, 'gi'), ' ');
+      s = s.replace(new RegExp(`^\\s*\\d{1,3}\\s+${e}\\s*`, 'i'), '');
+      s = s.replace(new RegExp(`^\\s*${e}\\s+\\d{1,3}\\s*`, 'i'), '');
+      s = s.replace(new RegExp(`\\b${e}\\b`, 'gi'), ' ');
     }
 
-    s = s.replace(/(?:overview|focus groups|in-depth interviews|interview checklist|sampling in qualitative research|qualitative research methods)\s+\d{1,3}/gi, ' ');
+    // Strip common running-head / side-label artifacts seen in handbook-style EPUBs.
+    s = s.replace(/\b(?:overview|focus groups|in-depth interviews|interview checklist|sampling in qualitative research|qualitative research methods|case study)\s+\d{1,3}\b/gi, ' ');
+    s = s.replace(/\b\d{1,3}\s+(?:overview|focus groups|in-depth interviews|interview checklist|sampling in qualitative research|qualitative research methods|case study)\b/gi, ' ');
+    s = s.replace(/\b(?:FOCUS|GROUPS|OVERVIEW|TIPS|CASE\s+STUDY)\b(?=\s+[A-Z][a-z])/g, ' ');
     s = s.replace(/^\s*\d{1,3}\s+/, '');
     s = s.replace(/\s+/g, ' ').trim();
 
@@ -300,11 +319,13 @@
     return s;
   }
 
+  
   function mergeFragmentedBlocks(blocks) {
     const out = [];
-    const listLineRe = /^\s*(\d+[\.|\)]\s+|box\s+\d+\s*:|line\s+\d+\s*:|part\s+[ivxlcdm]+|[-•*]\s+)/i;
+    const listLineRe = /^\s*(\d+[\.|\)]\s+|box\s+\d+\s*:|line\s+\d+\s*:|part\s+[ivxlcdm]+\b|[-•*]\s+)/i;
     const strongEndRe = /[.!?]["'”’\)\]\}]*\s*$/;
-    const startsLowerRe = /^\s*[a-z]/;
+    const weakTailRe = /(?:,|;|:)\s*$/;
+    const startsContinuationRe = /^\s*(?:[a-z]|\(|\[|\{|and\b|or\b|but\b|nor\b|for\b|so\b|yet\b|because\b|which\b|who\b|whom\b|whose\b|that\b|to\b|of\b|in\b|on\b|at\b|by\b|from\b|with\b|without\b|under\b|over\b|between\b|among\b|through\b|into\b|onto\b)/i;
 
     for (let i = 0; i < (blocks || []).length; i++) {
       const cur = String(blocks[i] || '').trim();
@@ -312,14 +333,17 @@
       if (out.length === 0) { out.push(cur); continue; }
 
       const prev = out[out.length - 1];
-      if (listLineRe.test(prev) || listLineRe.test(cur) || looksLikeMajorHeading(cur)) { out.push(cur); continue; }
+      if (listLineRe.test(prev) || listLineRe.test(cur) || looksLikeMajorHeading(cur) || looksLikeMajorHeading(prev)) {
+        out.push(cur);
+        continue;
+      }
 
-      if (/[A-Za-z]{2,}-$/.test(prev) && /^\s*[a-z]{2,}/.test(cur)) {
+      if (/\b[A-Za-z]{2,}-$/.test(prev) && /^\s*[a-z]{2,}/.test(cur)) {
         out[out.length - 1] = (prev.replace(/-\s*$/, '') + cur.replace(/^\s+/, '')).replace(/\s+/g, ' ').trim();
         continue;
       }
 
-      if (prev.length < 90 && !strongEndRe.test(prev) && startsLowerRe.test(cur)) {
+      if (((prev.length < 120 && !strongEndRe.test(prev)) || weakTailRe.test(prev)) && startsContinuationRe.test(cur)) {
         out[out.length - 1] = (prev + ' ' + cur).replace(/\s+/g, ' ').trim();
         continue;
       }
@@ -344,21 +368,18 @@
     return false;
   }
 
+  
   function chunkBlocksToPages(blocks, targetChars = 1600) {
-    // Authoritative paging rule:
-    // - Prefer stable page size.
-    // - Real break points are only . ? !
-    // - Do not break inside paired blocks like quotes, (), [], {}.
-    // - Do not break inside list sequences when they can stay together.
-
     const pagesOut = [];
     const target = Math.max(400, targetChars | 0);
-    const softMax = Math.round(target * 1.10);
-    const hardMax = Math.round(target * 1.30);
-    const minChars = Math.round(target * 0.65);
+    const minChars = Math.max(240, Math.round(target * 0.58));
+    const softMax = Math.round(target * 1.12);
+    const hardMax = Math.max(softMax + 240, Math.round(target * 2.2));
     const closers = new Set(['"', "'", '”', '’', ')', ']', '}']);
     const listLineRe = /^\s*(?:\d+[.)]\s+|[-•*]\s+|box\b|line\b|part\b)/i;
-    const abbrevRe = /\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|U\.S|U\.K|No)\.$/i;
+    const abbrevWordRe = /\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|U\.S|U\.K|No|Inc|Ltd)\.$/i;
+    const continuationWordRe = /\b(?:and|or|but|nor|for|so|yet|of|to|with|without|in|on|at|by|from|as|than|that|which|who|whom|whose|where|when|while|because|if|after|before|during|under|over|between|among|through|into|onto|about|against|around|across|within|toward|towards|the|a|an|this|that|these|those|my|your|his|her|its|our|their|some|any|each|every|another|other|such)\s*$/i;
+    const danglingPhraseRe = /\b(?:known as|such as|because of|in the|to the|of the|with the|for the|on the|from the|at the|by the|one of the|part of the|his majesty the|their property and their)\s*$/i;
 
     function isListLine(s) {
       return listLineRe.test(String(s || '').trim());
@@ -376,8 +397,12 @@
     function isSentenceStopAt(text, idx) {
       const ch = text[idx];
       if (ch !== '.' && ch !== '?' && ch !== '!') return false;
-      const before = text.slice(Math.max(0, idx - 12), idx + 1);
-      if (ch === '.' && abbrevRe.test(before)) return false;
+      const before = text.slice(Math.max(0, idx - 24), idx + 1);
+      const after = text.slice(idx + 1, idx + 18);
+      if (ch === '.' && abbrevWordRe.test(before)) return false;
+      if (ch === '.' && /(?:[A-Za-z]\.){2,}$/.test(before)) return false;
+      if (ch === '.' && /[A-Za-z0-9-]+\.[A-Za-z0-9.-]+$/.test(before) && /^\s*(?:gov|com|org|net|edu|io|co)\b/i.test(after)) return false;
+      if (ch === '.' && /(?:§\s*)?\d+\.\d+$/.test(before)) return false;
       return true;
     }
 
@@ -392,10 +417,7 @@
         const ch = t[i];
         const prev = i > 0 ? t[i - 1] : '';
 
-        if (ch === '"' && prev !== '\\') {
-          straightDouble = !straightDouble;
-          continue;
-        }
+        if (ch === '"' && prev !== '\\') { straightDouble = !straightDouble; continue; }
         if (ch === '“') { curlyDouble += 1; continue; }
         if (ch === '”') { curlyDouble = Math.max(0, curlyDouble - 1); continue; }
         if (ch === '(') { paren += 1; continue; }
@@ -416,123 +438,127 @@
       return stops;
     }
 
-    function findBackwardStop(text, maxIdx) {
-      const stops = collectSentenceStops(text, maxIdx);
-      for (let i = stops.length - 1; i >= 0; i--) {
-        if (stops[i] >= minChars) return stops[i];
-      }
+    function tailSnippet(text) {
+      return String(text || '').replace(/\s+/g, ' ').trim().slice(-120);
+    }
+
+    function headSnippet(text) {
+      return String(text || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    }
+
+    function startsLikeContinuation(text) {
+      const h = headSnippet(text);
+      if (!h) return false;
+      if (looksLikeMajorHeading(h) || isListLine(h)) return false;
+      if (/^[,;:.)\]}]/.test(h)) return true;
+      if (/^\((?:meaning|which|who|that|and|or|but|nor|for|so|yet|because|if|when|while|to|of|in|on|at|by|from|with|without|under|over|between|among|through|into|onto|about|against|around|across|within|toward|towards|him|her|his|their|the|a|an)\b/i.test(h)) return true;
+      if (/^(?:and|or|but|nor|for|so|yet|because|if|when|while|though|although|to|of|in|on|at|by|from|with|without|under|over|between|among|through|into|onto|about|against|around|across|within|toward|towards|him|her|his|their|the|a|an|gov)\b/i.test(h)) return true;
+      if (/^\d+(?:\.\d+)+(?:\s*\([a-z0-9]+\))*/i.test(h)) return true;
+      if (/^[a-z]/.test(h)) return true;
+      return false;
+    }
+
+    function endsLikeDanglingTail(text) {
+      const t = tailSnippet(text);
+      if (!t) return false;
+      if (/\b[A-Za-z]{2,}-\s*$/.test(t)) return true;
+      if (continuationWordRe.test(t)) return true;
+      if (danglingPhraseRe.test(t)) return true;
+      if (/(?:,|;|:)\s*$/.test(t)) return true;
+      if (/(?:§\s*)?\d+\.\d+(?:\s*\([a-z0-9]+\))*["'”’)\]}]*\s*$/i.test(t)) return true;
+      const lastToken = (t.match(/([A-Za-z0-9§][A-Za-z0-9.§'’\-]*)["'”’)\]}]*\s*$/) || [null, ''])[1];
+      if (lastToken && ((lastToken.match(/\./g) || []).length >= 2 || /[A-Za-z0-9-]+\.[A-Za-z0-9.-]+/.test(lastToken))) return true;
+      if (/\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|U\.S|U\.K|No|Inc|Ltd)\.$/i.test(t)) return true;
+      return false;
+    }
+
+    function isValidCut(text, cut) {
+      const left = text.slice(0, cut).trim();
+      const right = text.slice(cut).trim();
+      if (!left) return false;
+      if (isProtectedBoundary(left, right)) return false;
+      if (endsLikeDanglingTail(left)) return false;
+      if (right && startsLikeContinuation(right)) return false;
+      const endsTerminal = /[.!?]["'”’)\]}]*\s*$/.test(left);
+      if (!endsTerminal && right && !looksLikeMajorHeading(right) && !isListLine(right)) return false;
+      return true;
+    }
+
+    function chooseCut(text, preferred = target) {
+      const t = String(text || '').trim();
+      if (!t) return -1;
+      const searchLimit = Math.min(t.length, Math.max(hardMax, Math.round(target * 2.6)));
+      const stops = collectSentenceStops(t, searchLimit).filter(c => c >= minChars && isValidCut(t, c));
+      if (!stops.length) return -1;
+
+      const nearBefore = stops.filter(c => c <= preferred);
+      if (nearBefore.length) return nearBefore[nearBefore.length - 1];
+
+      const nearAfter = stops.filter(c => c > preferred);
+      if (nearAfter.length) return nearAfter[0];
       return -1;
     }
 
-    function findForwardStop(text, startIdx, maxExtra = 1800) {
-      const t = String(text || '');
-      const start = Math.max(0, Math.min(startIdx, t.length));
-      const end = Math.min(t.length, start + Math.max(240, maxExtra));
-      const slice = t.slice(start, end);
-      const stops = collectSentenceStops(slice, slice.length);
-      return stops.length ? (start + stops[0]) : -1;
+    function fallbackCut(text) {
+      const t = String(text || '').trim();
+      if (!t) return -1;
+      const paras = [];
+      let idx = 0;
+      while ((idx = t.indexOf('\n\n', idx)) >= 0) { paras.push(idx + 2); idx += 2; }
+      const validPara = paras.filter(c => c >= minChars && c <= hardMax && !startsLikeContinuation(t.slice(c)) && !endsLikeDanglingTail(t.slice(0, c)));
+      if (validPara.length) return validPara[validPara.length - 1];
+      const ws = t.lastIndexOf(' ', Math.min(hardMax, t.length));
+      if (ws >= minChars && !startsLikeContinuation(t.slice(ws)) && !endsLikeDanglingTail(t.slice(0, ws))) return ws;
+      return Math.min(t.length, hardMax);
     }
 
-    function splitOversizedText(text) {
-      const t = String(text || '').trim();
-      if (!t) return { page: '', rest: '' };
-
-      let cut = findBackwardStop(t, hardMax);
-      if (cut < 0) cut = findForwardStop(t, target, Math.max(1800, t.length - target));
-      if (cut < 0) {
-        const ws = t.lastIndexOf(' ', Math.min(hardMax, t.length));
-        cut = ws > minChars ? ws : Math.min(t.length, hardMax);
-      }
-
-      let page = t.slice(0, cut).trim();
-      let rest = t.slice(cut).trim();
-
-      if (page.length < minChars && rest) {
-        const forward = findForwardStop(t, cut, Math.max(1800, t.length - cut));
-        if (forward > cut) {
-          page = t.slice(0, forward).trim();
-          rest = t.slice(forward).trim();
+    function flushBuffer(force = false) {
+      let t = String(buf || '').trim();
+      while (t) {
+        if (!force && t.length <= softMax) break;
+        let cut = chooseCut(t, target);
+        if (cut < 0 && !force && t.length <= hardMax) break;
+        if (cut < 0) cut = fallbackCut(t);
+        if (cut <= 0 || cut >= t.length) {
+          pagesOut.push(t.trim());
+          t = '';
+          break;
         }
+        const page = t.slice(0, cut).trim();
+        const rest = t.slice(cut).trim();
+        if (!page) break;
+        pagesOut.push(page);
+        t = rest;
       }
-
-      return { page, rest };
+      buf = t;
     }
 
     const cleanBlocks = (blocks || []).map(b => String(b || '').trim()).filter(Boolean);
     let buf = '';
-    let i = 0;
 
-    while (i < cleanBlocks.length) {
+    for (let i = 0; i < cleanBlocks.length; i++) {
       const block = cleanBlocks[i];
-      const nextBlock = (i + 1 < cleanBlocks.length) ? cleanBlocks[i + 1] : '';
-      const candidate = buf ? (buf + '\n\n' + block) : block;
-
       if (looksLikeMajorHeading(block) && buf.length >= minChars) {
-        pagesOut.push(buf.trim());
-        buf = block;
-        i += 1;
-        continue;
+        flushBuffer(true);
       }
-
-      if (candidate.length <= target) {
-        buf = candidate;
-        i += 1;
-        continue;
-      }
-
-      if (!buf) {
-        const parts = splitOversizedText(block);
-        if (parts.page) pagesOut.push(parts.page);
-        buf = parts.rest;
-        i += 1;
-        continue;
-      }
-
-      const protectedBoundary = isProtectedBoundary(buf, block);
-      const backward = findBackwardStop(buf, buf.length);
-      const safeBreakHere = backward >= minChars && !protectedBoundary;
-
-      if (buf.length >= minChars && safeBreakHere) {
-        pagesOut.push(buf.trim());
-        buf = '';
-        continue;
-      }
-
-      buf = candidate;
-      i += 1;
-
-      if (buf.length > softMax) {
-        const backwardSoft = findBackwardStop(buf, softMax);
-        const canBreakSoft = backwardSoft >= minChars && !isProtectedBoundary(buf, nextBlock);
-        if (canBreakSoft) {
-          pagesOut.push(buf.slice(0, backwardSoft).trim());
-          buf = buf.slice(backwardSoft).trim();
-        }
-      }
-
-      if (buf.length > hardMax) {
-        const parts = splitOversizedText(buf);
-        if (parts.page) pagesOut.push(parts.page);
-        buf = parts.rest;
-      }
+      buf = buf ? `${buf}\n\n${block}` : block;
+      flushBuffer(false);
+      if (buf.length > hardMax) flushBuffer(true);
     }
 
-    if (buf.trim()) pagesOut.push(buf.trim());
+    flushBuffer(true);
 
     const merged = [];
-    for (let j = 0; j < pagesOut.length; j++) {
-      const p = pagesOut[j];
-      if (!p) continue;
-      if (p.length >= minChars || merged.length === 0) {
-        merged.push(p);
-        continue;
-      }
+    for (const p of pagesOut) {
+      const page = String(p || '').trim();
+      if (!page) continue;
+      if (!merged.length) { merged.push(page); continue; }
       const prev = merged[merged.length - 1];
-      if ((prev.length + 2 + p.length) <= hardMax && !isProtectedBoundary(prev, p)) {
-        merged[merged.length - 1] = (prev + '\n\n' + p).trim();
-        continue;
+      if (page.length < minChars && (prev.length + 2 + page.length) <= hardMax && !isProtectedBoundary(prev, page)) {
+        merged[merged.length - 1] = `${prev}\n\n${page}`.trim();
+      } else {
+        merged.push(page);
       }
-      merged.push(p);
     }
     return merged;
   }
