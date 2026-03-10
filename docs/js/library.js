@@ -268,7 +268,7 @@
   function chunkBlocksToPages(blocks, targetChars = 1600) {
     // Authoritative paging rule:
     // - Prefer stable page size.
-    // - Real break points are only . ? !
+    // - Real break points are only . ? ! that end a sentence-shaped span.
     // - Do not break inside paired blocks like quotes, (), [], {}.
     // - Do not break inside list sequences when they can stay together.
 
@@ -280,6 +280,8 @@
     const closers = new Set(['"', "'", '”', '’', ')', ']', '}']);
     const listLineRe = /^\s*(?:\d+[.)]\s+|[-•*]\s+|box\b|line\b|part\b)/i;
     const abbrevRe = /\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|U\.S|U\.K|No)\.$/i;
+    const continuationWordRe = /\b(?:and|or|but|nor|so|yet|the|a|an|of|to|with|for|in|on|at|by|from|as|into|onto|upon|over|under|between|through|during|without|within|about|against|around|because|than|that|this|these|those|their|his|her|its|our|your|my)\s*$/i;
+    const continuationPhraseRe = /\b(?:known as|such as|because of|instead of|according to|in the|to the|of the|for the|with the|by the|from the|his majesty the|her majesty the|one of the|part of the|members of the|rates,|fees,|taxes,)\s*$/i;
 
     function isListLine(s) {
       return listLineRe.test(String(s || '').trim());
@@ -294,10 +296,67 @@
       return isListLine(prevText) || isListLine(nextText) || endsWithListLead(prevText);
     }
 
+    function tailText(text, end, span = 96) {
+      return String(text || '').slice(Math.max(0, end - span), end).replace(/\s+/g, ' ').trim();
+    }
+
+    function headText(text, start, span = 72) {
+      const t = String(text || '');
+      return t.slice(start, Math.min(t.length, start + span)).replace(/\s+/g, ' ').trim();
+    }
+
+    function tokenAround(text, idx) {
+      const t = String(text || '');
+      let s = Math.max(0, idx);
+      let e = Math.min(t.length, idx + 1);
+      while (s > 0 && !/\s/.test(t[s - 1])) s -= 1;
+      while (e < t.length && !/\s/.test(t[e])) e += 1;
+      return t.slice(s, e);
+    }
+
+    function isInternalPunctuationToken(token) {
+      const tok = String(token || '').trim();
+      if (!tok) return false;
+      if (/^(?:[A-Za-z0-9-]+\.){2,}[A-Za-z0-9-]*$/.test(tok)) return true; // founders.archives.gov / I.R.S.
+      if (/^(?:[A-Z]\.){2,}[A-Z]?\.?$/.test(tok)) return true;
+      if (/^\d+\.\d+(?:\b|[,)])/.test(tok)) return true; // 322.04 / 4.1
+      return false;
+    }
+
+    function nextLooksLikeContinuation(nextHead) {
+      const n = String(nextHead || '').trim();
+      if (!n) return false;
+      if (/^[a-z]/.test(n)) return true;
+      if (/^\d+(?:\.\d+)+(?:\b|\s|[,)])/.test(n)) return true;
+      if (/^[,)\];:]/.test(n)) return true;
+      if (/^(?:gov|com|org|net|edu|mil)\b/i.test(n)) return true;
+      if (/^(?:Form\b|which\b|that\b|who\b|whom\b|whose\b|where\b|when\b|while\b|because\b|and\b|or\b|but\b|nor\b)/.test(n)) return true;
+      return false;
+    }
+
+    function hasResolvedSentenceShape(text, idx, end) {
+      const t = String(text || '');
+      const tail = tailText(t, end, 96);
+      const next = headText(t, end, 72);
+      const stopToken = tokenAround(t, idx);
+      const prevTail = tail.replace(/[.!?]["'”’\)\]\}]*\s*$/, '').trim();
+
+      if (!tail) return false;
+      if (continuationWordRe.test(prevTail)) return false;
+      if (continuationPhraseRe.test(prevTail)) return false;
+      if (/[,:;]\s*$/.test(prevTail)) return false;
+      if (/\b§\s*\d+\.$/.test(tail) && /^\d/.test(next)) return false;
+      if (/\b(?:Section|Sec\.|Article|Art\.|No)\s+\d+\.$/i.test(tail) && /^\d/.test(next)) return false;
+      if (/\b(?:[A-Za-z0-9-]+\.)+[A-Za-z0-9-]*\.?$/.test(stopToken) && nextLooksLikeContinuation(next)) return false;
+      if (isInternalPunctuationToken(stopToken)) return false;
+      if (nextLooksLikeContinuation(next)) return false;
+      return true;
+    }
+
     function isSentenceStopAt(text, idx) {
       const ch = text[idx];
       if (ch !== '.' && ch !== '?' && ch !== '!') return false;
-      const before = text.slice(Math.max(0, idx - 12), idx + 1);
+      const before = text.slice(Math.max(0, idx - 16), idx + 1);
       if (ch === '.' && abbrevRe.test(before)) return false;
       return true;
     }
@@ -332,6 +391,7 @@
         let end = i + 1;
         while (end < t.length && closers.has(t[end])) end += 1;
         while (end < t.length && /\s/.test(t[end])) end += 1;
+        if (!hasResolvedSentenceShape(t, i, end)) continue;
         stops.push(end);
       }
       return stops;
@@ -407,8 +467,8 @@
       const safeBreakHere = backward >= minChars && !protectedBoundary;
 
       if (buf.length >= minChars && safeBreakHere) {
-        pagesOut.push(buf.trim());
-        buf = '';
+        pagesOut.push(buf.slice(0, backward).trim());
+        buf = buf.slice(backward).trim();
         continue;
       }
 
@@ -476,165 +536,6 @@
       .replace(/^\//, '');
   }
 
-
-  function normalizeTocLabel(text) {
-    let s = String(text || '').replace(/\s+/g, ' ').trim();
-    if (!s) return '';
-    s = s.replace(/[–—]/g, ' - ');
-    s = s.replace(/\s+/g, ' ').trim();
-    // Strip trailing printed page references from front-matter contents lines.
-    s = s.replace(/\s+(?:\d+[\d,\-– ]*|[ivxlcdm]+)\s*$/i, '').trim();
-    s = s.replace(/\s*\.+\s*(?:\d+[\d,\-– ]*|[ivxlcdm]+)\s*$/i, '').trim();
-    return s;
-  }
-
-  function titleKey(text) {
-    return normalizeTocLabel(text)
-      .toLowerCase()
-      .replace(/&/g, ' and ')
-      .replace(/[^a-z0-9]+/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
-  function weakTocTitle(title) {
-    const k = titleKey(title);
-    return !k || /^(start|unknown|cover|title page|contents?|toc|untitled|beginning)$/.test(k);
-  }
-
-  function tocLooksWeak(items, spineHrefs) {
-    const arr = Array.isArray(items) ? items.filter(Boolean) : [];
-    if (arr.length === 0) return true;
-    if (arr.length <= 2) return true;
-    const weakCount = arr.filter(it => weakTocTitle(it.title)).length;
-    if (weakCount >= Math.max(1, arr.length - 1)) return true;
-    const uniqueHrefs = new Set(arr.map(it => _normEpubHref(it.href)).filter(Boolean));
-    if (uniqueHrefs.size <= 1 && (spineHrefs || []).length > 1) return true;
-    return false;
-  }
-
-  function looksLikeMajorSectionTitle(text) {
-    const s = normalizeTocLabel(text);
-    if (!s) return false;
-    if (s.length > 120) return false;
-    if (/[.!?]$/.test(s)) return false;
-    return /^(acknowledg|introduction\b|case study\b|module\s+\d+\b|appendix\s+[a-z]\b|glossary\b|references\b|bibliography\b|notes\b)/i.test(s);
-  }
-
-  function findTocShapedLines(blocks) {
-    const out = [];
-    let inContents = false;
-    for (const raw of (blocks || [])) {
-      const t = String(raw || '').replace(/\s+/g, ' ').trim();
-      if (!t) continue;
-      if (!inContents && /^(contents|table of contents)$/i.test(t)) { inContents = true; continue; }
-      if (!inContents) continue;
-      const label = normalizeTocLabel(t);
-      if (!label) continue;
-      if (looksLikeMajorSectionTitle(label)) out.push(label);
-      // Stop when we leave the compact list and enter obvious prose.
-      if (out.length >= 3 && /[.!?]$/.test(t) && t.split(/\s+/).length > 12) break;
-    }
-    return out;
-  }
-
-  function majorTitleVariants(title) {
-    const raw = normalizeTocLabel(title);
-    const key = titleKey(raw);
-    const vars = new Set([raw, key]);
-    const m = key.match(/^(module\s+\d+)\b/);
-    if (m) vars.add(m[1]);
-    const a = key.match(/^(appendix\s+[a-z])\b/);
-    if (a) vars.add(a[1]);
-    if (/^case study\b/.test(key)) vars.add('case study');
-    if (/^introduction\b/.test(key)) vars.add('introduction');
-    if (/^glossary\b/.test(key)) vars.add('glossary');
-    if (/^acknowledg/.test(key)) vars.add('acknowledgments');
-    return Array.from(vars).filter(Boolean);
-  }
-
-  function findBlockIndexForTitle(blocks, title) {
-    const vars = majorTitleVariants(title);
-    if (!vars.length) return 0;
-    for (let i = 0; i < (blocks || []).length; i++) {
-      const bk = titleKey(blocks[i]);
-      if (!bk) continue;
-      if (vars.some(v => bk === v || bk.startsWith(v + ' ') || bk.includes(' ' + v + ' '))) return i;
-    }
-    return 0;
-  }
-
-  async function rebuildTocFromFrontMatter(zip, spineHrefs) {
-    const spine = Array.isArray(spineHrefs) ? spineHrefs.map(_normEpubHref) : [];
-    if (!spine.length) return [];
-
-    const candidateTitles = [];
-    // 1) Look for an explicit Contents page near the front.
-    for (let i = 0; i < Math.min(3, spine.length); i++) {
-      const html = await zipReadText(zip, spine[i]);
-      const blocks = extractTextBlocksFromHtml(html);
-      const lines = findTocShapedLines(blocks);
-      lines.forEach(t => candidateTitles.push(t));
-      if (lines.length >= 3) break;
-    }
-
-    // 2) Fallback: recover major headings from body text across the spine.
-    if (candidateTitles.length < 3) {
-      for (let i = 0; i < spine.length; i++) {
-        const html = await zipReadText(zip, spine[i]);
-        const blocks = extractTextBlocksFromHtml(html);
-        for (const b of blocks) {
-          const label = normalizeTocLabel(b);
-          if (looksLikeMajorSectionTitle(label)) candidateTitles.push(label);
-        }
-      }
-    }
-
-    // De-dupe while preserving order.
-    const seen = new Set();
-    const major = [];
-    for (const t of candidateTitles) {
-      const k = titleKey(t);
-      if (!k || seen.has(k)) continue;
-      seen.add(k);
-      major.push(t);
-    }
-    if (!major.length) return [];
-
-    // Map each candidate title to the first matching spine doc and block index.
-    const blockCache = new Map();
-    const items = [];
-    let lastSpineIdx = -1;
-    for (const title of major) {
-      let found = null;
-      for (let s = Math.max(0, lastSpineIdx); s < spine.length; s++) {
-        let blocks = blockCache.get(spine[s]);
-        if (!blocks) {
-          const html = await zipReadText(zip, spine[s]);
-          blocks = extractTextBlocksFromHtml(html);
-          blockCache.set(spine[s], blocks);
-        }
-        const idx = findBlockIndexForTitle(blocks, title);
-        const matched = idx >= 0 && titleKey(blocks[idx]).includes(majorTitleVariants(title)[0]?.split(' ')[0] || '') && blocks[idx];
-        if (matched) {
-          found = { title, href: spine[s], blockIndex: idx };
-          lastSpineIdx = s;
-          break;
-        }
-      }
-      if (found) items.push(found);
-    }
-
-    // Drop duplicates that map to the same spot.
-    const finalSeen = new Set();
-    return items.filter((it) => {
-      const k = `${_normEpubHref(it.href)}|${it.blockIndex}|${titleKey(it.title)}`;
-      if (finalSeen.has(k)) return false;
-      finalSeen.add(k);
-      return true;
-    });
-  }
-
   async function epubParseToc(zip, opfPath) {
     const opfText = await zipReadText(zip, opfPath);
     const opf = xmlParseSafe(opfText);
@@ -695,7 +596,7 @@
         seen.add(k);
         uniq.push(it);
       }
-      if (!tocLooksWeak(uniq, spineHrefs)) return { metadata: md, items: uniq, spineHrefs };
+      return { metadata: md, items: uniq, spineHrefs };
     }
 
     // EPUB2 NCX
@@ -715,11 +616,8 @@
         const full = joinPath(dirOf(tocItem.href), cleanHref);
         items.push({ title: t, href: full });
       });
-      if (!tocLooksWeak(items, spineHrefs)) return { metadata: md, items, spineHrefs };
+      return { metadata: md, items, spineHrefs };
     }
-
-    const rebuilt = await rebuildTocFromFrontMatter(zip, spineHrefs);
-    if (rebuilt.length) return { metadata: md, items: rebuilt, spineHrefs };
 
     // Worst-case: fall back to spine order
     const items = spineHrefs.map((href, i) => ({ title: `Section ${i + 1}`, href }));
@@ -735,10 +633,7 @@
 
     const spine = Array.isArray(spineHrefs) ? spineHrefs.map(_normEpubHref) : [];
     const hrefToSpineIndex = new Map(spine.map((h, i) => [h, i]));
-    toc.forEach((it) => {
-      it.spineIndex = hrefToSpineIndex.has(it._hrefNorm) ? hrefToSpineIndex.get(it._hrefNorm) : null;
-      it.blockIndex = Number.isFinite(it.blockIndex) ? Math.max(0, it.blockIndex) : null;
-    });
+    toc.forEach((it) => { it.spineIndex = hrefToSpineIndex.has(it._hrefNorm) ? hrefToSpineIndex.get(it._hrefNorm) : null; });
 
     const chosen = toc.filter(it => selectedIds.has(it.id) && typeof it.spineIndex === 'number');
     chosen.sort((a, b) => a._order - b._order);
@@ -758,40 +653,13 @@
       }
 
       const blocks = [];
-      let nextSameSpine = null;
-      for (let j = it._order + 1; j < toc.length; j++) {
-        const nxt = toc[j];
-        if (typeof nxt.spineIndex === 'number' && nxt.spineIndex === it.spineIndex && Number.isFinite(nxt.blockIndex)) {
-          nextSameSpine = nxt;
-          break;
-        }
-        if (typeof nxt.spineIndex === 'number' && nxt.spineIndex > it.spineIndex) break;
-      }
-
       for (let s = it.spineIndex; s < endSpine; s++) {
         const href = spine[s];
         const html = await zipReadText(zip, href);
-        let cleaned = extractTextBlocksFromHtml(html)
+        const cleaned = extractTextBlocksFromHtml(html)
           .map(fixLeadingDropCapSpacing)
           .filter(b => b && (!cleanupHeadings || !isDecorativeSpacedHeading(b)));
-        cleaned = mergeFragmentedBlocks(cleaned);
-
-        let startIdx = 0;
-        let endIdx = cleaned.length;
-        if (s === it.spineIndex && Number.isFinite(it.blockIndex)) startIdx = Math.min(cleaned.length, Math.max(0, it.blockIndex));
-        if (s === it.spineIndex && nextSameSpine && Number.isFinite(nextSameSpine.blockIndex)) endIdx = Math.min(endIdx, Math.max(startIdx, nextSameSpine.blockIndex));
-        if (s === endSpine - 1 && !nextSameSpine) {
-          // If the next TOC item starts inside the same final spine doc, stop there.
-          for (let j = it._order + 1; j < toc.length; j++) {
-            const nxt = toc[j];
-            if (typeof nxt.spineIndex === 'number' && nxt.spineIndex === s && Number.isFinite(nxt.blockIndex)) {
-              endIdx = Math.min(endIdx, Math.max(startIdx, nxt.blockIndex));
-              break;
-            }
-            if (typeof nxt.spineIndex === 'number' && nxt.spineIndex > s) break;
-          }
-        }
-        for (let bi = startIdx; bi < endIdx; bi++) blocks.push(cleaned[bi]);
+        mergeFragmentedBlocks(cleaned).forEach(b => blocks.push(b));
       }
       sections.push({ title: it.title, blocks });
       done++;
