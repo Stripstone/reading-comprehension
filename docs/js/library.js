@@ -271,6 +271,7 @@
     // - Real break points are only . ? !
     // - Do not break inside paired blocks like quotes, (), [], {}.
     // - Do not break inside list sequences when they can stay together.
+    // - Reject weak page endings that are still clearly mid-thought.
 
     const pagesOut = [];
     const target = Math.max(400, targetChars | 0);
@@ -278,8 +279,10 @@
     const hardMax = Math.round(target * 1.30);
     const minChars = Math.round(target * 0.65);
     const closers = new Set(['"', "'", '”', '’', ')', ']', '}']);
-    const listLineRe = /^\s*(?:\d+[.)]\s+|[-•*]\s+|box\b|line\b|part\b)/i;
-    const abbrevRe = /\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|U\.S|U\.K|No)\.$/i;
+    const listLineRe = /^\s*(?:\d+[.)]\s+|[-•*]\s+|box|line|part)/i;
+    const abbrevRe = /(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|U\.S|U\.K|No)\.$/i;
+    const weakEndWordRe = /(?:and|or|but|nor|for|so|yet|of|to|with|in|on|at|by|from|into|onto|over|under|between|through|during|without|within|about|upon|the|a|an|this|that|these|those|my|your|his|her|its|our|their|any|some|each|every|another|such|said|shall|will|would|could|should|than|as)$/i;
+    const weakEndPhraseRe = /(?:one of the|two of the|three of the|some of the|any of the|part of the|according to the|because of the|in the|on the|to the|for the|with the|from the|by the|under the|over the|his majesty the|her majesty the|as well as|such as|known as|referred to as|pursuant to|subject to|consistent with|in favor of|in favour of)\s*$/i;
 
     function isListLine(s) {
       return listLineRe.test(String(s || '').trim());
@@ -294,10 +297,51 @@
       return isListLine(prevText) || isListLine(nextText) || endsWithListLead(prevText);
     }
 
+    function trailingSentenceCharIndex(text) {
+      const t = String(text || '').trimEnd();
+      if (!t) return -1;
+      let i = t.length - 1;
+      while (i >= 0 && closers.has(t[i])) i -= 1;
+      if (i < 0) return -1;
+      return /[.?!]/.test(t[i]) ? i : -1;
+    }
+
+    function tailWords(text, maxWords = 6) {
+      const words = String(text || '')
+        .trim()
+        .replace(/[“”"'‘’()\[\]{}]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .split(' ')
+        .filter(Boolean);
+      return words.slice(-maxWords).join(' ');
+    }
+
+    function isWeakPageEnd(text) {
+      const t = String(text || '').trim();
+      if (!t) return true;
+      if (/[,:;]\s*$/.test(t)) return true;
+      const stopIdx = trailingSentenceCharIndex(t);
+      if (stopIdx < 0) return true;
+      const beforeStop = t.slice(0, stopIdx + 1);
+      if (t[stopIdx] === '.' && abbrevRe.test(beforeStop.slice(-18))) return true;
+
+      const tail = tailWords(beforeStop, 7);
+      if (weakEndPhraseRe.test(tail)) return true;
+      const lastWord = tailWords(beforeStop, 1);
+      if (weakEndWordRe.test(lastWord)) return true;
+
+      const tailRaw = t.slice(Math.max(0, t.length - 32));
+      if (/["')\]\}”’]\s*[.?!]["')\]\}”’]*\s*$/.test(tailRaw)) {
+        const cleanTail = tailWords(beforeStop, 4);
+        if (weakEndPhraseRe.test(cleanTail) || weakEndWordRe.test(tailWords(beforeStop, 1))) return true;
+      }
+      return false;
+    }
+
     function isSentenceStopAt(text, idx) {
       const ch = text[idx];
       if (ch !== '.' && ch !== '?' && ch !== '!') return false;
-      const before = text.slice(Math.max(0, idx - 12), idx + 1);
+      const before = text.slice(Math.max(0, idx - 18), idx + 1);
       if (ch === '.' && abbrevRe.test(before)) return false;
       return true;
     }
@@ -332,7 +376,7 @@
         let end = i + 1;
         while (end < t.length && closers.has(t[end])) end += 1;
         while (end < t.length && /\s/.test(t[end])) end += 1;
-        stops.push(end);
+        if (!isWeakPageEnd(t.slice(0, end))) stops.push(end);
       }
       return stops;
     }
@@ -368,8 +412,8 @@
       let page = t.slice(0, cut).trim();
       let rest = t.slice(cut).trim();
 
-      if (page.length < minChars && rest) {
-        const forward = findForwardStop(t, cut, Math.max(1800, t.length - cut));
+      if ((page.length < minChars || isWeakPageEnd(page)) && rest) {
+        const forward = findForwardStop(t, Math.max(cut, target), Math.max(1800, t.length - cut));
         if (forward > cut) {
           page = t.slice(0, forward).trim();
           rest = t.slice(forward).trim();
@@ -407,8 +451,8 @@
       const safeBreakHere = backward >= minChars && !protectedBoundary;
 
       if (buf.length >= minChars && safeBreakHere) {
-        pagesOut.push(buf.trim());
-        buf = '';
+        pagesOut.push(buf.slice(0, backward).trim());
+        buf = buf.slice(backward).trim();
         continue;
       }
 
@@ -437,7 +481,7 @@
     for (let j = 0; j < pagesOut.length; j++) {
       const p = pagesOut[j];
       if (!p) continue;
-      if (p.length >= minChars || merged.length === 0) {
+      if ((p.length >= minChars && !isWeakPageEnd(p)) || merged.length === 0) {
         merged.push(p);
         continue;
       }
