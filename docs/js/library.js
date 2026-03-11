@@ -504,31 +504,32 @@
       if (isHardInvalid(m)) return null;
       let score = 0;
       // Reward clean prose on both sides.
-      score += Math.min(m.beforePlain, 3) * 14;
-      score += Math.min(m.afterPlain, 3) * 12;
-      if (!m.commaLikeTail) score += 18;
-      if (!m.weirdTail) score += 10;
+      score += Math.min(m.beforePlain, 3) * 16;
+      score += Math.min(m.afterPlain, 3) * 14;
+      if (!m.commaLikeTail) score += 20;
+      if (!m.weirdTail) score += 12;
 
       // Prefer simpler, shorter sentence segments over dense structured spans.
-      score -= m.tailPunctDensity * 4.8;
-      score -= m.headPunctDensity * 2.8;
-      score -= m.structuralRun * 3.8;
-      score -= Math.max(0, m.segmentLen - 18) * 2.8;
-      score -= m.segmentPunct * 3.2;
-      if (m.segmentLen <= 16 && m.segmentPunct <= 2) score += 26;
-      else if (m.segmentLen <= 24 && m.segmentPunct <= 4) score += 10;
-      if (m.dateLikeTail) score -= 14; // acceptable but weaker than plain prose
+      score -= m.tailPunctDensity * 5.5;
+      score -= m.headPunctDensity * 3.2;
+      score -= m.structuralRun * 4.6;
+      score -= Math.max(0, m.segmentLen - 16) * 3.4;
+      score -= m.segmentPunct * 4.0;
+      if (m.segmentLen <= 14 && m.segmentPunct <= 1) score += 34;
+      else if (m.segmentLen <= 20 && m.segmentPunct <= 3) score += 16;
+      else if (m.segmentLen <= 28 && m.segmentPunct <= 5) score += 6;
+      if (m.dateLikeTail) score -= 18; // acceptable but weaker than plain prose
 
-      // Respect page-size as a soft target, but prefer earlier simple prose over later bloated spans.
+      // Soft target fit. Earlier clean prose should usually beat later dense spans.
       const delta = cand.cut - target;
       if (delta <= 0) {
-        score += 18;
-        score -= Math.abs(delta) / 20;
+        score += 22;
+        score -= Math.abs(delta) / 18;
       } else {
-        score -= delta / 10;
-        score -= Math.max(0, delta - Math.round(target * 0.10)) / 4;
+        score -= delta / 7;
+        score -= Math.max(0, delta - Math.round(target * 0.08)) / 2.2;
       }
-      return { cut: cand.cut, score };
+      return { cut: cand.cut, score, delta };
     }
 
     function chooseCut(text) {
@@ -538,13 +539,26 @@
       const startAt = Math.max(minChars, center - searchBack);
       const limit = Math.min(t.length, center + searchForward);
       const all = collectSentenceStops(t, t.length).filter(c => c.cut >= minChars);
-      const near = all.filter(c => c.cut >= startAt && c.cut <= limit);
-      const scoredNear = near.map(c => scoreCandidate(t, c)).filter(Boolean).sort((a, b) => b.score - a.score || a.cut - b.cut);
-      if (scoredNear.length) return scoredNear[0].cut;
-      const forward = all.filter(c => c.cut > limit).map(c => scoreCandidate(t, c)).filter(Boolean).sort((a, b) => a.cut - b.cut || b.score - a.score);
-      if (forward.length) return forward[0].cut;
+      const near = all.filter(c => c.cut >= startAt && c.cut <= limit).map(c => scoreCandidate(t, c)).filter(Boolean);
+      if (near.length) {
+        const before = near.filter(c => c.cut <= target).sort((a, b) => b.score - a.score || b.cut - a.cut);
+        const after = near.filter(c => c.cut > target).sort((a, b) => b.score - a.score || a.cut - b.cut);
+        const bestBefore = before[0] || null;
+        const bestAfter = after[0] || null;
+        if (bestBefore && bestAfter) {
+          // Prefer earlier clean prose unless the later candidate is materially better.
+          const beforeAdjusted = bestBefore.score + 8;
+          const afterAdjusted = bestAfter.score - Math.min(18, Math.max(0, bestAfter.delta) / 24);
+          if (beforeAdjusted >= afterAdjusted - 6) return bestBefore.cut;
+          return bestAfter.cut;
+        }
+        if (bestBefore) return bestBefore.cut;
+        if (bestAfter) return bestAfter.cut;
+      }
       const back = all.filter(c => c.cut >= minChars && c.cut < startAt).map(c => scoreCandidate(t, c)).filter(Boolean).sort((a, b) => b.score - a.score || b.cut - a.cut);
       if (back.length) return back[0].cut;
+      const forward = all.filter(c => c.cut > limit).map(c => scoreCandidate(t, c)).filter(Boolean).sort((a, b) => b.score - a.score || a.cut - b.cut);
+      if (forward.length) return forward[0].cut;
       return -1;
     }
 
