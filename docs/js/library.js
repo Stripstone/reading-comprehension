@@ -461,6 +461,8 @@
       const rawHead = postSnippet.slice(0, 90);
       const beforePlain = lastPlain3.length;
       const afterPlain = firstPlain3.length;
+      const finalPlainWord = (lastPlain3[lastPlain3.length - 1] || '').toLowerCase();
+      const firstAfterPlainWord = (firstPlain3[0] || '').toLowerCase();
       const shortFinal = plainWordRe.test(lastToken) && lastToken.length <= 3;
       const dottedTail = /(?:\b[A-Za-z]\.){2,}$/.test(rawTail) || /[A-Za-z0-9-]+\.[A-Za-z0-9.-]+$/.test(rawTail);
       const legalTail = /(?:§\s*)?\d+(?:\.\d+)+(?:\s*\([a-z0-9]+\))*$/.test(rawTail) || /\b(?:vol|chap|sec|no|art)\.$/i.test(rawTail);
@@ -469,7 +471,11 @@
       const weirdTail = /[§$@#%^&*_+=<>|~\/\[\]{}]/.test(last8.join(' '));
       const initialChain = /(?:^|\s)(?:[A-Za-z]\.|[A-Za-z]{1,4}\.)\s*(?:[A-Za-z]\.|[A-Za-z]{1,4}\.)/.test(rawTail);
       const dateLikeTail = /^\d+$/.test(lastToken) || /\d{1,4},?\s+\d{1,4}$/.test(rawTail);
-      return { left, right, beforePlain, afterPlain, shortFinal, dottedTail, legalTail, afterStructured, commaLikeTail, weirdTail, initialChain, dateLikeTail };
+      const weakTailWord = /^(?:the|a|an|and|or|but|of|to|for|in|on|at|by|with|from)$/i.test(finalPlainWord);
+      const weakHeadWord = /^(?:and|or|but|of|to|for|in|on|at|by|with|from)$/i.test(firstAfterPlainWord);
+      const tailPunctDensity = (rawTail.match(/[^A-Za-z'\s]/g) || []).length;
+      const headPunctDensity = (rawHead.match(/[^A-Za-z'\s]/g) || []).length;
+      return { left, right, beforePlain, afterPlain, finalPlainWord, firstAfterPlainWord, shortFinal, dottedTail, legalTail, afterStructured, commaLikeTail, weirdTail, initialChain, dateLikeTail, weakTailWord, weakHeadWord, tailPunctDensity, headPunctDensity };
     }
 
     function isHardInvalid(m) {
@@ -478,6 +484,7 @@
       if (m.beforePlain < 3) return true;
       if (m.afterPlain < 3) return true;
       if (m.shortFinal && !m.dateLikeTail) return true;
+      if (m.weakTailWord || m.weakHeadWord) return true;
       if (m.dottedTail || m.legalTail || m.initialChain) return true;
       if (m.afterStructured) return true;
       if (startsLikeContinuation(m.right)) return true;
@@ -488,14 +495,16 @@
       const m = boundaryMetrics(text, cand);
       if (isHardInvalid(m)) return null;
       let score = 0;
-      score += Math.min(m.beforePlain, 3) * 8;
-      score += Math.min(m.afterPlain, 3) * 8;
-      if (!m.commaLikeTail) score += 10;
-      if (!m.weirdTail) score += 8;
-      if (m.dateLikeTail) score -= 8; // acceptable but weaker than plain prose
+      score += Math.min(m.beforePlain, 3) * 10;
+      score += Math.min(m.afterPlain, 3) * 10;
+      if (!m.commaLikeTail) score += 14;
+      if (!m.weirdTail) score += 10;
+      score -= m.tailPunctDensity * 2.5;
+      score -= m.headPunctDensity * 1.8;
+      if (m.dateLikeTail) score -= 10; // acceptable but weaker than plain prose
       const distance = Math.abs(cand.cut - target);
-      score -= distance / 18;
-      if (cand.cut <= target) score += 4;
+      score -= distance / 24;
+      if (cand.cut <= target) score += 6;
       return { cut: cand.cut, score };
     }
 
