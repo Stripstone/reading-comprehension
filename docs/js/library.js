@@ -374,13 +374,12 @@
     const pagesOut = [];
     const target = Math.max(400, targetChars | 0);
     const minChars = Math.max(240, Math.round(target * 0.58));
-    const softMax = Math.round(target * 1.12);
-    const hardMax = Math.max(softMax + 240, Math.round(target * 3.2));
-    const searchBack = Math.max(640, Math.round(target * 0.72));
-    const searchForward = Math.max(900, Math.round(target * 0.75));
+    const softUnder = Math.max(220, Math.round(target * 0.34));
+    const softOver = Math.max(420, Math.round(target * 0.42));
+    const hardMax = Math.max(target + softOver + 700, Math.round(target * 2.1));
     const closers = new Set(['"', "'", '”', '’', ')', ']', '}']);
     const plainWordRe = /^[A-Za-z]+(?:['’][A-Za-z]+)?$/;
-    const listLineRe = /^\s*(?:\d+[.)]\s+|[-•*]\s+|box|line|part)/i;
+    const listLineRe = /^\s*(?:\d+[.)]\s+|[-•*]\s+|box\b|line\b|part\b)/i;
 
     function normalizeSpace(s) {
       return String(s || '').replace(/\s+/g, ' ').trim();
@@ -398,20 +397,8 @@
       return normalizeSpace(s).split(' ').filter(Boolean);
     }
 
-    function plainWordCount(tokens) {
+    function countPlainWords(tokens) {
       return (tokens || []).filter(t => plainWordRe.test(t)).length;
-    }
-
-    function startsLikeContinuation(text) {
-      const h = normalizeSpace(text).slice(0, 90);
-      if (!h) return false;
-      if (looksLikeMajorHeading(h) || isListLine(h)) return false;
-      if (/^[,;:.!?\)\]\}]/.test(h)) return true;
-      if (/^\(/.test(h)) return true;
-      const toks = rawTokens(h).slice(0, 4);
-      if (toks.length && plainWordCount(toks) < 3) return true;
-      if (toks.slice(0, 3).some(t => !plainWordRe.test(t))) return true;
-      return false;
     }
 
     function collectSentenceStops(text, limit = text.length) {
@@ -442,59 +429,93 @@
       return stops;
     }
 
+
+    function takePlainWordsBefore(tokens, count = 3) {
+      const out = [];
+      for (let i = tokens.length - 1; i >= 0 && out.length < count; i--) {
+        if (plainWordRe.test(tokens[i])) out.unshift(tokens[i]);
+      }
+      return out;
+    }
+
+    function takePlainWordsAfter(tokens, count = 3) {
+      const out = [];
+      for (let i = 0; i < tokens.length && out.length < count; i++) {
+        if (plainWordRe.test(tokens[i])) out.push(tokens[i]);
+      }
+      return out;
+    }
+
+    function startsLikeContinuation(text) {
+      const h = normalizeSpace(text).slice(0, 90);
+      if (!h) return false;
+      if (looksLikeMajorHeading(h) || isListLine(h)) return false;
+      if (/^[,;:.!?\)\]\}]/.test(h)) return true;
+      if (/^\(/.test(h)) return true;
+      const toks = rawTokens(h).slice(0, 4);
+      if (toks.length && countPlainWords(toks) < 3) return true;
+      if (toks.slice(0, 3).some(t => !plainWordRe.test(t))) return true;
+      return false;
+    }
+
     function boundaryMetrics(text, cand) {
       const left = normalizeSpace(text.slice(0, cand.cut));
       const right = normalizeSpace(text.slice(cand.cut));
-      const preSnippet = normalizeSpace(text.slice(Math.max(0, cand.punct - 180), cand.punct));
-      const postSnippet = normalizeSpace(text.slice(cand.cut, Math.min(text.length, cand.cut + 180)));
+      const preSnippet = normalizeSpace(text.slice(Math.max(0, cand.punct - 220), cand.punct));
+      const postSnippet = normalizeSpace(text.slice(cand.cut, Math.min(text.length, cand.cut + 220)));
       const preTokens = rawTokens(preSnippet);
       const postTokens = rawTokens(postSnippet);
-      const last8 = preTokens.slice(-8);
-      const first5 = postTokens.slice(0, 5);
+      const last10 = preTokens.slice(-10);
+      const first8 = postTokens.slice(0, 8);
       const lastToken = preTokens[preTokens.length - 1] || '';
-      const lastPlain3 = [];
-      for (let i = preTokens.length - 1; i >= 0 && lastPlain3.length < 3; i--) {
-        if (plainWordRe.test(preTokens[i])) lastPlain3.unshift(preTokens[i]);
-      }
-      const firstPlain3 = postTokens.filter(t => plainWordRe.test(t)).slice(0, 3);
-      const rawTail = preSnippet.slice(-90);
-      const rawHead = postSnippet.slice(0, 90);
-      const beforePlain = lastPlain3.length;
-      const afterPlain = firstPlain3.length;
-      const finalPlainWord = (lastPlain3[lastPlain3.length - 1] || '').toLowerCase();
-      const firstAfterPlainWord = (firstPlain3[0] || '').toLowerCase();
+      const beforeWords = takePlainWordsBefore(last10, 3);
+      const afterWords = takePlainWordsAfter(first8, 3);
+      const rawTail = preSnippet.slice(-120);
+      const rawHead = postSnippet.slice(0, 120);
+      const finalPlainWord = (beforeWords[beforeWords.length - 1] || '').toLowerCase();
+      const firstAfterPlainWord = (afterWords[0] || '').toLowerCase();
       const shortFinal = plainWordRe.test(lastToken) && lastToken.length <= 3;
       const dottedTail = /(?:\b[A-Za-z]\.){2,}$/.test(rawTail) || /[A-Za-z0-9-]+\.[A-Za-z0-9.-]+$/.test(rawTail);
       const legalTail = /(?:§\s*)?\d+(?:\.\d+)+(?:\s*\([a-z0-9]+\))*$/.test(rawTail) || /\b(?:vol|chap|sec|no|art)\.$/i.test(rawTail);
-      const afterStructured = /^\(|^\d/.test(rawHead) || first5.slice(0, 3).some(t => !plainWordRe.test(t));
-      const commaLikeTail = /[,;:]\s*$/.test(rawTail) || /[,;:]/.test(last8.join(' '));
-      const weirdTail = /[§$@#%^&*_+=<>|~\/\[\]{}]/.test(last8.join(' '));
       const initialChain = /(?:^|\s)(?:[A-Za-z]\.|[A-Za-z]{1,4}\.)\s*(?:[A-Za-z]\.|[A-Za-z]{1,4}\.)/.test(rawTail);
-      const dateLikeTail = /^\d+$/.test(lastToken) || /\d{1,4},?\s+\d{1,4}$/.test(rawTail);
+      const dateLikeTail = /^\d+$/.test(lastToken) || /\b\d{1,4},?\s+\d{1,4}$/.test(rawTail);
       const weakTailWord = /^(?:the|a|an|and|or|but|of|to|for|in|on|at|by|with|from)$/i.test(finalPlainWord);
       const weakHeadWord = /^(?:and|or|but|of|to|for|in|on|at|by|with|from)$/i.test(firstAfterPlainWord);
       const tailPunctDensity = (rawTail.match(/[^A-Za-z'\s]/g) || []).length;
       const headPunctDensity = (rawHead.match(/[^A-Za-z'\s]/g) || []).length;
-      const preWindow = normalizeSpace(text.slice(Math.max(0, cand.punct - 260), cand.punct));
-      const postWindow = normalizeSpace(text.slice(cand.cut, Math.min(text.length, cand.cut + 260)));
-      const structuralRun = ((preWindow.match(/[,;:]/g) || []).length + (postWindow.match(/[,;:]/g) || []).length);
-      const sentenceBackIdx = Math.max(preWindow.lastIndexOf('. '), preWindow.lastIndexOf('? '), preWindow.lastIndexOf('! '));
-      const segmentTail = sentenceBackIdx >= 0 ? preWindow.slice(sentenceBackIdx + 2) : preWindow;
-      const segmentTokens = rawTokens(segmentTail);
+      const structuralRun = ((rawTail.match(/[,;:]/g) || []).length + (rawHead.match(/[,;:]/g) || []).length);
+      const sentEnd = Math.max(rawTail.lastIndexOf('. '), rawTail.lastIndexOf('? '), rawTail.lastIndexOf('! '));
+      const localSegment = sentEnd >= 0 ? rawTail.slice(sentEnd + 2) : rawTail;
+      const segmentTokens = rawTokens(localSegment);
       const segmentLen = segmentTokens.length;
-      const segmentPunct = (segmentTail.match(/[^A-Za-z'\s]/g) || []).length;
-      return { left, right, beforePlain, afterPlain, finalPlainWord, firstAfterPlainWord, shortFinal, dottedTail, legalTail, afterStructured, commaLikeTail, weirdTail, initialChain, dateLikeTail, weakTailWord, weakHeadWord, tailPunctDensity, headPunctDensity, structuralRun, segmentLen, segmentPunct };
+      const segmentPunct = (localSegment.match(/[^A-Za-z'\s]/g) || []).length;
+      const beforeScore = (beforeWords.length * 12)
+        - (tailPunctDensity * 3.2)
+        - (structuralRun * 1.8)
+        - (segmentPunct * 1.8)
+        - (Math.max(0, segmentLen - 22) * 1.2)
+        - (dateLikeTail ? 8 : 0)
+        - ((!weakTailWord && !shortFinal) ? 0 : 9);
+      const afterScore = (afterWords.length * 12)
+        - (headPunctDensity * 2.4)
+        - (first8.slice(0, 3).some(t => !plainWordRe.test(t)) ? 10 : 0)
+        - (weakHeadWord ? 10 : 0);
+      return {
+        left, right, beforeWords, afterWords, finalPlainWord, firstAfterPlainWord,
+        shortFinal, dottedTail, legalTail, initialChain, dateLikeTail, weakTailWord, weakHeadWord,
+        tailPunctDensity, headPunctDensity, structuralRun, segmentLen, segmentPunct,
+        beforeScore, afterScore
+      };
     }
 
     function isHardInvalid(m) {
       if (!m.left || !m.right) return true;
       if (isProtectedBoundary(m.left, m.right)) return true;
-      if (m.beforePlain < 3) return true;
-      if (m.afterPlain < 3) return true;
+      if (m.beforeWords.length < 3) return true;
+      if (m.afterWords.length < 3) return true;
       if (m.shortFinal && !m.dateLikeTail) return true;
       if (m.weakTailWord || m.weakHeadWord) return true;
       if (m.dottedTail || m.legalTail || m.initialChain) return true;
-      if (m.afterStructured) return true;
       if (startsLikeContinuation(m.right)) return true;
       return false;
     }
@@ -502,46 +523,75 @@
     function scoreCandidate(text, cand) {
       const m = boundaryMetrics(text, cand);
       if (isHardInvalid(m)) return null;
-      let score = 0;
-      score += Math.min(m.beforePlain, 3) * 12;
-      score += Math.min(m.afterPlain, 3) * 11;
-      if (!m.commaLikeTail) score += 16;
-      if (!m.weirdTail) score += 10;
-      score -= m.tailPunctDensity * 3.4;
-      score -= m.headPunctDensity * 2.2;
-      score -= m.structuralRun * 2.4;
-      score -= Math.max(0, m.segmentLen - 22) * 1.4;
-      score -= m.segmentPunct * 2.0;
-      if (m.dateLikeTail) score -= 12; // acceptable but weaker than plain prose
+      let quality = 0;
+      quality += m.beforeScore;
+      quality += m.afterScore;
+      if (m.tailPunctDensity <= 2) quality += 8;
+      if (m.headPunctDensity <= 1) quality += 6;
+      if (m.structuralRun <= 2) quality += 8;
+      if (m.segmentLen <= 18) quality += 8;
+      else if (m.segmentLen <= 26) quality += 3;
+      else quality -= (m.segmentLen - 26) * 1.1;
       const distance = Math.abs(cand.cut - target);
-      score -= distance / 22;
-      if (cand.cut <= target) score += 12;
-      return { cut: cand.cut, score };
+      const distanceScore = -distance / 20;
+      const sideBias = cand.cut <= target ? 4 : 0;
+      return { cut: cand.cut, quality, distanceScore, total: quality + distanceScore + sideBias };
+    }
+
+    function pickBest(scored) {
+      if (!scored.length) return -1;
+      scored.sort((a, b) => b.quality - a.quality || b.total - a.total || Math.abs(a.cut - target) - Math.abs(b.cut - target) || a.cut - b.cut);
+      const best = scored[0];
+      const peers = scored.filter(x => Math.abs(x.quality - best.quality) <= 6);
+      if (peers.length > 1) {
+        peers.sort((a, b) => b.total - a.total || Math.abs(a.cut - target) - Math.abs(b.cut - target) || a.cut - b.cut);
+        return peers[0].cut;
+      }
+      return best.cut;
     }
 
     function chooseCut(text) {
       const t = String(text || '').trim();
       if (!t) return -1;
-      const center = Math.min(t.length, target);
-      const startAt = Math.max(minChars, center - searchBack);
-      const limit = Math.min(t.length, center + searchForward);
       const all = collectSentenceStops(t, t.length).filter(c => c.cut >= minChars);
-      const near = all.filter(c => c.cut >= startAt && c.cut <= limit);
-      const scoredNear = near.map(c => scoreCandidate(t, c)).filter(Boolean).sort((a, b) => b.score - a.score || a.cut - b.cut);
-      if (scoredNear.length) return scoredNear[0].cut;
-      const forward = all.filter(c => c.cut > limit).map(c => scoreCandidate(t, c)).filter(Boolean).sort((a, b) => a.cut - b.cut || b.score - a.score);
-      if (forward.length) return forward[0].cut;
-      const back = all.filter(c => c.cut >= minChars && c.cut < startAt).map(c => scoreCandidate(t, c)).filter(Boolean).sort((a, b) => b.score - a.score || b.cut - a.cut);
-      if (back.length) return back[0].cut;
-      return -1;
+      const scoredAll = all.map(c => scoreCandidate(t, c)).filter(Boolean);
+      if (!scoredAll.length) return -1;
+      const lowerBound = Math.max(minChars, target - softUnder);
+      const upperBound = Math.min(t.length, target + softOver);
+      const near = scoredAll.filter(c => c.cut >= lowerBound && c.cut <= upperBound);
+      if (near.length) return pickBest(near);
+      const below = scoredAll.filter(c => c.cut < lowerBound);
+      const above = scoredAll.filter(c => c.cut > upperBound && c.cut <= hardMax);
+      const bestBelow = below.length ? below.sort((a,b)=>b.quality-a.quality || b.total-a.total || b.cut-a.cut)[0] : null;
+      const bestAbove = above.length ? above.sort((a,b)=>b.quality-a.quality || b.total-a.total || a.cut-b.cut)[0] : null;
+      if (bestBelow && bestAbove) {
+        if (bestBelow.quality > bestAbove.quality + 4) return bestBelow.cut;
+        if (bestAbove.quality > bestBelow.quality + 4) return bestAbove.cut;
+        return bestBelow.total >= bestAbove.total ? bestBelow.cut : bestAbove.cut;
+      }
+      if (bestBelow) return bestBelow.cut;
+      if (bestAbove) return bestAbove.cut;
+      return pickBest(scoredAll);
     }
 
     function flushBuffer(force = false) {
       let t = String(buf || '').trim();
       while (t) {
         if (!force && t.length <= softMax) break;
-        let cut = chooseCut(t);
-        if (cut < 0 && !force) break;
+        const cut = chooseCut(t);
+        if (cut < 0) {
+          if (force) {
+            const ws = t.lastIndexOf(' ', Math.min(t.length, hardMax));
+            if (ws > minChars) {
+              pagesOut.push(t.slice(0, ws).trim());
+              t = t.slice(ws).trim();
+              continue;
+            }
+            pagesOut.push(t.trim());
+            t = '';
+          }
+          break;
+        }
         if (cut <= 0 || cut >= t.length) {
           if (force) {
             pagesOut.push(t.trim());
@@ -549,11 +599,8 @@
           }
           break;
         }
-        const page = t.slice(0, cut).trim();
-        const rest = t.slice(cut).trim();
-        if (!page) break;
-        pagesOut.push(page);
-        t = rest;
+        pagesOut.push(t.slice(0, cut).trim());
+        t = t.slice(cut).trim();
       }
       buf = t;
     }
@@ -570,7 +617,7 @@
 
 ${block}` : block;
       flushBuffer(false);
-      if (buf.length > hardMax) flushBuffer(false);
+      if (buf.length > hardMax) flushBuffer(true);
     }
 
     flushBuffer(true);
