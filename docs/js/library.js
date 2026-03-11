@@ -375,9 +375,9 @@
     const target = Math.max(400, targetChars | 0);
     const minChars = Math.max(240, Math.round(target * 0.58));
     const softMax = Math.round(target * 1.12);
-    const hardMax = Math.max(softMax + 240, Math.round(target * 2.35));
-    const searchBack = Math.max(320, Math.round(target * 0.32));
-    const searchForward = Math.max(900, Math.round(target * 0.9));
+    const hardMax = Math.max(softMax + 240, Math.round(target * 3.2));
+    const searchBack = Math.max(640, Math.round(target * 0.72));
+    const searchForward = Math.max(900, Math.round(target * 0.75));
     const closers = new Set(['"', "'", '”', '’', ')', ']', '}']);
     const plainWordRe = /^[A-Za-z]+(?:['’][A-Za-z]+)?$/;
     const listLineRe = /^\s*(?:\d+[.)]\s+|[-•*]\s+|box|line|part)/i;
@@ -445,8 +445,8 @@
     function boundaryMetrics(text, cand) {
       const left = normalizeSpace(text.slice(0, cand.cut));
       const right = normalizeSpace(text.slice(cand.cut));
-      const preSnippet = normalizeSpace(text.slice(Math.max(0, cand.punct - 140), cand.punct));
-      const postSnippet = normalizeSpace(text.slice(cand.cut, Math.min(text.length, cand.cut + 140)));
+      const preSnippet = normalizeSpace(text.slice(Math.max(0, cand.punct - 180), cand.punct));
+      const postSnippet = normalizeSpace(text.slice(cand.cut, Math.min(text.length, cand.cut + 180)));
       const preTokens = rawTokens(preSnippet);
       const postTokens = rawTokens(postSnippet);
       const last8 = preTokens.slice(-8);
@@ -475,7 +475,15 @@
       const weakHeadWord = /^(?:and|or|but|of|to|for|in|on|at|by|with|from)$/i.test(firstAfterPlainWord);
       const tailPunctDensity = (rawTail.match(/[^A-Za-z'\s]/g) || []).length;
       const headPunctDensity = (rawHead.match(/[^A-Za-z'\s]/g) || []).length;
-      return { left, right, beforePlain, afterPlain, finalPlainWord, firstAfterPlainWord, shortFinal, dottedTail, legalTail, afterStructured, commaLikeTail, weirdTail, initialChain, dateLikeTail, weakTailWord, weakHeadWord, tailPunctDensity, headPunctDensity };
+      const preWindow = normalizeSpace(text.slice(Math.max(0, cand.punct - 260), cand.punct));
+      const postWindow = normalizeSpace(text.slice(cand.cut, Math.min(text.length, cand.cut + 260)));
+      const structuralRun = ((preWindow.match(/[,;:]/g) || []).length + (postWindow.match(/[,;:]/g) || []).length);
+      const sentenceBackIdx = Math.max(preWindow.lastIndexOf('. '), preWindow.lastIndexOf('? '), preWindow.lastIndexOf('! '));
+      const segmentTail = sentenceBackIdx >= 0 ? preWindow.slice(sentenceBackIdx + 2) : preWindow;
+      const segmentTokens = rawTokens(segmentTail);
+      const segmentLen = segmentTokens.length;
+      const segmentPunct = (segmentTail.match(/[^A-Za-z'\s]/g) || []).length;
+      return { left, right, beforePlain, afterPlain, finalPlainWord, firstAfterPlainWord, shortFinal, dottedTail, legalTail, afterStructured, commaLikeTail, weirdTail, initialChain, dateLikeTail, weakTailWord, weakHeadWord, tailPunctDensity, headPunctDensity, structuralRun, segmentLen, segmentPunct };
     }
 
     function isHardInvalid(m) {
@@ -495,16 +503,19 @@
       const m = boundaryMetrics(text, cand);
       if (isHardInvalid(m)) return null;
       let score = 0;
-      score += Math.min(m.beforePlain, 3) * 10;
-      score += Math.min(m.afterPlain, 3) * 10;
-      if (!m.commaLikeTail) score += 14;
+      score += Math.min(m.beforePlain, 3) * 12;
+      score += Math.min(m.afterPlain, 3) * 11;
+      if (!m.commaLikeTail) score += 16;
       if (!m.weirdTail) score += 10;
-      score -= m.tailPunctDensity * 2.5;
-      score -= m.headPunctDensity * 1.8;
-      if (m.dateLikeTail) score -= 10; // acceptable but weaker than plain prose
+      score -= m.tailPunctDensity * 3.4;
+      score -= m.headPunctDensity * 2.2;
+      score -= m.structuralRun * 2.4;
+      score -= Math.max(0, m.segmentLen - 22) * 1.4;
+      score -= m.segmentPunct * 2.0;
+      if (m.dateLikeTail) score -= 12; // acceptable but weaker than plain prose
       const distance = Math.abs(cand.cut - target);
-      score -= distance / 24;
-      if (cand.cut <= target) score += 6;
+      score -= distance / 22;
+      if (cand.cut <= target) score += 12;
       return { cut: cand.cut, score };
     }
 
@@ -512,24 +523,17 @@
       const t = String(text || '').trim();
       if (!t) return -1;
       const center = Math.min(t.length, target);
-      const startAt = Math.max(0, center - searchBack);
+      const startAt = Math.max(minChars, center - searchBack);
       const limit = Math.min(t.length, center + searchForward);
-      const candidates = collectSentenceStops(t, limit).filter(c => c.cut >= minChars && c.cut >= startAt);
-      const scored = candidates.map(c => scoreCandidate(t, c)).filter(Boolean).sort((a, b) => b.score - a.score || a.cut - b.cut);
-      if (scored.length) return scored[0].cut;
+      const all = collectSentenceStops(t, t.length).filter(c => c.cut >= minChars);
+      const near = all.filter(c => c.cut >= startAt && c.cut <= limit);
+      const scoredNear = near.map(c => scoreCandidate(t, c)).filter(Boolean).sort((a, b) => b.score - a.score || a.cut - b.cut);
+      if (scoredNear.length) return scoredNear[0].cut;
+      const forward = all.filter(c => c.cut > limit).map(c => scoreCandidate(t, c)).filter(Boolean).sort((a, b) => a.cut - b.cut || b.score - a.score);
+      if (forward.length) return forward[0].cut;
+      const back = all.filter(c => c.cut >= minChars && c.cut < startAt).map(c => scoreCandidate(t, c)).filter(Boolean).sort((a, b) => b.score - a.score || b.cut - a.cut);
+      if (back.length) return back[0].cut;
       return -1;
-    }
-
-    function fallbackCut(text) {
-      const t = String(text || '').trim();
-      if (!t) return -1;
-      const candidates = collectSentenceStops(t, Math.min(t.length, hardMax + searchForward));
-      for (const cand of candidates) {
-        if (cand.cut < target) continue;
-        const scored = scoreCandidate(t, cand);
-        if (scored) return cand.cut;
-      }
-      return Math.min(t.length, hardMax + searchForward);
     }
 
     function flushBuffer(force = false) {
@@ -537,11 +541,12 @@
       while (t) {
         if (!force && t.length <= softMax) break;
         let cut = chooseCut(t);
-        if (cut < 0 && !force && t.length <= hardMax) break;
-        if (cut < 0) cut = fallbackCut(t);
+        if (cut < 0 && !force) break;
         if (cut <= 0 || cut >= t.length) {
-          pagesOut.push(t.trim());
-          t = '';
+          if (force) {
+            pagesOut.push(t.trim());
+            t = '';
+          }
           break;
         }
         const page = t.slice(0, cut).trim();
@@ -565,7 +570,7 @@
 
 ${block}` : block;
       flushBuffer(false);
-      if (buf.length > hardMax) flushBuffer(true);
+      if (buf.length > hardMax) flushBuffer(false);
     }
 
     flushBuffer(true);
