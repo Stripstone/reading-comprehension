@@ -483,7 +483,14 @@
       const segmentTokens = rawTokens(segmentTail);
       const segmentLen = segmentTokens.length;
       const segmentPunct = (segmentTail.match(/[^A-Za-z'\s]/g) || []).length;
-      return { left, right, beforePlain, afterPlain, finalPlainWord, firstAfterPlainWord, shortFinal, dottedTail, legalTail, afterStructured, commaLikeTail, weirdTail, initialChain, dateLikeTail, weakTailWord, weakHeadWord, tailPunctDensity, headPunctDensity, structuralRun, segmentLen, segmentPunct };
+      const nextWindow = normalizeSpace(text.slice(cand.cut, Math.min(text.length, cand.cut + 520)));
+      const nextDensePunct = (nextWindow.match(/[,;:()\[\]{}"“”]/g) || []).length;
+      const nextDenseSignals = (nextWindow.match(/(?:article|chapter|section|treaty|whereas|provided|commissioners|esq(?:uire)?s?|vol\.?|no\.?|page|law library|project)/ig) || []).length;
+      const nextDenseLookahead = nextDensePunct + (nextDenseSignals * 6);
+      const traversed = cand.cut > target ? normalizeSpace(text.slice(target, cand.cut)) : '';
+      const traversedPunct = (traversed.match(/[^A-Za-z'\s]/g) || []).length;
+      const traversedDense = ((traversed.match(/[,;:()\[\]{}"“”]/g) || []).length) + (((traversed.match(/(?:article|chapter|section|treaty|whereas|provided|commissioners|esq(?:uire)?s?|vol\.?|no\.?|page|law library|project)/ig) || []).length) * 6);
+      return { left, right, beforePlain, afterPlain, finalPlainWord, firstAfterPlainWord, shortFinal, dottedTail, legalTail, afterStructured, commaLikeTail, weirdTail, initialChain, dateLikeTail, weakTailWord, weakHeadWord, tailPunctDensity, headPunctDensity, structuralRun, segmentLen, segmentPunct, nextDenseLookahead, traversedPunct, traversedDense };
     }
 
     function isHardInvalid(m) {
@@ -520,14 +527,20 @@
       else if (m.segmentLen <= 28 && m.segmentPunct <= 5) score += 6;
       if (m.dateLikeTail) score -= 18; // acceptable but weaker than plain prose
 
-      // Soft target fit. Earlier clean prose should usually beat later dense spans.
+      // Strongly reward clean stops that occur just before dense quoted/legal/citation spans.
+      score += Math.min(90, m.nextDenseLookahead * 0.7);
+
+      // Soft target fit. Respect the target when reasonable, but do not reward carrying the page
+      // deep into dense spans just because a later stop remains technically valid.
       const delta = cand.cut - target;
       if (delta <= 0) {
-        score += 22;
-        score -= Math.abs(delta) / 18;
+        score += 28;
+        score -= Math.abs(delta) / 15;
       } else {
-        score -= delta / 7;
-        score -= Math.max(0, delta - Math.round(target * 0.08)) / 2.2;
+        score -= delta / 9;
+        score -= Math.max(0, delta - Math.round(target * 0.06)) / 2.6;
+        score -= m.traversedPunct * 1.2;
+        score -= Math.min(120, m.traversedDense * 0.9);
       }
       return { cut: cand.cut, score, delta };
     }
@@ -547,9 +560,9 @@
         const bestAfter = after[0] || null;
         if (bestBefore && bestAfter) {
           // Prefer earlier clean prose unless the later candidate is materially better.
-          const beforeAdjusted = bestBefore.score + 8;
-          const afterAdjusted = bestAfter.score - Math.min(18, Math.max(0, bestAfter.delta) / 24);
-          if (beforeAdjusted >= afterAdjusted - 6) return bestBefore.cut;
+          const beforeAdjusted = bestBefore.score + 18;
+          const afterAdjusted = bestAfter.score - Math.min(42, Math.max(0, bestAfter.delta) / 14);
+          if (beforeAdjusted >= afterAdjusted) return bestBefore.cut;
           return bestAfter.cut;
         }
         if (bestBefore) return bestBefore.cut;
