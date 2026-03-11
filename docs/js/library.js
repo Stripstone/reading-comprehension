@@ -2,7 +2,7 @@
 // File: library.js
 // Note: This is still global-script architecture (no bundler/modules required).
 
-  // LOCAL LIBRARY (IndexedDB)
+  // LOCAL LIBRARY (IndexedDB) storage
   // ===================================
   const LOCAL_DB_NAME = 'rc_local_library_v1';
   const LOCAL_DB_VERSION = 1;
