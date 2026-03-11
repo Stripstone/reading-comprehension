@@ -503,19 +503,31 @@
       const m = boundaryMetrics(text, cand);
       if (isHardInvalid(m)) return null;
       let score = 0;
-      score += Math.min(m.beforePlain, 3) * 12;
-      score += Math.min(m.afterPlain, 3) * 11;
-      if (!m.commaLikeTail) score += 16;
+      // Reward clean prose on both sides.
+      score += Math.min(m.beforePlain, 3) * 14;
+      score += Math.min(m.afterPlain, 3) * 12;
+      if (!m.commaLikeTail) score += 18;
       if (!m.weirdTail) score += 10;
-      score -= m.tailPunctDensity * 3.4;
-      score -= m.headPunctDensity * 2.2;
-      score -= m.structuralRun * 2.4;
-      score -= Math.max(0, m.segmentLen - 22) * 1.4;
-      score -= m.segmentPunct * 2.0;
-      if (m.dateLikeTail) score -= 12; // acceptable but weaker than plain prose
-      const distance = Math.abs(cand.cut - target);
-      score -= distance / 22;
-      if (cand.cut <= target) score += 12;
+
+      // Prefer simpler, shorter sentence segments over dense structured spans.
+      score -= m.tailPunctDensity * 4.8;
+      score -= m.headPunctDensity * 2.8;
+      score -= m.structuralRun * 3.8;
+      score -= Math.max(0, m.segmentLen - 18) * 2.8;
+      score -= m.segmentPunct * 3.2;
+      if (m.segmentLen <= 16 && m.segmentPunct <= 2) score += 26;
+      else if (m.segmentLen <= 24 && m.segmentPunct <= 4) score += 10;
+      if (m.dateLikeTail) score -= 14; // acceptable but weaker than plain prose
+
+      // Respect page-size as a soft target, but prefer earlier simple prose over later bloated spans.
+      const delta = cand.cut - target;
+      if (delta <= 0) {
+        score += 18;
+        score -= Math.abs(delta) / 20;
+      } else {
+        score -= delta / 10;
+        score -= Math.max(0, delta - Math.round(target * 0.10)) / 4;
+      }
       return { cut: cand.cut, score };
     }
 
