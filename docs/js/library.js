@@ -375,45 +375,43 @@
     const target = Math.max(400, targetChars | 0);
     const minChars = Math.max(240, Math.round(target * 0.58));
     const softMax = Math.round(target * 1.12);
-    const hardMax = Math.max(softMax + 240, Math.round(target * 2.2));
+    const hardMax = Math.max(softMax + 240, Math.round(target * 2.35));
+    const searchBack = Math.max(320, Math.round(target * 0.32));
+    const searchForward = Math.max(900, Math.round(target * 0.9));
     const closers = new Set(['"', "'", '”', '’', ')', ']', '}']);
-    const listLineRe = /^\s*(?:\d+[.)]\s+|[-•*]\s+|box\b|line\b|part\b)/i;
-    const abbrevWordRe = /\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|U\.S|U\.K|No|Inc|Ltd)\.$/i;
-    const continuationWordRe = /\b(?:and|or|but|nor|for|so|yet|of|to|with|without|in|on|at|by|from|as|than|that|which|who|whom|whose|where|when|while|because|if|after|before|during|under|over|between|among|through|into|onto|about|against|around|across|within|toward|towards|the|a|an|this|that|these|those|my|your|his|her|its|our|their|some|any|each|every|another|other|such)\s*$/i;
-    const danglingPhraseRe = /\b(?:known as|such as|because of|in the|to the|of the|with the|for the|on the|from the|at the|by the|one of the|part of the|his majesty the|their property and their)\s*$/i;
-    const cleanWordRe = /^[A-Za-z]+(?:['’][A-Za-z]+)?$/;
+    const plainWordRe = /^[A-Za-z]+(?:['’][A-Za-z]+)?$/;
+    const listLineRe = /^\s*(?:\d+[.)]\s+|[-•*]\s+|box|line|part)/i;
+
+    function normalizeSpace(s) {
+      return String(s || '').replace(/\s+/g, ' ').trim();
+    }
 
     function isListLine(s) {
       return listLineRe.test(String(s || '').trim());
     }
 
-    function endsWithListLead(s) {
-      const t = String(s || '').trim();
-      return /[:;]\s*$/.test(t) && /(?:following|below|steps|items|list|includes?)\s*[:;]?$/i.test(t);
-    }
-
     function isProtectedBoundary(prevText, nextText) {
-      return isListLine(prevText) || isListLine(nextText) || endsWithListLead(prevText) || looksLikeMajorHeading(prevText) || looksLikeMajorHeading(nextText);
+      return isListLine(prevText) || isListLine(nextText) || looksLikeMajorHeading(prevText) || looksLikeMajorHeading(nextText);
     }
 
-    function isSentenceStopAt(text, idx) {
-      const ch = text[idx];
-      if (ch !== '.' && ch !== '?' && ch !== '!') return false;
-      const before = text.slice(Math.max(0, idx - 40), idx + 1);
-      const after = text.slice(idx + 1, idx + 32);
-      const prevCh = idx > 0 ? text[idx - 1] : '';
-      const nextCh = idx + 1 < text.length ? text[idx + 1] : '';
-      const nextWord = (after.match(/^\s*([A-Za-z0-9][A-Za-z0-9.-]*)/) || [null, ''])[1];
-      if (ch === '.' && abbrevWordRe.test(before)) return false;
-      if (ch === '.' && prevCh && /[A-Za-z0-9]/.test(prevCh) && nextCh && /[A-Za-z0-9]/.test(nextCh)) return false;
-      if (ch === '.' && /(?:[A-Za-z]\.){2,}$/.test(before)) return false;
-      if (ch === '.' && /(?:^|\s)[A-Za-z]\.$/.test(before) && /^[A-Za-z]\./.test(after.trim())) return false;
-      if (ch === '.' && /(?:§\s*)?\d+\.$/.test(before) && /^\s*\d/.test(after)) return false;
-      if (ch === '.' && /(?:sec|section|art|article|no)\.?\s*\d+\.$/i.test(before) && /^\s*[A-Za-z0-9(]/.test(after)) return false;
-      if (ch === '.' && /[A-Za-z0-9-]+\.[A-Za-z0-9.-]+$/.test(before)) return false;
-      if (ch === '.' && nextWord && /^(?:gov|com|org|net|edu|io|co|us|uk)$/i.test(nextWord)) return false;
-      if (ch === '.' && /^\s*(?:Form\b|§\b|\d+(?:\.\d+)+(?:\s*\([a-z0-9]+\))*)/i.test(after)) return false;
-      return true;
+    function rawTokens(s) {
+      return normalizeSpace(s).split(' ').filter(Boolean);
+    }
+
+    function plainWordCount(tokens) {
+      return (tokens || []).filter(t => plainWordRe.test(t)).length;
+    }
+
+    function startsLikeContinuation(text) {
+      const h = normalizeSpace(text).slice(0, 90);
+      if (!h) return false;
+      if (looksLikeMajorHeading(h) || isListLine(h)) return false;
+      if (/^[,;:.!?\)\]\}]/.test(h)) return true;
+      if (/^\(/.test(h)) return true;
+      const toks = rawTokens(h).slice(0, 4);
+      if (toks.length && plainWordCount(toks) < 3) return true;
+      if (toks.slice(0, 3).some(t => !plainWordRe.test(t))) return true;
+      return false;
     }
 
     function collectSentenceStops(text, limit = text.length) {
@@ -422,11 +420,9 @@
       let paren = 0, bracket = 0, brace = 0;
       let straightDouble = false;
       let curlyDouble = 0;
-
       for (let i = 0; i < Math.min(limit, t.length); i++) {
         const ch = t[i];
         const prev = i > 0 ? t[i - 1] : '';
-
         if (ch === '"' && prev !== '\\') { straightDouble = !straightDouble; continue; }
         if (ch === '“') { curlyDouble += 1; continue; }
         if (ch === '”') { curlyDouble = Math.max(0, curlyDouble - 1); continue; }
@@ -436,159 +432,102 @@
         if (ch === ']') { bracket = Math.max(0, bracket - 1); continue; }
         if (ch === '{') { brace += 1; continue; }
         if (ch === '}') { brace = Math.max(0, brace - 1); continue; }
-
         if (paren || bracket || brace || straightDouble || curlyDouble) continue;
-        if (!isSentenceStopAt(t, i)) continue;
-
+        if (ch !== '.' && ch !== '?' && ch !== '!') continue;
         let end = i + 1;
         while (end < t.length && closers.has(t[end])) end += 1;
         while (end < t.length && /\s/.test(t[end])) end += 1;
-        stops.push(end);
+        stops.push({ cut: end, punct: i, ch });
       }
       return stops;
     }
 
-    function tailSnippet(text) {
-      return String(text || '').replace(/\s+/g, ' ').trim().slice(-120);
+    function boundaryMetrics(text, cand) {
+      const left = normalizeSpace(text.slice(0, cand.cut));
+      const right = normalizeSpace(text.slice(cand.cut));
+      const preSnippet = normalizeSpace(text.slice(Math.max(0, cand.punct - 140), cand.punct));
+      const postSnippet = normalizeSpace(text.slice(cand.cut, Math.min(text.length, cand.cut + 140)));
+      const preTokens = rawTokens(preSnippet);
+      const postTokens = rawTokens(postSnippet);
+      const last8 = preTokens.slice(-8);
+      const first5 = postTokens.slice(0, 5);
+      const lastToken = preTokens[preTokens.length - 1] || '';
+      const lastPlain3 = [];
+      for (let i = preTokens.length - 1; i >= 0 && lastPlain3.length < 3; i--) {
+        if (plainWordRe.test(preTokens[i])) lastPlain3.unshift(preTokens[i]);
+      }
+      const firstPlain3 = postTokens.filter(t => plainWordRe.test(t)).slice(0, 3);
+      const rawTail = preSnippet.slice(-90);
+      const rawHead = postSnippet.slice(0, 90);
+      const beforePlain = lastPlain3.length;
+      const afterPlain = firstPlain3.length;
+      const shortFinal = plainWordRe.test(lastToken) && lastToken.length <= 3;
+      const dottedTail = /(?:\b[A-Za-z]\.){2,}$/.test(rawTail) || /[A-Za-z0-9-]+\.[A-Za-z0-9.-]+$/.test(rawTail);
+      const legalTail = /(?:§\s*)?\d+(?:\.\d+)+(?:\s*\([a-z0-9]+\))*$/.test(rawTail) || /\b(?:vol|chap|sec|no|art)\.$/i.test(rawTail);
+      const afterStructured = /^\(|^\d/.test(rawHead) || first5.slice(0, 3).some(t => !plainWordRe.test(t));
+      const commaLikeTail = /[,;:]\s*$/.test(rawTail) || /[,;:]/.test(last8.join(' '));
+      const weirdTail = /[§$@#%^&*_+=<>|~\/\[\]{}]/.test(last8.join(' '));
+      const initialChain = /(?:^|\s)(?:[A-Za-z]\.|[A-Za-z]{1,4}\.)\s*(?:[A-Za-z]\.|[A-Za-z]{1,4}\.)/.test(rawTail);
+      const dateLikeTail = /^\d+$/.test(lastToken) || /\d{1,4},?\s+\d{1,4}$/.test(rawTail);
+      return { left, right, beforePlain, afterPlain, shortFinal, dottedTail, legalTail, afterStructured, commaLikeTail, weirdTail, initialChain, dateLikeTail };
     }
 
-    function headSnippet(text) {
-      return String(text || '').replace(/\s+/g, ' ').trim().slice(0, 120);
-    }
-
-    function startsLikeContinuation(text) {
-      const h = headSnippet(text);
-      if (!h) return false;
-      if (looksLikeMajorHeading(h) || isListLine(h)) return false;
-      if (/^[,;:.)\]}]/.test(h)) return true;
-      if (/^\((?:meaning|which|who|that|and|or|but|nor|for|so|yet|because|if|when|while|to|of|in|on|at|by|from|with|without|under|over|between|among|through|into|onto|about|against|around|across|within|toward|towards|him|her|his|their|the|a|an)\b/i.test(h)) return true;
-      if (/^(?:and|or|but|nor|for|so|yet|because|if|when|while|though|although|to|of|in|on|at|by|from|with|without|under|over|between|among|through|into|onto|about|against|around|across|within|toward|towards|him|her|his|their|the|a|an|gov)\b/i.test(h)) return true;
-      if (/^\d+(?:\.\d+)+(?:\s*\([a-z0-9]+\))*/i.test(h)) return true;
-      if (/^[a-z]/.test(h)) return true;
+    function isHardInvalid(m) {
+      if (!m.left || !m.right) return true;
+      if (isProtectedBoundary(m.left, m.right)) return true;
+      if (m.beforePlain < 3) return true;
+      if (m.afterPlain < 3) return true;
+      if (m.shortFinal && !m.dateLikeTail) return true;
+      if (m.dottedTail || m.legalTail || m.initialChain) return true;
+      if (m.afterStructured) return true;
+      if (startsLikeContinuation(m.right)) return true;
       return false;
     }
 
-    function endsLikeDanglingTail(text) {
-      const t = tailSnippet(text);
-      if (!t) return false;
-      if (/\b[A-Za-z]{2,}-\s*$/.test(t)) return true;
-      if (continuationWordRe.test(t)) return true;
-      if (danglingPhraseRe.test(t)) return true;
-      if (/(?:,|;|:)\s*$/.test(t)) return true;
-      if (/(?:§\s*)?\d+\.\d+(?:\s*\([a-z0-9]+\))*["'”’)\]}]*\s*$/i.test(t)) return true;
-      const lastToken = (t.match(/([A-Za-z0-9§][A-Za-z0-9.§'’\-]*)["'”’)\]}]*\s*$/) || [null, ''])[1];
-      if (lastToken && ((lastToken.match(/\./g) || []).length >= 2 || /[A-Za-z0-9-]+\.[A-Za-z0-9.-]+/.test(lastToken))) return true;
-      if (/\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|U\.S|U\.K|No|Inc|Ltd)\.$/i.test(t)) return true;
-      return false;
+    function scoreCandidate(text, cand) {
+      const m = boundaryMetrics(text, cand);
+      if (isHardInvalid(m)) return null;
+      let score = 0;
+      score += Math.min(m.beforePlain, 3) * 8;
+      score += Math.min(m.afterPlain, 3) * 8;
+      if (!m.commaLikeTail) score += 10;
+      if (!m.weirdTail) score += 8;
+      if (m.dateLikeTail) score -= 8; // acceptable but weaker than plain prose
+      const distance = Math.abs(cand.cut - target);
+      score -= distance / 18;
+      if (cand.cut <= target) score += 4;
+      return { cut: cand.cut, score };
     }
 
-    const plainBoundaryWordRe = /^[A-Za-z]+(?:['’][A-Za-z]+)?$/;
-
-    function plainWordsBeforeBoundary(text, count = 3) {
-      const body = String(text || '').replace(/\s+/g, ' ').trim().replace(/[.!?]["'”’)\]}]*\s*$/, '').trim();
-      if (!body) return [];
-      const tokens = body.split(/\s+/).filter(Boolean);
-      const out = [];
-      for (let i = tokens.length - 1; i >= 0 && out.length < count; i--) {
-        const core = tokens[i].replace(/^[^A-Za-z']+|[^A-Za-z']+$/g, '');
-        if (plainBoundaryWordRe.test(core)) out.unshift(core);
-      }
-      return out;
-    }
-
-    function plainWordsAfterBoundary(text, count = 3) {
-      const body = String(text || '').replace(/\s+/g, ' ').trim();
-      if (!body) return [];
-      const tokens = body.split(/\s+/).filter(Boolean);
-      const out = [];
-      for (let i = 0; i < tokens.length && out.length < count; i++) {
-        const core = tokens[i].replace(/^[^A-Za-z']+|[^A-Za-z']+$/g, '');
-        if (plainBoundaryWordRe.test(core)) out.push(core);
-      }
-      return out;
-    }
-
-    function immediateBoundaryTokens(left, right) {
-      const leftNorm = String(left || '').replace(/\s+/g, ' ').trim();
-      const rightNorm = String(right || '').replace(/\s+/g, ' ').trim();
-      const prevRaw = (leftNorm.match(/([^\s]+)\s*$/) || [null, ''])[1];
-      const nextRaw = (rightNorm.match(/^([^\s]+)/) || [null, ''])[1];
-      const prevCore = prevRaw.replace(/[.!?"'”’)\]}]+$/g, '').replace(/^[^A-Za-z0-9']+|[^A-Za-z0-9']+$/g, '');
-      const nextCore = nextRaw.replace(/^[^A-Za-z0-9']+|[^A-Za-z0-9']+$/g, '').replace(/[.!?"'”’)\]}]+$/g, '');
-      return { prevRaw, nextRaw, prevCore, nextCore };
-    }
-
-    function hasSimpleProseBoundary(left, right) {
-      const leftNorm = String(left || '').replace(/\s+/g, ' ').trim();
-      const rightNorm = String(right || '').replace(/\s+/g, ' ').trim();
-      if (!/[.!?]["'”’)\]}]*\s*$/.test(leftNorm)) return false;
-      const before = plainWordsBeforeBoundary(leftNorm, 3);
-      const after = plainWordsAfterBoundary(rightNorm, 3);
-      if (before.length < 3 || after.length < 3) return false;
-      const { prevRaw, nextRaw, prevCore, nextCore } = immediateBoundaryTokens(leftNorm, rightNorm);
-      if (!prevRaw || !nextRaw) return false;
-      if (!plainBoundaryWordRe.test(nextCore)) return false;
-      if (/^[A-Za-z]+$/.test(prevCore) && prevCore.length <= 3) return false;
-      if (/[^A-Za-z'”.!?"'”’)\]}]/.test(prevRaw.replace(/[.!?]["'”’)\]}]*$/,''))) return false;
-      if (/[^A-Za-z']/.test(nextRaw)) return false;
-      return true;
-    }
-
-    function isValidCut(text, cut) {
-      const left = text.slice(0, cut).trim();
-      const right = text.slice(cut).trim();
-      if (!left || !right) return false;
-      if (isProtectedBoundary(left, right)) return false;
-      if (endsLikeDanglingTail(left)) return false;
-      if (startsLikeContinuation(right)) return false;
-      if (!hasSimpleProseBoundary(left, right)) return false;
-      return true;
-    }
-
-    function chooseCut(text, preferred = target) {
+    function chooseCut(text) {
       const t = String(text || '').trim();
       if (!t) return -1;
-      const searchLimit = Math.min(t.length, Math.max(hardMax, Math.round(target * 2.6)));
-      const stops = collectSentenceStops(t, searchLimit).filter(c => c >= minChars && isValidCut(t, c));
-      if (!stops.length) return -1;
-
-      const nearBefore = stops.filter(c => c <= preferred);
-      if (nearBefore.length) return nearBefore[nearBefore.length - 1];
-
-      const nearAfter = stops.filter(c => c > preferred);
-      if (nearAfter.length) return nearAfter[0];
+      const center = Math.min(t.length, target);
+      const startAt = Math.max(0, center - searchBack);
+      const limit = Math.min(t.length, center + searchForward);
+      const candidates = collectSentenceStops(t, limit).filter(c => c.cut >= minChars && c.cut >= startAt);
+      const scored = candidates.map(c => scoreCandidate(t, c)).filter(Boolean).sort((a, b) => b.score - a.score || a.cut - b.cut);
+      if (scored.length) return scored[0].cut;
       return -1;
     }
 
     function fallbackCut(text) {
       const t = String(text || '').trim();
       if (!t) return -1;
-      const paras = [];
-      let idx = 0;
-      while ((idx = t.indexOf('\n\n', idx)) >= 0) { paras.push(idx + 2); idx += 2; }
-      const validPara = paras.filter(c => c >= minChars && c <= hardMax && !startsLikeContinuation(t.slice(c)) && !endsLikeDanglingTail(t.slice(0, c)));
-      if (validPara.length) return validPara[validPara.length - 1];
-
-      for (let pos = Math.min(hardMax, t.length - 1); pos >= minChars; pos--) {
-        if (t[pos] !== ' ') continue;
-        const left = t.slice(0, pos).trim();
-        const right = t.slice(pos).trim();
-        if (!left || !right) continue;
-        if (endsLikeDanglingTail(left)) continue;
-        if (startsLikeContinuation(right)) continue;
-        const lastToken = (left.match(/([A-Za-z0-9§][A-Za-z0-9.§'’\-]*)$/) || [null, ''])[1];
-        const firstToken = (right.match(/^([A-Za-z0-9§][A-Za-z0-9.§'’\-]*)/) || [null, ''])[1];
-        if (lastToken && /\.$/.test(lastToken) && firstToken && (/^(?:[A-Za-z]\.|\d)/.test(firstToken) || /^(?:gov|com|org|net|edu|io|co|Form)$/i.test(firstToken))) continue;
-        return pos;
+      const candidates = collectSentenceStops(t, Math.min(t.length, hardMax + searchForward));
+      for (const cand of candidates) {
+        if (cand.cut < target) continue;
+        const scored = scoreCandidate(t, cand);
+        if (scored) return cand.cut;
       }
-      return Math.min(t.length, hardMax);
+      return Math.min(t.length, hardMax + searchForward);
     }
 
     function flushBuffer(force = false) {
       let t = String(buf || '').trim();
       while (t) {
         if (!force && t.length <= softMax) break;
-        let cut = chooseCut(t, target);
+        let cut = chooseCut(t);
         if (cut < 0 && !force && t.length <= hardMax) break;
         if (cut < 0) cut = fallbackCut(t);
         if (cut <= 0 || cut >= t.length) {
@@ -613,7 +552,9 @@
       if (looksLikeMajorHeading(block) && buf.length >= minChars) {
         flushBuffer(true);
       }
-      buf = buf ? `${buf}\n\n${block}` : block;
+      buf = buf ? `${buf}
+
+${block}` : block;
       flushBuffer(false);
       if (buf.length > hardMax) flushBuffer(true);
     }
@@ -627,14 +568,15 @@
       if (!merged.length) { merged.push(page); continue; }
       const prev = merged[merged.length - 1];
       if (page.length < minChars && (prev.length + 2 + page.length) <= hardMax && !isProtectedBoundary(prev, page)) {
-        merged[merged.length - 1] = `${prev}\n\n${page}`.trim();
+        merged[merged.length - 1] = `${prev}
+
+${page}`.trim();
       } else {
         merged.push(page);
       }
     }
     return merged;
   }
-
   function buildMarkdownBookFromSections(sections, { pageChars = 1600 } = {}) {
     const out = [];
     (sections || []).forEach((sec) => {
