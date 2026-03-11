@@ -483,14 +483,7 @@
       const segmentTokens = rawTokens(segmentTail);
       const segmentLen = segmentTokens.length;
       const segmentPunct = (segmentTail.match(/[^A-Za-z'\s]/g) || []).length;
-      const nextWindow = normalizeSpace(text.slice(cand.cut, Math.min(text.length, cand.cut + 520)));
-      const nextDensePunct = (nextWindow.match(/[,;:()\[\]{}"“”]/g) || []).length;
-      const nextDenseSignals = (nextWindow.match(/(?:article|chapter|section|treaty|whereas|provided|commissioners|esq(?:uire)?s?|vol\.?|no\.?|page|law library|project)/ig) || []).length;
-      const nextDenseLookahead = nextDensePunct + (nextDenseSignals * 6);
-      const traversed = cand.cut > target ? normalizeSpace(text.slice(target, cand.cut)) : '';
-      const traversedPunct = (traversed.match(/[^A-Za-z'\s]/g) || []).length;
-      const traversedDense = ((traversed.match(/[,;:()\[\]{}"“”]/g) || []).length) + (((traversed.match(/(?:article|chapter|section|treaty|whereas|provided|commissioners|esq(?:uire)?s?|vol\.?|no\.?|page|law library|project)/ig) || []).length) * 6);
-      return { left, right, beforePlain, afterPlain, finalPlainWord, firstAfterPlainWord, shortFinal, dottedTail, legalTail, afterStructured, commaLikeTail, weirdTail, initialChain, dateLikeTail, weakTailWord, weakHeadWord, tailPunctDensity, headPunctDensity, structuralRun, segmentLen, segmentPunct, nextDenseLookahead, traversedPunct, traversedDense };
+      return { left, right, beforePlain, afterPlain, finalPlainWord, firstAfterPlainWord, shortFinal, dottedTail, legalTail, afterStructured, commaLikeTail, weirdTail, initialChain, dateLikeTail, weakTailWord, weakHeadWord, tailPunctDensity, headPunctDensity, structuralRun, segmentLen, segmentPunct };
     }
 
     function isHardInvalid(m) {
@@ -511,38 +504,31 @@
       if (isHardInvalid(m)) return null;
       let score = 0;
       // Reward clean prose on both sides.
-      score += Math.min(m.beforePlain, 3) * 16;
-      score += Math.min(m.afterPlain, 3) * 14;
-      if (!m.commaLikeTail) score += 20;
-      if (!m.weirdTail) score += 12;
+      score += Math.min(m.beforePlain, 3) * 14;
+      score += Math.min(m.afterPlain, 3) * 12;
+      if (!m.commaLikeTail) score += 18;
+      if (!m.weirdTail) score += 10;
 
       // Prefer simpler, shorter sentence segments over dense structured spans.
-      score -= m.tailPunctDensity * 5.5;
-      score -= m.headPunctDensity * 3.2;
-      score -= m.structuralRun * 4.6;
-      score -= Math.max(0, m.segmentLen - 16) * 3.4;
-      score -= m.segmentPunct * 4.0;
-      if (m.segmentLen <= 14 && m.segmentPunct <= 1) score += 34;
-      else if (m.segmentLen <= 20 && m.segmentPunct <= 3) score += 16;
-      else if (m.segmentLen <= 28 && m.segmentPunct <= 5) score += 6;
-      if (m.dateLikeTail) score -= 18; // acceptable but weaker than plain prose
+      score -= m.tailPunctDensity * 4.8;
+      score -= m.headPunctDensity * 2.8;
+      score -= m.structuralRun * 3.8;
+      score -= Math.max(0, m.segmentLen - 18) * 2.8;
+      score -= m.segmentPunct * 3.2;
+      if (m.segmentLen <= 16 && m.segmentPunct <= 2) score += 26;
+      else if (m.segmentLen <= 24 && m.segmentPunct <= 4) score += 10;
+      if (m.dateLikeTail) score -= 14; // acceptable but weaker than plain prose
 
-      // Strongly reward clean stops that occur just before dense quoted/legal/citation spans.
-      score += Math.min(90, m.nextDenseLookahead * 0.7);
-
-      // Soft target fit. Respect the target when reasonable, but do not reward carrying the page
-      // deep into dense spans just because a later stop remains technically valid.
+      // Respect page-size as a soft target, but prefer earlier simple prose over later bloated spans.
       const delta = cand.cut - target;
       if (delta <= 0) {
-        score += 28;
-        score -= Math.abs(delta) / 15;
+        score += 18;
+        score -= Math.abs(delta) / 20;
       } else {
-        score -= delta / 9;
-        score -= Math.max(0, delta - Math.round(target * 0.06)) / 2.6;
-        score -= m.traversedPunct * 1.2;
-        score -= Math.min(120, m.traversedDense * 0.9);
+        score -= delta / 10;
+        score -= Math.max(0, delta - Math.round(target * 0.10)) / 4;
       }
-      return { cut: cand.cut, score, delta };
+      return { cut: cand.cut, score };
     }
 
     function chooseCut(text) {
@@ -552,26 +538,30 @@
       const startAt = Math.max(minChars, center - searchBack);
       const limit = Math.min(t.length, center + searchForward);
       const all = collectSentenceStops(t, t.length).filter(c => c.cut >= minChars);
-      const near = all.filter(c => c.cut >= startAt && c.cut <= limit).map(c => scoreCandidate(t, c)).filter(Boolean);
-      if (near.length) {
-        const before = near.filter(c => c.cut <= target).sort((a, b) => b.score - a.score || b.cut - a.cut);
-        const after = near.filter(c => c.cut > target).sort((a, b) => b.score - a.score || a.cut - b.cut);
-        const bestBefore = before[0] || null;
-        const bestAfter = after[0] || null;
-        if (bestBefore && bestAfter) {
-          // Prefer earlier clean prose unless the later candidate is materially better.
-          const beforeAdjusted = bestBefore.score + 18;
-          const afterAdjusted = bestAfter.score - Math.min(42, Math.max(0, bestAfter.delta) / 14);
-          if (beforeAdjusted >= afterAdjusted) return bestBefore.cut;
-          return bestAfter.cut;
-        }
-        if (bestBefore) return bestBefore.cut;
-        if (bestAfter) return bestAfter.cut;
+      const near = all.filter(c => c.cut >= startAt && c.cut <= limit);
+      const scoredNear = near.map(c => scoreCandidate(t, c)).filter(Boolean);
+      const before = scoredNear.filter(c => c.cut <= center).sort((a, b) => b.score - a.score || b.cut - a.cut);
+      const after = scoredNear.filter(c => c.cut > center).sort((a, b) => b.score - a.score || a.cut - b.cut);
+      const reasonableScore = 48;
+      if (before.length) {
+        const bestBefore = before[0];
       }
+      if (before.length) {
+        const bestBefore = before[0];
+        const bestAfter = after.length ? after[0] : null;
+        if (bestBefore.score >= reasonableScore) {
+          if (!bestAfter) return bestBefore.cut;
+          const materialBetter = bestAfter.score >= bestBefore.score + 22;
+          if (!materialBetter) return bestBefore.cut;
+        }
+      }
+      if (after.length && after[0].score >= reasonableScore) return after[0].cut;
+      const allNearSorted = scoredNear.sort((a, b) => b.score - a.score || (Math.abs(a.cut - center) - Math.abs(b.cut - center)) || a.cut - b.cut);
+      if (allNearSorted.length) return allNearSorted[0].cut;
+      const forward = all.filter(c => c.cut > limit).map(c => scoreCandidate(t, c)).filter(Boolean).sort((a, b) => a.cut - b.cut || b.score - a.score);
+      if (forward.length) return forward[0].cut;
       const back = all.filter(c => c.cut >= minChars && c.cut < startAt).map(c => scoreCandidate(t, c)).filter(Boolean).sort((a, b) => b.score - a.score || b.cut - a.cut);
       if (back.length) return back[0].cut;
-      const forward = all.filter(c => c.cut > limit).map(c => scoreCandidate(t, c)).filter(Boolean).sort((a, b) => b.score - a.score || a.cut - b.cut);
-      if (forward.length) return forward[0].cut;
       return -1;
     }
 
