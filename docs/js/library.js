@@ -376,7 +376,6 @@
     const minChars = Math.max(240, Math.round(target * 0.58));
     const softUnder = Math.max(220, Math.round(target * 0.34));
     const softOver = Math.max(420, Math.round(target * 0.42));
-    const softMax = target + softOver;
     const hardMax = Math.max(target + softOver + 700, Math.round(target * 2.1));
     const closers = new Set(['"', "'", '”', '’', ')', ']', '}']);
     const plainWordRe = /^[A-Za-z]+(?:['’][A-Za-z]+)?$/;
