@@ -129,14 +129,14 @@
         </select>
       </div>
 
-      <!-- Mode selector — sits right of Source -->
-      <div class="input-group" style="min-width: 220px;">
+      <!-- Mode selector — sits right of Source, matches Source style -->
+      <div class="input-group" style="min-width: 160px;">
         <label class="input-label">Mode</label>
-        <div id="modeSelector" class="mode-pills" role="group" aria-label="App mode">
-          <button type="button" class="mode-pill is-active" data-mode="reading">Reading</button>
-          <button type="button" class="mode-pill" data-mode="comprehension">Comprehension</button>
-          <button type="button" class="mode-pill" data-mode="thesis">Thesis</button>
-        </div>
+        <select id="modeSelect" style="padding: 10px 14px; font-size: 15px; font-family: 'Karla', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;">
+          <option value="reading">Reading</option>
+          <option value="comprehension">Comprehension</option>
+          <option value="thesis">Thesis</option>
+        </select>
       </div>
 
       <div id="bookControls" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
