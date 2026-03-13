@@ -2138,3 +2138,60 @@ body {
   background-color: rgba(255, 230, 120, var(--tts-alpha));
   transition: background-color 220ms ease;
 }
+
+/* ==============================
+   Mode Selector Pills
+   (matches .difficulty-toggle pattern)
+   ============================== */
+
+.mode-pills {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255,255,255,0.35);
+  box-shadow: var(--shadow-sm);
+}
+
+.mode-pill {
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: 'Karla', sans-serif;
+  font-weight: 900;
+  color: var(--text-primary);
+  background: var(--secondary-bg);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.10);
+  transition: transform 0.15s ease, background 0.2s ease;
+  white-space: nowrap;
+}
+
+.mode-pill:hover { transform: translateY(-1px); }
+
+.mode-pill.is-active {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
+  color: #fff;
+}
+
+/* ==============================
+   Mode-driven UI visibility
+   ============================== */
+
+/* Reading mode: hide all comprehension UI */
+body.mode-reading .goal-time-row                          { display: none !important; }
+body.mode-reading .anchors-row                            { display: none !important; }
+body.mode-reading .sand-wrapper                           { display: none !important; }
+body.mode-reading .info-row                               { display: none !important; }
+body.mode-reading .ai-feedback                            { display: none !important; }
+body.mode-reading .action-buttons                         { display: none !important; }
+body.mode-reading #submitBtn                              { display: none !important; }
+body.mode-reading .verdict-section                        { display: none !important; }
+/* Hide the "Consolidation" page-header (second .page-header inside each .page) */
+body.mode-reading .page > .page-header ~ .page-header    { display: none !important; }
+
+/* Thesis mode: reveal the thesis input row */
+body.mode-thesis #thesisRow                               { display: block !important; }

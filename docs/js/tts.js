@@ -23,6 +23,77 @@ const TTS_STATE = {
   highlightEnds: null,
 };
 
+// ==============================
+// AUTOPLAY STATE
+// ==============================
+const AUTOPLAY_STATE = {
+  enabled: false,
+  countdownPageIndex: -1,
+  countdownSec: 0,
+  countdownTimerId: null,
+};
+
+function ttsAutoplayCancelCountdown() {
+  if (AUTOPLAY_STATE.countdownTimerId) {
+    clearInterval(AUTOPLAY_STATE.countdownTimerId);
+    AUTOPLAY_STATE.countdownTimerId = null;
+  }
+  const idx = AUTOPLAY_STATE.countdownPageIndex;
+  if (idx >= 0) {
+    try {
+      const pageEls = document.querySelectorAll('.page');
+      const pageEl = pageEls[idx];
+      if (pageEl) {
+        const btn = pageEl.querySelector('.tts-btn[data-tts="page"]');
+        if (btn) btn.textContent = '🔊 Read page';
+      }
+    } catch (_) {}
+  }
+  AUTOPLAY_STATE.countdownPageIndex = -1;
+  AUTOPLAY_STATE.countdownSec = 0;
+}
+
+function ttsAutoplayScheduleNext(pageIndex) {
+  if (!AUTOPLAY_STATE.enabled) return;
+
+  try {
+    const pageEls = document.querySelectorAll('.page');
+    const nextIndex = pageIndex + 1;
+    if (nextIndex >= pageEls.length) return; // no next page
+
+    const currentPageEl = pageEls[pageIndex];
+    if (!currentPageEl) return;
+    const btn = currentPageEl.querySelector('.tts-btn[data-tts="page"]');
+    if (!btn) return;
+
+    AUTOPLAY_STATE.countdownPageIndex = pageIndex;
+    AUTOPLAY_STATE.countdownSec = 5;
+
+    function updateBtn() {
+      if (btn) btn.textContent = `⏸ Next in ${AUTOPLAY_STATE.countdownSec}…`;
+    }
+    updateBtn();
+
+    AUTOPLAY_STATE.countdownTimerId = setInterval(() => {
+      AUTOPLAY_STATE.countdownSec -= 1;
+      if (AUTOPLAY_STATE.countdownSec <= 0) {
+        ttsAutoplayCancelCountdown();
+        try {
+          if (typeof goToNext === 'function') goToNext(pageIndex);
+          setTimeout(() => {
+            try {
+              const text = (typeof pages !== 'undefined' && pages[nextIndex]) ? pages[nextIndex] : '';
+              if (text) ttsSpeakQueue(`page-${nextIndex}`, [text]);
+            } catch (_) {}
+          }, 350);
+        } catch (_) {}
+      } else {
+        updateBtn();
+      }
+    }, 1000);
+  } catch (_) {}
+}
+
 function optsForKeySentenceMarks(key) {
   // Only sentence-highlight during "Read page" (page-<index>) actions.
   return typeof key === "string" && key.startsWith("page-");
@@ -212,6 +283,8 @@ function browserPickVoice() {
 }
 
 function ttsStop() {
+  // Cancel any pending autoplay countdown
+  ttsAutoplayCancelCountdown();
   // Stop any in-flight fetch
   if (TTS_STATE.abort) {
     try { TTS_STATE.abort.abort(); } catch (_) {}
@@ -375,6 +448,11 @@ async function ttsSpeakQueue(key, parts) {
       });
     }
     TTS_STATE.activeKey = null;
+    // If this was a page read, schedule autoplay for the next page.
+    if (typeof key === 'string' && key.startsWith('page-')) {
+      const pageIdx = parseInt(key.slice(5), 10);
+      if (Number.isFinite(pageIdx)) ttsAutoplayScheduleNext(pageIdx);
+    }
   } catch (err) {
     // IMPORTANT: If the user explicitly stopped (or switched actions) while Polly
     // was fetching/playing, do NOT fall back to browser TTS.
@@ -395,13 +473,12 @@ if (browserTtsSupported()) {
 
 
 // Best-practice stop conditions:
-// - If the user navigates away or the tab is hidden, stop speaking.
-// - This prevents "no way to turn it off" situations on mobile.
+// - If the user navigates away from the page entirely, stop speaking.
+// - visibilitychange (tab switching / minimizing) intentionally NOT included
+//   so that TTS and autoplay continue in the background while the user is
+//   on another tab.
 try {
   window.addEventListener("pagehide", () => ttsStop(), { passive: true });
   window.addEventListener("beforeunload", () => ttsStop(), { passive: true });
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) ttsStop();
-  }, { passive: true });
 } catch (_) {}
 

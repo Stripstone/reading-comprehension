@@ -76,6 +76,15 @@
       <button type="button" id="voiceMaleBtn" class="btn-mini" aria-pressed="false">Male</button>
     </div>
   </div>
+
+  <!-- Autoplay toggle -->
+  <div style="display:flex; gap:10px; margin-bottom:10px; justify-content:space-between; align-items:center;">
+    <div style="font-size:13px; font-weight:900; font-family:'Karla', sans-serif;">Autoplay:</div>
+    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; flex:1; justify-content:flex-end;">
+      <span style="opacity:0.85;">Read next page automatically</span>
+      <input type="checkbox" id="autoplayToggle" style="width:16px; height:16px; cursor:pointer; accent-color: var(--accent, #c17d4a);">
+    </label>
+  </div>
   <div style="display:grid; grid-template-columns: 1fr 120px; gap: 8px 10px; align-items:center; font-size: 13px;">
     <div>Voices</div><input id="vol_voice" type="range" min="0" max="1" step="0.01">
     <div>Music</div><input id="vol_music" type="range" min="0" max="1" step="0.01">
@@ -120,6 +129,16 @@
         </select>
       </div>
 
+      <!-- Mode selector — sits right of Source -->
+      <div class="input-group" style="min-width: 220px;">
+        <label class="input-label">Mode</label>
+        <div id="modeSelector" class="mode-pills" role="group" aria-label="App mode">
+          <button type="button" class="mode-pill is-active" data-mode="reading">Reading</button>
+          <button type="button" class="mode-pill" data-mode="comprehension">Comprehension</button>
+          <button type="button" class="mode-pill" data-mode="thesis">Thesis</button>
+        </div>
+      </div>
+
       <div id="bookControls" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
         <div class="input-group" style="min-width: 220px;">
           <label class="input-label">Book</label>
@@ -158,6 +177,14 @@
       <textarea id="bulkInput" placeholder="Paste your full .md or text here..." style="height: 80px;"></textarea>
 
       <p class="descriptor">Paste text here and it will be broken into pages automatically.</p>
+    </div>
+
+    <!-- Thesis row — visible only in Thesis mode -->
+    <div id="thesisRow" style="display:none; width:100%; margin-bottom:4px;">
+      <div class="input-group" style="width:100%;">
+        <label class="input-label">Your Thesis</label>
+        <textarea id="thesisInput" placeholder="Enter your thesis statement here. Your consolidations will be evaluated for consistency with this thesis." style="height:64px; width:100%; padding:10px 14px; font-size:14px; font-family:'Karla', sans-serif; font-weight:500; border:2px solid var(--border); border-radius:8px; background:var(--secondary-bg); color:var(--text-primary); resize:vertical; outline:none; box-sizing:border-box;"></textarea>
+      </div>
     </div>
 
 	    <div class="goal-time-row">

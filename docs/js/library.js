@@ -1612,15 +1612,15 @@
         <div class="page-header">Page ${i + 1}</div>
         <div class="page-text">${escapeHtml(text)}</div>
 
-        <div class="page-actions">
-          <button type="button" class="top-btn tts-btn" data-tts="page" data-page="${i}">🔊 Read page</button>
-        </div>
-
         <div class="anchors-row">
           <div class="anchors-ui anchors-ui--right">
             <div class="anchors-counter" title="Anchors">Anchors Found: 0/0</div>
             <button type="button" class="top-btn hint-btn">Hint</button>
           </div>
+        </div>
+
+        <div class="page-actions">
+          <button type="button" class="top-btn tts-btn" data-tts="page" data-page="${i}">🔊 Read page</button>
         </div>
 
         <div class="anchors-nav">
@@ -1667,10 +1667,18 @@
       const charCountSpan = page.querySelector(".char-count");
       const starsDiv = page.querySelector(".evaluation-section .stars");
 
-      // TTS: Read page text
+      // TTS: Read page text — also cancels autoplay countdown if one is running
       const ttsPageBtn = page.querySelector('.tts-btn[data-tts="page"]');
       if (ttsPageBtn) {
         ttsPageBtn.addEventListener("click", () => {
+          // If autoplay is counting down for THIS page, pressing the button cancels it.
+          if (
+            typeof AUTOPLAY_STATE !== 'undefined' &&
+            AUTOPLAY_STATE.countdownPageIndex === i
+          ) {
+            ttsAutoplayCancelCountdown();
+            return;
+          }
           ttsSpeakQueue(`page-${i}`, [text]);
         });
       }

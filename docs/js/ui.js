@@ -406,9 +406,114 @@
     });
   })();
 
+// ===================================
+// 🗂️ Mode Selector (Reading / Comprehension / Thesis)
+// ===================================
+(function initModeSelector() {
+  const pills = document.querySelectorAll('.mode-pill[data-mode]');
+  if (!pills.length) return;
+
+  // Restore persisted mode on boot (before first render)
+  try {
+    const saved = localStorage.getItem('rc_app_mode');
+    if (saved && ['reading','comprehension','thesis'].includes(saved)) {
+      appMode = saved;
+    }
+  } catch (_) {}
+
+  function applyMode(mode, skipRender) {
+    appMode = mode;
+    try { localStorage.setItem('rc_app_mode', mode); } catch (_) {}
+
+    // Update pill active state
+    pills.forEach(p => p.classList.toggle('is-active', p.dataset.mode === mode));
+
+    // Drive body class for CSS-only visibility rules
+    document.body.classList.remove('mode-reading','mode-comprehension','mode-thesis');
+    document.body.classList.add('mode-' + mode);
+
+    // Thesis row visibility
+    const thesisRow = document.getElementById('thesisRow');
+    if (thesisRow) thesisRow.style.display = (mode === 'thesis') ? '' : 'none';
+
+    if (!skipRender) {
+      try { render(); } catch (_) {}
+    }
+  }
+
+  // Apply current mode on boot (no re-render needed — render hasn't run yet)
+  applyMode(appMode, true);
+
+  pills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      const newMode = pill.dataset.mode;
+      if (newMode === appMode) return;
+
+      // Only warn if pages are actually loaded
+      const hasPages = typeof pages !== 'undefined' && Array.isArray(pages) && pages.length > 0;
+      if (hasPages) {
+        const modeLabel = { reading: 'Reading', comprehension: 'Comprehension', thesis: 'Thesis' }[newMode] || newMode;
+        const ok = window.confirm(
+          `Switch to ${modeLabel} mode?\n\nYour loaded pages and consolidations are preserved, but the view will re-render.`
+        );
+        if (!ok) return;
+      }
+
+      applyMode(newMode, false);
+    });
+  });
+})();
+
+// ===================================
+// 📝 Thesis Input — sync to state
+// ===================================
+(function initThesisInput() {
+  const input = document.getElementById('thesisInput');
+  if (!input) return;
+
+  // Restore persisted thesis text
+  try {
+    const saved = localStorage.getItem('rc_thesis_text');
+    if (typeof saved === 'string') {
+      thesisText = saved;
+      input.value = saved;
+    }
+  } catch (_) {}
+
+  input.addEventListener('input', () => {
+    thesisText = input.value;
+    try { localStorage.setItem('rc_thesis_text', thesisText); } catch (_) {}
+  });
+})();
+
+// ===================================
+// ▶ Autoplay Toggle — sync to AUTOPLAY_STATE
+// ===================================
+(function initAutoplayToggle() {
+  const checkbox = document.getElementById('autoplayToggle');
+  if (!checkbox) return;
+
+  // Restore persisted autoplay preference
+  try {
+    const saved = localStorage.getItem('rc_autoplay');
+    if (saved === '1') {
+      AUTOPLAY_STATE.enabled = true;
+      checkbox.checked = true;
+    }
+  } catch (_) {}
+
+  checkbox.addEventListener('change', () => {
+    AUTOPLAY_STATE.enabled = checkbox.checked;
+    try { localStorage.setItem('rc_autoplay', checkbox.checked ? '1' : '0'); } catch (_) {}
+
+    // If the user turns autoplay OFF while a countdown is running, cancel it.
+    if (!AUTOPLAY_STATE.enabled) {
+      try { ttsAutoplayCancelCountdown(); } catch (_) {}
+    }
+  });
+})();
+
 // --- Boot: restore local session if present ---
-try {
-  if (loadPersistedSessionIfAny()) {
     render();
     updateDiagnostics();
     // Ensure we can rehydrate per-page saved work even if the session snapshot lacked hashes.

@@ -158,6 +158,11 @@
 
 
   async function evaluatePageWithAI(pageIndex) {
+    // Thesis mode: backend not yet wired — show coming-soon notice
+    if (typeof appMode !== 'undefined' && appMode === 'thesis') {
+      alert('Thesis mode evaluation is coming soon!\n\nIn this mode, your consolidations will be evaluated for consistency with your thesis statement rather than general comprehension.');
+      return;
+    }
     const aiBtn = document.querySelector(`.ai-btn[data-page="${pageIndex}"]`);
     const feedbackDiv = document.querySelector(`.ai-feedback[data-page="${pageIndex}"]`);
     if (!aiBtn || !feedbackDiv) return;
@@ -577,6 +582,11 @@
   
   function submitEvaluation() {
     const btn = document.getElementById("submitBtn");
+    // Thesis mode: backend not yet wired — show coming-soon notice
+    if (typeof appMode !== 'undefined' && appMode === 'thesis') {
+      alert('Thesis mode scoring is coming soon!\n\nFull evaluation against your thesis will be available in an upcoming update.');
+      return;
+    }
     btn.disabled = true;
     
     // Calculate scores
