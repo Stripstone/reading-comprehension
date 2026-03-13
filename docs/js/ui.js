@@ -410,10 +410,10 @@
 // 🗂️ Mode Selector (Reading / Comprehension / Thesis)
 // ===================================
 (function initModeSelector() {
-  const select = document.getElementById('modeSelect');
-  if (!select) return;
+  const pills = document.querySelectorAll('.mode-pill[data-mode]');
+  if (!pills.length) return;
 
-  // Restore persisted mode on boot
+  // Restore persisted mode on boot (before first render)
   try {
     const saved = localStorage.getItem('rc_app_mode');
     if (saved && ['reading','comprehension','thesis'].includes(saved)) {
@@ -421,19 +421,18 @@
     }
   } catch (_) {}
 
-  // Sync the <select> value to current appMode
-  select.value = appMode;
-
-  // Apply mode: sets appMode, body class, thesis row visibility, optionally re-renders
   function applyMode(mode, skipRender) {
     appMode = mode;
     try { localStorage.setItem('rc_app_mode', mode); } catch (_) {}
 
-    // Body class drives any remaining CSS-level rules
+    // Update pill active state
+    pills.forEach(p => p.classList.toggle('is-active', p.dataset.mode === mode));
+
+    // Drive body class for CSS-only visibility rules
     document.body.classList.remove('mode-reading','mode-comprehension','mode-thesis');
     document.body.classList.add('mode-' + mode);
 
-    // Thesis row
+    // Thesis row visibility
     const thesisRow = document.getElementById('thesisRow');
     if (thesisRow) thesisRow.style.display = (mode === 'thesis') ? '' : 'none';
 
@@ -442,26 +441,26 @@
     }
   }
 
-  // Apply on boot without re-rendering (render() runs in boot block below)
+  // Apply current mode on boot (no re-render needed — render hasn't run yet)
   applyMode(appMode, true);
 
-  select.addEventListener('change', () => {
-    const newMode = select.value;
-    if (newMode === appMode) return;
+  pills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      const newMode = pill.dataset.mode;
+      if (newMode === appMode) return;
 
-    const hasPages = typeof pages !== 'undefined' && Array.isArray(pages) && pages.length > 0;
-    if (hasPages) {
-      const modeLabel = { reading: 'Reading', comprehension: 'Comprehension', thesis: 'Thesis' }[newMode] || newMode;
-      const ok = window.confirm(
-        `Switch to ${modeLabel} mode?\n\nYour loaded pages and consolidations are preserved, but the view will re-render.`
-      );
-      if (!ok) {
-        select.value = appMode; // revert the select visually
-        return;
+      // Only warn if pages are actually loaded
+      const hasPages = typeof pages !== 'undefined' && Array.isArray(pages) && pages.length > 0;
+      if (hasPages) {
+        const modeLabel = { reading: 'Reading', comprehension: 'Comprehension', thesis: 'Thesis' }[newMode] || newMode;
+        const ok = window.confirm(
+          `Switch to ${modeLabel} mode?\n\nYour loaded pages and consolidations are preserved, but the view will re-render.`
+        );
+        if (!ok) return;
       }
-    }
 
-    applyMode(newMode, false);
+      applyMode(newMode, false);
+    });
   });
 })();
 

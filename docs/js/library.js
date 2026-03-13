@@ -1597,45 +1597,7 @@
     return true;
   }
 
-  // Apply show/hide rules based on current appMode.
-  // Called at end of render() so every fresh DOM has the right state.
-  // Also driven by CSS body class rules in components.css as a fallback.
-  function applyModeVisibility() {
-    const mode = (typeof appMode !== 'undefined') ? appMode : 'reading';
-    const isReading = mode === 'reading';
-
-    // Top-controls sections
-    const goalRow = document.querySelector('.goal-time-row');
-    if (goalRow) goalRow.style.display = isReading ? 'none' : '';
-
-    // Per-page comprehension UI
-    document.querySelectorAll('.page').forEach(pageEl => {
-      const anchorsRow  = pageEl.querySelector('.anchors-row');
-      const sandWrapper = pageEl.querySelector('.sand-wrapper');
-      const infoRow     = pageEl.querySelector('.info-row');
-      const aiFeedback  = pageEl.querySelector('.ai-feedback');
-      const actionBtns  = pageEl.querySelector('.action-buttons');
-      // "Consolidation" header is the second .page-header inside .page
-      const headers     = pageEl.querySelectorAll('.page-header');
-      const consolidationHeader = headers.length > 1 ? headers[1] : null;
-
-      [anchorsRow, sandWrapper, infoRow, aiFeedback, actionBtns, consolidationHeader]
-        .forEach(el => { if (el) el.style.display = isReading ? 'none' : ''; });
-    });
-
-    // Global submit / verdict
-    const submitBtn     = document.getElementById('submitBtn');
-    const verdictSection = document.getElementById('verdictSection');
-    if (submitBtn)     submitBtn.style.display     = isReading ? 'none' : '';
-    if (verdictSection) verdictSection.style.display = isReading ? 'none' : '';
-  }
-
   function render() {
-    // Stop any active TTS and autoplay countdown before rebuilding the DOM.
-    // The audio element is detached from the page on innerHTML reset, so
-    // leaving it running causes orphaned audio and broken autoplay state.
-    try { ttsStop(); } catch (_) {}
-
     const container = document.getElementById("pages");
     container.innerHTML = "";
 
@@ -1891,9 +1853,6 @@
     // Check states after rendering
     checkCompassUnlock();
     checkSubmitButton();
-
-    // Apply mode visibility directly (belt-and-suspenders alongside CSS body class rules)
-    applyModeVisibility();
   }
 
   function startTimer(i, sand, timerDiv, wrapper, textarea) {

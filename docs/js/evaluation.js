@@ -490,25 +490,18 @@
   }
 
   function checkSubmitButton() {
-    const btn = document.getElementById("submitBtn");
-    if (!btn) return;
-
-    // No pages loaded — always disabled
-    if (!pageData.length) {
-      btn.disabled = true;
-      return;
-    }
-
+    // Enable submit when all non-sandstone pages have been rated
     const nonSandstonePages = pageData.filter(p => !p.isSandstone);
-
-    // All pages sandstoned — enable immediately
-    if (nonSandstonePages.length === 0) {
-      btn.disabled = false;
+    
+    // If all pages are sandstone, enable immediately
+    if (nonSandstonePages.length === 0 && pageData.length > 0) {
+      document.getElementById("submitBtn").disabled = false;
       return;
     }
-
-    // Otherwise require every non-sandstone page to be rated
-    btn.disabled = !nonSandstonePages.every(p => p.rating > 0);
+    
+    // Otherwise check if all non-sandstone pages are rated
+    const allRated = nonSandstonePages.every(p => p.rating > 0);
+    document.getElementById("submitBtn").disabled = !allRated;
   }
 
   // ===================================
