@@ -572,6 +572,22 @@
       const allStops = collectStops(t).filter(s => s.cut >= minChars);
       if (!allStops.length) return -1;
 
+      // ── Pass 1: tight window (target ±30%) ──────────────────────────────
+      // Restricts candidates to stops near the target, enforcing size
+      // consistency. A good stop here always wins over a better stop at 2×
+      // target — consistency beats marginal quality gains at extreme distances.
+      const windowLo = Math.round(target * 0.7);
+      const windowHi = Math.round(target * 1.3);
+      const tightStops = allStops.filter(s => s.cut >= windowLo && s.cut <= windowHi);
+      const tightScored = tightStops.map(s => scoreStop(t, s, allStops)).filter(Boolean);
+      if (tightScored.length) {
+        tightScored.sort((a, b) => b.score - a.score || a.cut - b.cut);
+        return tightScored[0].cut;
+      }
+
+      // ── Pass 2: full range fallback ─────────────────────────────────────
+      // No scoreable stop in the tight window (dense citations, form fields,
+      // vendor lists). Accept any valid stop anywhere >= minChars.
       const scored = allStops.map(s => scoreStop(t, s, allStops)).filter(Boolean);
       if (!scored.length) return -1;
 
@@ -642,7 +658,12 @@
       if (!merged.length) { merged.push(page); continue; }
       const prev = merged[merged.length - 1];
       const combined = prev + '\n\n' + page;
-      if (page.length < minChars && combined.length <= hardMax && !isListLine(page)) {
+      // Absorb threshold: target * 0.7 so short sections (vendor lists,
+      // boilerplate paragraphs) merge with the preceding page rather than
+      // standing alone as micro pages. The old minChars (target * 0.5) was
+      // too low — pages just above it were visibly undersized.
+      const absorbThreshold = Math.round(target * 0.7);
+      if (page.length < absorbThreshold && combined.length <= hardMax && !isListLine(page)) {
         merged[merged.length - 1] = combined.trim();
       } else {
         merged.push(page);
