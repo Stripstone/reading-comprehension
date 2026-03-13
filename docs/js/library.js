@@ -1599,6 +1599,7 @@
 
   function render() {
 
+        // Stop any active TTS and autoplay countdown before rebuilding the DOM
     try { ttsStop(); } catch (_) {}
 
     const container = document.getElementById("pages");
@@ -1615,15 +1616,15 @@
         <div class="page-header">Page ${i + 1}</div>
         <div class="page-text">${escapeHtml(text)}</div>
 
-        <div class="page-actions">
-          <button type="button" class="top-btn tts-btn" data-tts="page" data-page="${i}">🔊 Read page</button>
-        </div>
-
         <div class="anchors-row">
           <div class="anchors-ui anchors-ui--right">
             <div class="anchors-counter" title="Anchors">Anchors Found: 0/0</div>
             <button type="button" class="top-btn hint-btn">Hint</button>
           </div>
+        </div>
+
+        <div class="page-actions">
+          <button type="button" class="top-btn tts-btn" data-tts="page" data-page="${i}">🔊 Read page</button>
         </div>
 
         <div class="anchors-nav">
@@ -1678,6 +1679,10 @@
           return;
         }
         ttsPageBtn.addEventListener("click", () => {
+          if (AUTOPLAY_STATE.countdownPageIndex === i) {
+            ttsAutoplayCancelCountdown();
+            return;
+          }
           ttsSpeakQueue(`page-${i}`, [text]);
         });
       }

@@ -459,13 +459,13 @@
 (function initAutoplayToggle() {
   const checkbox = document.getElementById('autoplayToggle');
   if (!checkbox) return;
-
-  try { AUTOPLAY_STATE.enabled = localStorage.getItem('rc_autoplay') === '1'; } catch (_) {}
-  checkbox.checked = AUTOPLAY_STATE.enabled;
-
+  try {
+    checkbox.checked = localStorage.getItem('rc_autoplay') === '1';
+    AUTOPLAY_STATE.enabled = checkbox.checked;
+  } catch (_) {}
   checkbox.addEventListener('change', () => {
     AUTOPLAY_STATE.enabled = checkbox.checked;
-    try { localStorage.setItem('rc_autoplay', AUTOPLAY_STATE.enabled ? '1':'0'); } catch (_) {}
+    localStorage.setItem('rc_autoplay', checkbox.checked ? '1':'0');
     if (!AUTOPLAY_STATE.enabled) ttsAutoplayCancelCountdown();
   });
 })();

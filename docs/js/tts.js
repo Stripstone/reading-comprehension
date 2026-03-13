@@ -23,6 +23,7 @@ const TTS_STATE = {
   highlightEnds: null,
 };
 
+//For autoplay
 const AUTOPLAY_STATE = {
   enabled: false,
   countdownPageIndex: -1,
@@ -31,44 +32,37 @@ const AUTOPLAY_STATE = {
 };
 
 function ttsAutoplayCancelCountdown() {
-  if (AUTOPLAY_STATE.countdownTimerId) {
-    clearInterval(AUTOPLAY_STATE.countdownTimerId);
-    AUTOPLAY_STATE.countdownTimerId = null;
-  }
-  const idx = AUTOPLAY_STATE.countdownPageIndex;
-  if (idx >= 0) {
-    try {
-      const pageEls = document.querySelectorAll('.page');
-      const pageEl = pageEls[idx];
-      if (pageEl) {
-        const btn = pageEl.querySelector('.tts-btn[data-tts="page"]');
-        if (btn) btn.textContent = '🔊 Read page';
-      }
-    } catch (_) {}
-  }
+  if (AUTOPLAY_STATE.countdownTimerId) clearInterval(AUTOPLAY_STATE.countdownTimerId);
+  AUTOPLAY_STATE.countdownTimerId = null;
   AUTOPLAY_STATE.countdownPageIndex = -1;
   AUTOPLAY_STATE.countdownSec = 0;
+
+  // Reset button text if needed
+  try {
+    const pageEls = document.querySelectorAll('.page');
+    const idx = AUTOPLAY_STATE.countdownPageIndex;
+    if (idx >= 0 && pageEls[idx]) {
+      const btn = pageEls[idx].querySelector('.tts-btn[data-tts="page"]');
+      if (btn) btn.textContent = '🔊 Read page';
+    }
+  } catch (_) {}
 }
 
 function ttsAutoplayScheduleNext(pageIndex) {
   if (!AUTOPLAY_STATE.enabled) return;
-
   try {
     const pageEls = document.querySelectorAll('.page');
     const nextIndex = pageIndex + 1;
-    if (nextIndex >= pageEls.length) return; // no next page
+    if (nextIndex >= pageEls.length) return;
 
     const currentPageEl = pageEls[pageIndex];
-    if (!currentPageEl) return;
-    const btn = currentPageEl.querySelector('.tts-btn[data-tts="page"]');
+    const btn = currentPageEl?.querySelector('.tts-btn[data-tts="page"]');
     if (!btn) return;
 
     AUTOPLAY_STATE.countdownPageIndex = pageIndex;
     AUTOPLAY_STATE.countdownSec = 5;
 
-    function updateBtn() {
-      if (btn) btn.textContent = `⏸ Next in ${AUTOPLAY_STATE.countdownSec}…`;
-    }
+    function updateBtn() { if (btn) btn.textContent = `⏸ Next in ${AUTOPLAY_STATE.countdownSec}…`; }
     updateBtn();
 
     AUTOPLAY_STATE.countdownTimerId = setInterval(() => {
@@ -78,15 +72,11 @@ function ttsAutoplayScheduleNext(pageIndex) {
         try {
           if (typeof goToNext === 'function') goToNext(pageIndex);
           setTimeout(() => {
-            try {
-              const text = (typeof pages !== 'undefined' && pages[nextIndex]) ? pages[nextIndex] : '';
-              if (text) ttsSpeakQueue(`page-${nextIndex}`, [text]);
-            } catch (_) {}
+            const text = pages[nextIndex] || '';
+            if (text) ttsSpeakQueue(`page-${nextIndex}`, [text]);
           }, 350);
         } catch (_) {}
-      } else {
-        updateBtn();
-      }
+      } else updateBtn();
     }, 1000);
   } catch (_) {}
 }
@@ -280,11 +270,11 @@ function browserPickVoice() {
 }
 
 function ttsStop() {
-  ttsAutoplayCancelCountdown(); // cancel any pending countdown
-    // Stop any in-flight fetch
-    if (TTS_STATE.abort) {
-      try { TTS_STATE.abort.abort(); } catch (_) {}
-    }
+
+  // ensures any countdown stops
+  ttsAutoplayCancelCountdown(); 
+  if (TTS_STATE.abort) try { TTS_STATE.abort.abort(); } catch (_) {}
+
   // Stop any in-flight fetch
   if (TTS_STATE.abort) {
     try { TTS_STATE.abort.abort(); } catch (_) {}
