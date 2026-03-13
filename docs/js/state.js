@@ -270,12 +270,6 @@ async function stableHashText(text) {
   let goalCharCount = DEFAULT_CHAR_GOAL;
 
   // -----------------------------------
-  // App mode: 'reading' | 'comprehension' | 'thesis'
-  // -----------------------------------
-  let appMode = 'reading';
-  let thesisText = '';
-
-  // -----------------------------------
   // Debug flag helper
   // -----------------------------------
   // We support truthy URL forms: ?debug=1, ?debug=true, ?debug (empty), ?debug=on/yes
