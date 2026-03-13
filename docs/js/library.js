@@ -377,23 +377,31 @@
     const softMax  = Math.round(target * 1.15);
     const hardMax  = Math.max(softMax + 300, Math.round(target * 2.5));
 
-    // A plain word contains only letters and an optional internal apostrophe (contractions).
-    const plainWordRe    = /^[A-Za-z]+(?:['\u2019][A-Za-z]+)?$/;
-    const listLineRe     = /^\s*(?:\d+[.)]\s+|[-\u2022*]\s+)/i;
-    // Trailing abbreviations whose dot is NOT a sentence end.
-    const abbrevRe        = /\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Ave|Blvd|Dept|Est|etc|vs|approx|vol|chap|sec|no|art|fig|ed|trans|repr|rev|supp|pp)\.\s*$/i;
+    // A plain word: letters only, optional internal apostrophe (contractions).
+    const plainWordRe = /^[A-Za-z]+(?:['\u2019][A-Za-z]+)?$/;
+    const listLineRe  = /^\s*(?:\d+[.)]\s+|[-\u2022*]\s+)/i;
+
+    // Abbreviations whose trailing dot is NOT a sentence boundary.
+    // Covers titles, military ranks, civic titles, location suffixes, business/legal, and common shortenings.
+    const abbrevRe = /\b(?:Mr|Mrs|Ms|Miss|Dr|Prof|Rev|Hon|Sr|Jr|Capt|Maj|Lt|Sgt|Col|Gen|Cpl|Pvt|Cmdr|Cdr|Adm|Brig|Gov|Sen|Rep|Atty|Insp|Supt|Pres|St|Ave|Blvd|Rd|Ln|Ct|Sq|Dept|Est|Corp|Inc|Ltd|Co|Bros|Assn|Intl|etc|vs|approx|vol|chap|sec|no|art|fig|ed|trans|repr|rev|supp|pp|ibid|op|cf)\.\s*$/i;
     const initialChainRe  = /(?:\b[A-Za-z]\.){2,}\s*$/;   // "U.S.A."  "J.K."
     const singleInitialRe = /(?:^|\s)[A-Za-z]\.\s*$/;     // lone "J."
 
-    function norm(s) { return String(s || '').replace(/\s+/g, ' ').trim(); }
-    function toks(s) { return norm(s).split(' ').filter(Boolean); }
+    function norm(s)  { return String(s || '').replace(/\s+/g, ' ').trim(); }
+    function toks(s)  { return norm(s).split(' ').filter(Boolean); }
     function plainCount(arr) { return arr.filter(t => plainWordRe.test(t)).length; }
-    function isListLine(s) { return listLineRe.test(String(s || '').trim()); }
+    function isListLine(s)   { return listLineRe.test(String(s || '').trim()); }
 
-    // Collect every hard-punctuation stop that is:
-    //   \u2022 a . ? ! character
-    //   \u2022 outside all block delimiters: () [] {} \u201c\u201d ""
-    //   \u2022 not an abbreviation or initial chain
+    // Comma/semicolon rate: how list-like or enumeration-heavy a sentence is.
+    function commaRate(sentence) {
+      const words = toks(sentence).length;
+      if (!words) return 0;
+      return ((sentence.match(/[,;]/g) || []).length) / words;
+    }
+
+    // Collect valid hard-punctuation stops (. ? !) that are:
+    //   - outside all block delimiters: () [] {} "" \u201c\u201d
+    //   - not an abbreviation, initial chain, or lone initial
     function collectStops(text) {
       const t = String(text || '');
       const stops = [];
@@ -403,26 +411,25 @@
         const ch   = t[i];
         const prev = i > 0 ? t[i - 1] : '';
 
-        if (ch === '"' && prev !== '\\') { straightQ = !straightQ;                   continue; }
-        if (ch === '\u201C')               { curlyQ++;                                  continue; }
-        if (ch === '\u201D')               { curlyQ = Math.max(0, curlyQ - 1);          continue; }
-        if (ch === '(')  { paren++;                              continue; }
-        if (ch === ')')  { paren   = Math.max(0, paren   - 1);  continue; }
-        if (ch === '[')  { bracket++;                            continue; }
-        if (ch === ']')  { bracket = Math.max(0, bracket - 1);  continue; }
-        if (ch === '{')  { brace++;                              continue; }
-        if (ch === '}')  { brace   = Math.max(0, brace   - 1);  continue; }
+        if (ch === '"' && prev !== '\\') { straightQ = !straightQ;                  continue; }
+        if (ch === '\u201C')             { curlyQ++;                                 continue; }
+        if (ch === '\u201D')             { curlyQ = Math.max(0, curlyQ - 1);         continue; }
+        if (ch === '(') { paren++;                              continue; }
+        if (ch === ')') { paren   = Math.max(0, paren   - 1);  continue; }
+        if (ch === '[') { bracket++;                            continue; }
+        if (ch === ']') { bracket = Math.max(0, bracket - 1);  continue; }
+        if (ch === '{') { brace++;                              continue; }
+        if (ch === '}') { brace   = Math.max(0, brace   - 1);  continue; }
 
         if (paren || bracket || brace || straightQ || curlyQ) continue;
         if (ch !== '.' && ch !== '?' && ch !== '!') continue;
 
-        // Reject abbreviations and initials.
         const tail = t.slice(0, i + 1);
         if (abbrevRe.test(tail))                       continue;
         if (initialChainRe.test(tail))                 continue;
-        if (ch === '.' && singleInitialRe.test(tail)) continue;
+        if (ch === '.' && singleInitialRe.test(tail))  continue;
 
-        // Advance past closing quotes/brackets and whitespace to the cut point.
+        // Advance past trailing closers and whitespace to the cut point.
         let cut = i + 1;
         while (cut < t.length && /['\u2019"\u201D)\]}]/.test(t[cut])) cut++;
         while (cut < t.length && /\s/.test(t[cut])) cut++;
@@ -432,41 +439,55 @@
       return stops;
     }
 
-    // Score one stop.  Returns null if the stop fails validation.
+    // Score one candidate stop.  Returns null if validation fails.
     function scoreStop(text, stop, allStops) {
       const { punct, cut } = stop;
 
-      // Require 3 plain words immediately before the punctuation.
-      const preSlice = norm(text.slice(Math.max(0, punct - 200), punct));
-      if (plainCount(toks(preSlice)) < 3) return null;
-
-      // Require 3 plain words immediately after the cut.
+      // Hard gate: 3 plain words on each side of the cut.
+      const preSlice  = norm(text.slice(Math.max(0, punct - 200), punct));
       const postSlice = norm(text.slice(cut, Math.min(text.length, cut + 200)));
+      if (plainCount(toks(preSlice))  < 3) return null;
       if (plainCount(toks(postSlice)) < 3) return null;
 
-      // ── Ending sentence shape ────────────────────────────────────────────
-      // The sentence closing this page. Longer = better page ending
-      // (signals a complete, full thought).
-      const prevStop  = [...allStops].reverse().find(s => s.cut <= Math.max(0, punct - 2));
-      const sentStart = prevStop ? prevStop.cut : 0;
-      const endingLen = plainCount(toks(norm(text.slice(sentStart, punct))));
+      // ── Ending sentence ────────────────────────────────────────────────
+      // The sentence whose period closes this page.
+      const prevStop      = [...allStops].reverse().find(s => s.cut <= Math.max(0, punct - 2));
+      const sentStart     = prevStop ? prevStop.cut : 0;
+      const endSentence   = norm(text.slice(sentStart, punct));
+      const endLen        = plainCount(toks(endSentence));
+      const endCommaRate  = commaRate(endSentence);
 
-      // ── Starting sentence shape ──────────────────────────────────────────
-      // The sentence opening the next page. Shorter = better page start
-      // (crisp, readable opener).
-      const nextStop    = allStops.find(s => s.punct > cut);
-      const nextPunct   = nextStop ? nextStop.punct : Math.min(text.length, cut + 500);
-      const startingLen = plainCount(toks(norm(text.slice(cut, nextPunct))));
+      // ── Starting sentence ──────────────────────────────────────────────
+      // The sentence that opens the next page.
+      const nextStop      = allStops.find(s => s.punct > cut);
+      const nextPunct     = nextStop ? nextStop.punct : Math.min(text.length, cut + 500);
+      const startSentence = norm(text.slice(cut, nextPunct));
+      const startLen      = plainCount(toks(startSentence));
+      const startCommaRate = commaRate(startSentence);
 
       let score = 0;
 
-      // Longer ending sentence → higher score (reward up to 30 plain words).
-      score += Math.min(endingLen, 30) * 2;
+      // ── Sentence shape scoring ─────────────────────────────────────────
+      // Both sides favour a moderate sentence length (not too terse, not sprawling).
+      // Ending page: ideal 14–22 words  →  peak reward = 30 pts
+      // Starting page: ideal 8–18 words →  peak reward = 22 pts
+      // Score falls linearly the further the sentence deviates from the ideal band.
+      const endIdeal = 18,  endBand = 10;   // peak ± band
+      const strIdeal = 13,  strBand = 8;
+      score += Math.max(0, endBand - Math.abs(endLen   - endIdeal)) * 3.0;
+      score += Math.max(0, strBand - Math.abs(startLen - strIdeal)) * 2.75;
 
-      // Shorter starting sentence → higher score (peaks at \u22648 words, fades to 0 at 20).
-      score += Math.max(0, 20 - startingLen) * 1.5;
+      // ── Comma / semicolon density penalty ─────────────────────────────
+      // High comma rate signals lists, enumerations, or supporting clauses —
+      // poor material for a page boundary on either side.
+      // A rate of 0.12 (≈1 comma per 8 words) is the threshold where prose
+      // starts feeling list-heavy; penalty scales sharply above that.
+      const endCommaExcess   = Math.max(0, endCommaRate   - 0.12);
+      const startCommaExcess = Math.max(0, startCommaRate - 0.12);
+      score -= endCommaExcess   * 120;
+      score -= startCommaExcess * 100;
 
-      // Size proximity: gentle penalty for being short, steeper for overshooting.
+      // ── Size proximity ─────────────────────────────────────────────────
       const delta = cut - target;
       if (delta < 0) {
         score -= Math.abs(delta) / 40;
