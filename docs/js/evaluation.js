@@ -162,6 +162,10 @@
     const feedbackDiv = document.querySelector(`.ai-feedback[data-page="${pageIndex}"]`);
     if (!aiBtn || !feedbackDiv) return;
 
+    if (appMode === 'thesis') {
+      alert('Thesis mode evaluation is coming soon!\n\nIn this mode, your consolidations will be evaluated for consistency with your thesis statement rather than general comprehension.');
+      return;
+    }
     // Toggle if already open
     if (feedbackDiv.style.display === 'block') {
       feedbackDiv.style.display = 'none';
@@ -485,9 +489,15 @@
   }
 
   function checkSubmitButton() {
+    
     // Enable submit when all non-sandstone pages have been rated
     const nonSandstonePages = pageData.filter(p => !p.isSandstone);
     
+    const btn = document.getElementById("submitBtn");
+    if (!btn) return;
+
+    if (!pageData.length) { btn.disabled = true; return; }
+
     // If all pages are sandstone, enable immediately
     if (nonSandstonePages.length === 0 && pageData.length > 0) {
       document.getElementById("submitBtn").disabled = false;
@@ -578,7 +588,11 @@
   function submitEvaluation() {
     const btn = document.getElementById("submitBtn");
     btn.disabled = true;
-    
+
+    if (appMode === 'thesis') {
+      alert('Thesis mode scoring is coming soon!\n\nFull evaluation against your thesis will be available in an upcoming update.');
+      return;
+    }
     // Calculate scores
     const scores = calculateScores();
     if (!scores) {

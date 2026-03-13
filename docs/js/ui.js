@@ -406,6 +406,70 @@
     });
   })();
 
+// ===================================
+// 🗂️ Mode Selector
+// ===================================
+(function initModeSelector() {
+  const select = document.getElementById('modeSelect');
+  if (!select) return;
+
+  try {
+    const saved = localStorage.getItem('rc_app_mode');
+    if (saved && ['reading','comprehension','thesis'].includes(saved)) {
+      appMode = saved;
+    }
+  } catch (_) {}
+
+  select.value = appMode;
+
+  select.addEventListener('change', () => {
+    const newMode = select.value;
+    if (newMode === appMode) return;
+
+    const hasPages = typeof pages !== 'undefined' && Array.isArray(pages) && pages.length > 0;
+    if (hasPages) {
+      const ok = window.confirm(`Switch mode? Your consolidations will be preserved.`);
+      if (!ok) { select.value = appMode; return; }
+    }
+
+    appMode = newMode;
+    try { localStorage.setItem('rc_app_mode', appMode); } catch (_) {}
+    render();
+  });
+})();
+
+// ===================================
+// 📝 Thesis Input
+// ===================================
+(function initThesisInput() {
+  const input = document.getElementById('thesisInput');
+  if (!input) return;
+  try { input.value = localStorage.getItem('rc_thesis_text') || ''; } catch (_) {}
+  thesisText = input.value;
+
+  input.addEventListener('input', () => {
+    thesisText = input.value;
+    try { localStorage.setItem('rc_thesis_text', thesisText); } catch (_) {}
+  });
+})();
+
+// ===================================
+// ▶ Autoplay Toggle
+// ===================================
+(function initAutoplayToggle() {
+  const checkbox = document.getElementById('autoplayToggle');
+  if (!checkbox) return;
+
+  try { AUTOPLAY_STATE.enabled = localStorage.getItem('rc_autoplay') === '1'; } catch (_) {}
+  checkbox.checked = AUTOPLAY_STATE.enabled;
+
+  checkbox.addEventListener('change', () => {
+    AUTOPLAY_STATE.enabled = checkbox.checked;
+    try { localStorage.setItem('rc_autoplay', AUTOPLAY_STATE.enabled ? '1':'0'); } catch (_) {}
+    if (!AUTOPLAY_STATE.enabled) ttsAutoplayCancelCountdown();
+  });
+})();
+
 // --- Boot: restore local session if present ---
 try {
   if (loadPersistedSessionIfAny()) {

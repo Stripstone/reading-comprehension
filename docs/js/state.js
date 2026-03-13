@@ -20,7 +20,9 @@
   
   let pages = [];
   let pageData = [];
-
+  let appMode = 'reading';   // default mode
+  let thesisText = '';
+  
 // ---- Persistence ----
 // Persist learner work per-page-hash so switching chapters/sources doesn't wipe progress.
 // Also persist the last-opened session so refresh restores the current view.

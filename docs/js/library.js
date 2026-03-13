@@ -1598,6 +1598,9 @@
   }
 
   function render() {
+
+    try { ttsStop(); } catch (_) {}
+
     const container = document.getElementById("pages");
     container.innerHTML = "";
 
@@ -1670,6 +1673,10 @@
       // TTS: Read page text
       const ttsPageBtn = page.querySelector('.tts-btn[data-tts="page"]');
       if (ttsPageBtn) {
+        if (AUTOPLAY_STATE.countdownPageIndex === i) {
+          ttsAutoplayCancelCountdown();
+          return;
+        }
         ttsPageBtn.addEventListener("click", () => {
           ttsSpeakQueue(`page-${i}`, [text]);
         });
@@ -1845,6 +1852,34 @@
     // Check states after rendering
     checkCompassUnlock();
     checkSubmitButton();
+
+    
+    applyModeVisibility();
+  }
+
+  function applyModeVisibility() {
+    const isReading = appMode === 'reading';
+
+    const goalRow = document.querySelector('.goal-time-row');
+    if (goalRow) goalRow.style.display = isReading ? 'none' : '';
+
+    document.querySelectorAll('.page').forEach(pageEl => {
+      const anchorsRow  = pageEl.querySelector('.anchors-row');
+      const sandWrapper = pageEl.querySelector('.sand-wrapper');
+      const infoRow     = pageEl.querySelector('.info-row');
+      const aiFeedback  = pageEl.querySelector('.ai-feedback');
+      const actionBtns  = pageEl.querySelector('.action-buttons');
+      const headers     = pageEl.querySelectorAll('.page-header');
+      const consolidationHeader = headers.length > 1 ? headers[1] : null;
+
+      [anchorsRow, sandWrapper, infoRow, aiFeedback, actionBtns, consolidationHeader]
+        .forEach(el => { if (el) el.style.display = isReading ? 'none' : ''; });
+    });
+
+    const submitBtn = document.getElementById('submitBtn');
+    const verdictSection = document.getElementById('verdictSection');
+    if (submitBtn) submitBtn.style.display = isReading ? 'none' : '';
+    if (verdictSection) verdictSection.style.display = isReading ? 'none' : '';
   }
 
   function startTimer(i, sand, timerDiv, wrapper, textarea) {
