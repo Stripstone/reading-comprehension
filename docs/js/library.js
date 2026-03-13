@@ -424,6 +424,10 @@
         if (paren || bracket || brace || straightQ || curlyQ) continue;
         if (ch !== '.' && ch !== '?' && ch !== '!') continue;
 
+        // Skip dots that are part of a URL/domain (e.g. founders.archives.gov).
+        // A sentence-ending period is always followed by whitespace or end-of-string.
+        if (ch === '.' && i + 1 < t.length && /[a-z]/.test(t[i + 1])) continue;
+
         const tail = t.slice(0, i + 1);
         if (abbrevRe.test(tail))                       continue;
         if (initialChainRe.test(tail))                 continue;
@@ -443,11 +447,20 @@
     function scoreStop(text, stop, allStops) {
       const { punct, cut } = stop;
 
-      // Hard gate: 3 plain words on each side of the cut.
+      // ── Token-level gates ────────────────────────────────────────────────
       const preSlice  = norm(text.slice(Math.max(0, punct - 200), punct));
       const postSlice = norm(text.slice(cut, Math.min(text.length, cut + 200)));
-      if (plainCount(toks(preSlice))  < 3) return null;
-      if (plainCount(toks(postSlice)) < 3) return null;
+      const preToks   = toks(preSlice);
+      const postToks  = toks(postSlice);
+
+      // Hard gate: 3 plain words must exist in each window.
+      if (plainCount(preToks)  < 3) return null;
+      if (plainCount(postToks) < 3) return null;
+
+      // Hard gate: the very first token after the cut must be a plain word.
+      // Catches page starts like "archives.gov/...", "32,", "04 (c)", "(c) [Limitation".
+      const firstPostToken = postToks[0] || '';
+      if (!plainWordRe.test(firstPostToken)) return null;
 
       // ── Ending sentence ────────────────────────────────────────────────
       // The sentence whose period closes this page.
@@ -486,6 +499,15 @@
       const startCommaExcess = Math.max(0, startCommaRate - 0.12);
       score -= endCommaExcess   * 120;
       score -= startCommaExcess * 100;
+
+      // ── Last token before punct ───────────────────────────────────────
+      // If the word immediately before the period is not plain prose (e.g. a
+      // number, symbol, or punctuation-laden token like "322" or "below:"),
+      // the ending feels like a citation fragment or list marker.
+      // Apply a heavy score penalty — but don't hard-block, so that a clean
+      // page START can still rescue the break (e.g. "[00000]." → "This is...").
+      const lastPreToken = preToks[preToks.length - 1] || '';
+      if (!plainWordRe.test(lastPreToken)) score -= 60;
 
       // ── Size proximity ─────────────────────────────────────────────────
       const delta = cut - target;
