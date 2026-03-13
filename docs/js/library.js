@@ -334,7 +334,27 @@
       if (out.length === 0) { out.push(cur); continue; }
 
       const prev = out[out.length - 1];
-      if (listLineRe.test(prev) || listLineRe.test(cur) || looksLikeMajorHeading(cur) || looksLikeMajorHeading(prev)) {
+      // Always keep blocks separate when the PREV looks like a section heading —
+      // it should stand alone.  Only gate on CUR being a heading when prev has
+      // already ended cleanly (strong stop); if prev is a fragment, a heading-
+      // looking line is actually a continuation (e.g. a mailing address line).
+      if (looksLikeMajorHeading(prev)) {
+        out.push(cur);
+        continue;
+      }
+      if (looksLikeMajorHeading(cur) && strongEndRe.test(prev)) {
+        out.push(cur);
+        continue;
+      }
+      // A list-item PREV is always kept separate (it's a header or label).
+      // A list-item CUR is only kept separate when prev already ends with a strong stop —
+      // if prev is an incomplete fragment (no sentence-ending punct), the numbered item
+      // is a continuation of an enumeration and must be merged.
+      if (listLineRe.test(prev)) {
+        out.push(cur);
+        continue;
+      }
+      if (listLineRe.test(cur) && strongEndRe.test(prev)) {
         out.push(cur);
         continue;
       }
@@ -344,7 +364,14 @@
         continue;
       }
 
-      if (((prev.length < 120 && !strongEndRe.test(prev)) || weakTailRe.test(prev)) && startsContinuationRe.test(cur)) {
+      // Merge rules (after passing heading and list-label gates above):
+      // 1. prev has no sentence-ending punct → it's a fragment. Merge unconditionally
+      //    with whatever follows so line-wrapped prose and numbered continuations
+      //    (e.g. "; and\n2. Affiant") join correctly.
+      // 2. prev ends with a weak-tail char (,;:) → it's mid-clause. Merge when cur
+      //    looks like a grammatical continuation.
+      const prevIncomplete = !strongEndRe.test(prev);
+      if (prevIncomplete || (weakTailRe.test(prev) && startsContinuationRe.test(cur))) {
         out[out.length - 1] = (prev + ' ' + cur).replace(/\s+/g, ' ').trim();
         continue;
       }
@@ -370,12 +397,22 @@
   }
 
   
-  function chunkBlocksToPages(blocks, targetChars = 1600) {
+  function chunkBlocksToPages(blocks) {
     const pagesOut = [];
-    const target   = Math.max(400, targetChars | 0);
+
+    // Derive a consistent target from the chapter's own content so that every
+    // chapter auto-calibrates to its density — no user knob needed.
+    // NOMINAL_PAGE = ~1600 chars (~200 words). We compute how many such pages
+    // the chapter would naturally produce, then set target = totalChars / count
+    // so all pages land close to the same size.
+    const NOMINAL_PAGE = 1600;
+    const totalChars   = (blocks || []).reduce((s, b) => s + String(b || '').trim().length, 0);
+    const pageCount    = Math.max(1, Math.round(totalChars / NOMINAL_PAGE));
+    const target       = Math.max(400, Math.round(totalChars / pageCount));
+
     const minChars = Math.max(200, Math.round(target * 0.5));
     const softMax  = Math.round(target * 1.15);
-    const hardMax  = Math.max(softMax + 300, Math.round(target * 2.5));
+    const hardMax  = Math.max(softMax + 300, Math.round(target * 2.0)); // tighter ceiling
 
     // A plain word: letters only, optional internal apostrophe (contractions).
     const plainWordRe = /^[A-Za-z]+(?:['\u2019][A-Za-z]+)?$/;
@@ -507,7 +544,14 @@
       // Apply a heavy score penalty — but don't hard-block, so that a clean
       // page START can still rescue the break (e.g. "[00000]." → "This is...").
       const lastPreToken = preToks[preToks.length - 1] || '';
-      if (!plainWordRe.test(lastPreToken)) score -= 60;
+      if (!plainWordRe.test(lastPreToken)) {
+        // Pure digit (e.g. list marker "2", "1"): hard block — a sentence cannot
+        // end cleanly on a standalone number.
+        if (/^\d+$/.test(lastPreToken)) return null;
+        // Other non-plain tokens (brackets, symbols): heavy penalty but clean
+        // page start can still rescue the break.
+        score -= 60;
+      }
 
       // ── Size proximity ─────────────────────────────────────────────────
       const delta = cut - target;
@@ -535,13 +579,37 @@
       return scored[0].cut;
     }
 
+    // Find the paragraph boundary (\n\n) closest to `target` that is >= minChars.
+    // Returns the index just after the boundary, or -1 if none found.
+    function nearestBlockBoundaryCut(text, tgt, min) {
+      const re = /\n\n/g;
+      let best = -1, bestDist = Infinity, m;
+      while ((m = re.exec(text)) !== null) {
+        if (m.index < min) continue;
+        const dist = Math.abs(m.index - tgt);
+        if (dist < bestDist) { bestDist = dist; best = m.index + 2; }
+      }
+      return best;
+    }
+
     function flushBuffer(force = false) {
       let t = String(buf || '').trim();
       while (t) {
         if (!force && t.length <= softMax) break;
         const cut = chooseCut(t);
         if (cut < 0 || cut >= t.length) {
-          if (force) { pagesOut.push(t); t = ''; }
+          if (force) {
+            // No sentence stop found. Try a paragraph boundary near target so
+            // list-dense content (form fields, vendor lists) breaks gracefully
+            // instead of producing one massive page.
+            const bbCut = nearestBlockBoundaryCut(t, target, minChars);
+            if (bbCut > 0 && bbCut < t.length) {
+              pagesOut.push(t.slice(0, bbCut).trim());
+              t = t.slice(bbCut).trim();
+              continue;
+            }
+            pagesOut.push(t); t = '';
+          }
           break;
         }
         pagesOut.push(t.slice(0, cut).trim());
@@ -582,13 +650,13 @@
     }
     return merged;
   }
-  function buildMarkdownBookFromSections(sections, { pageChars = 1600 } = {}) {
+  function buildMarkdownBookFromSections(sections) {
     const out = [];
     (sections || []).forEach((sec) => {
       const title = (sec?.title || 'Untitled Section').trim();
       out.push(`# ${title}`);
       out.push('');
-      const pages = chunkBlocksToPages(sec?.blocks || [], pageChars);
+      const pages = chunkBlocksToPages(sec?.blocks || []);
       pages.forEach((p, idx) => {
         out.push(`## Page ${idx + 1}`);
         out.push('');
@@ -857,7 +925,7 @@
     return { metadata: md, items, spineHrefs };
   }
 
-  async function epubToMarkdownFromSelected(zip, tocItems, selectedIds, spineHrefs, { pageChars = 1600, cleanupHeadings = false, onProgress = null, bookTitle = '' } = {}) {
+  async function epubToMarkdownFromSelected(zip, tocItems, selectedIds, spineHrefs, { cleanupHeadings = false, onProgress = null, bookTitle = '' } = {}) {
     // Extract each selected TOC item as a range in spine order: from its start file until next TOC start.
     const toc = (tocItems || [])
       .slice()
@@ -930,7 +998,7 @@
       if (typeof onProgress === 'function') onProgress({ done, total: chosen.length });
     }
 
-    return buildMarkdownBookFromSections(sections, { pageChars });
+    return buildMarkdownBookFromSections(sections);
   }
 
   async function initBookImporter() {

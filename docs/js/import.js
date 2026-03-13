@@ -145,7 +145,6 @@
     const doImportBtn = document.getElementById('importDoImport');
     const backBtn = document.getElementById('importBackBtn');
 
-    const pageSizeSel = document.getElementById('importPageSize');
     const keepParasChk = document.getElementById('importKeepParagraphs');
     const cleanupHeadingsChk = document.getElementById('importCleanupHeadings');
 
@@ -440,7 +439,6 @@
         let createdPages = 0;
 
         // Build markdown
-        const pageChars = parseInt(pageSizeSel?.value || '1600', 10) || 1600;
         // keepParasChk is currently informational; paragraph preservation is the default behavior.
         const cleanupHeadings = !!cleanupHeadingsChk?.checked;
 
@@ -450,7 +448,6 @@
           selectedIds,
           _spineHrefs,
           {
-            pageChars,
             cleanupHeadings,
             bookTitle: title,
             onProgress: ({ done, total }) => {
