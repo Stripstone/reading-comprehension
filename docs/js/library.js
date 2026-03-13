@@ -372,217 +372,137 @@
   
   function chunkBlocksToPages(blocks, targetChars = 1600) {
     const pagesOut = [];
-    const target = Math.max(400, targetChars | 0);
-    const minChars = Math.max(240, Math.round(target * 0.58));
-    const softMax = Math.round(target * 1.12);
-    const hardMax = Math.max(softMax + 240, Math.round(target * 3.2));
-    const searchBack = Math.max(640, Math.round(target * 0.72));
-    const searchForward = Math.max(900, Math.round(target * 0.75));
-    const closers = new Set(['"', "'", '”', '’', ')', ']', '}']);
-    const plainWordRe = /^[A-Za-z]+(?:['’][A-Za-z]+)?$/;
-    const listLineRe = /^\s*(?:\d+[.)]\s+|[-•*]\s+|box|line|part)/i;
+    const target   = Math.max(400, targetChars | 0);
+    const minChars = Math.max(200, Math.round(target * 0.5));
+    const softMax  = Math.round(target * 1.15);
+    const hardMax  = Math.max(softMax + 300, Math.round(target * 2.5));
 
-    function normalizeSpace(s) {
-      return String(s || '').replace(/\s+/g, ' ').trim();
-    }
+    // A plain word contains only letters and an optional internal apostrophe (contractions).
+    const plainWordRe    = /^[A-Za-z]+(?:['\u2019][A-Za-z]+)?$/;
+    const listLineRe     = /^\s*(?:\d+[.)]\s+|[-\u2022*]\s+)/i;
+    // Trailing abbreviations whose dot is NOT a sentence end.
+    const abbrevRe        = /\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Ave|Blvd|Dept|Est|etc|vs|approx|vol|chap|sec|no|art|fig|ed|trans|repr|rev|supp|pp)\.\s*$/i;
+    const initialChainRe  = /(?:\b[A-Za-z]\.){2,}\s*$/;   // "U.S.A."  "J.K."
+    const singleInitialRe = /(?:^|\s)[A-Za-z]\.\s*$/;     // lone "J."
 
-    function isListLine(s) {
-      return listLineRe.test(String(s || '').trim());
-    }
+    function norm(s) { return String(s || '').replace(/\s+/g, ' ').trim(); }
+    function toks(s) { return norm(s).split(' ').filter(Boolean); }
+    function plainCount(arr) { return arr.filter(t => plainWordRe.test(t)).length; }
+    function isListLine(s) { return listLineRe.test(String(s || '').trim()); }
 
-    function isProtectedBoundary(prevText, nextText) {
-      return isListLine(prevText) || isListLine(nextText) || looksLikeMajorHeading(prevText) || looksLikeMajorHeading(nextText);
-    }
-
-    function rawTokens(s) {
-      return normalizeSpace(s).split(' ').filter(Boolean);
-    }
-
-    function plainWordCount(tokens) {
-      return (tokens || []).filter(t => plainWordRe.test(t)).length;
-    }
-
-    function startsLikeContinuation(text) {
-      const h = normalizeSpace(text).slice(0, 90);
-      if (!h) return false;
-      if (looksLikeMajorHeading(h) || isListLine(h)) return false;
-      if (/^[,;:.!?\)\]\}]/.test(h)) return true;
-      if (/^\(/.test(h)) return true;
-      const toks = rawTokens(h).slice(0, 4);
-      if (toks.length && plainWordCount(toks) < 3) return true;
-      if (toks.slice(0, 3).some(t => !plainWordRe.test(t))) return true;
-      return false;
-    }
-
-    function collectSentenceStops(text, limit = text.length) {
+    // Collect every hard-punctuation stop that is:
+    //   \u2022 a . ? ! character
+    //   \u2022 outside all block delimiters: () [] {} \u201c\u201d ""
+    //   \u2022 not an abbreviation or initial chain
+    function collectStops(text) {
       const t = String(text || '');
       const stops = [];
-      let paren = 0, bracket = 0, brace = 0;
-      let straightDouble = false;
-      let curlyDouble = 0;
-      for (let i = 0; i < Math.min(limit, t.length); i++) {
-        const ch = t[i];
+      let paren = 0, bracket = 0, brace = 0, straightQ = false, curlyQ = 0;
+
+      for (let i = 0; i < t.length; i++) {
+        const ch   = t[i];
         const prev = i > 0 ? t[i - 1] : '';
-        if (ch === '"' && prev !== '\\') { straightDouble = !straightDouble; continue; }
-        if (ch === '“') { curlyDouble += 1; continue; }
-        if (ch === '”') { curlyDouble = Math.max(0, curlyDouble - 1); continue; }
-        if (ch === '(') { paren += 1; continue; }
-        if (ch === ')') { paren = Math.max(0, paren - 1); continue; }
-        if (ch === '[') { bracket += 1; continue; }
-        if (ch === ']') { bracket = Math.max(0, bracket - 1); continue; }
-        if (ch === '{') { brace += 1; continue; }
-        if (ch === '}') { brace = Math.max(0, brace - 1); continue; }
-        if (paren || bracket || brace || straightDouble || curlyDouble) continue;
+
+        if (ch === '"' && prev !== '\\') { straightQ = !straightQ;                   continue; }
+        if (ch === '\u201C')               { curlyQ++;                                  continue; }
+        if (ch === '\u201D')               { curlyQ = Math.max(0, curlyQ - 1);          continue; }
+        if (ch === '(')  { paren++;                              continue; }
+        if (ch === ')')  { paren   = Math.max(0, paren   - 1);  continue; }
+        if (ch === '[')  { bracket++;                            continue; }
+        if (ch === ']')  { bracket = Math.max(0, bracket - 1);  continue; }
+        if (ch === '{')  { brace++;                              continue; }
+        if (ch === '}')  { brace   = Math.max(0, brace   - 1);  continue; }
+
+        if (paren || bracket || brace || straightQ || curlyQ) continue;
         if (ch !== '.' && ch !== '?' && ch !== '!') continue;
-        let end = i + 1;
-        while (end < t.length && closers.has(t[end])) end += 1;
-        while (end < t.length && /\s/.test(t[end])) end += 1;
-        stops.push({ cut: end, punct: i, ch });
+
+        // Reject abbreviations and initials.
+        const tail = t.slice(0, i + 1);
+        if (abbrevRe.test(tail))                       continue;
+        if (initialChainRe.test(tail))                 continue;
+        if (ch === '.' && singleInitialRe.test(tail)) continue;
+
+        // Advance past closing quotes/brackets and whitespace to the cut point.
+        let cut = i + 1;
+        while (cut < t.length && /['\u2019"\u201D)\]}]/.test(t[cut])) cut++;
+        while (cut < t.length && /\s/.test(t[cut])) cut++;
+
+        stops.push({ punct: i, cut });
       }
       return stops;
     }
 
-    function boundaryMetrics(text, cand) {
-      const left = normalizeSpace(text.slice(0, cand.cut));
-      const right = normalizeSpace(text.slice(cand.cut));
-      const preSnippet = normalizeSpace(text.slice(Math.max(0, cand.punct - 180), cand.punct));
-      const postSnippet = normalizeSpace(text.slice(cand.cut, Math.min(text.length, cand.cut + 180)));
-      const preTokens = rawTokens(preSnippet);
-      const postTokens = rawTokens(postSnippet);
-      const last8 = preTokens.slice(-8);
-      const first5 = postTokens.slice(0, 5);
-      const lastToken = preTokens[preTokens.length - 1] || '';
-      const lastPlain3 = [];
-      for (let i = preTokens.length - 1; i >= 0 && lastPlain3.length < 3; i--) {
-        if (plainWordRe.test(preTokens[i])) lastPlain3.unshift(preTokens[i]);
-      }
-      const firstPlain3 = postTokens.filter(t => plainWordRe.test(t)).slice(0, 3);
-      const rawTail = preSnippet.slice(-90);
-      const rawHead = postSnippet.slice(0, 90);
-      const beforePlain = lastPlain3.length;
-      const afterPlain = firstPlain3.length;
-      const finalPlainWord = (lastPlain3[lastPlain3.length - 1] || '').toLowerCase();
-      const firstAfterPlainWord = (firstPlain3[0] || '').toLowerCase();
-      const shortFinal = plainWordRe.test(lastToken) && lastToken.length <= 3;
-      const dottedTail = /(?:\b[A-Za-z]\.){2,}$/.test(rawTail) || /[A-Za-z0-9-]+\.[A-Za-z0-9.-]+$/.test(rawTail);
-      const legalTail = /(?:§\s*)?\d+(?:\.\d+)+(?:\s*\([a-z0-9]+\))*$/.test(rawTail) || /\b(?:vol|chap|sec|no|art)\.$/i.test(rawTail);
-      const afterStructured = /^\(|^\d/.test(rawHead) || first5.slice(0, 3).some(t => !plainWordRe.test(t));
-      const commaLikeTail = /[,;:]\s*$/.test(rawTail) || /[,;:]/.test(last8.join(' '));
-      const weirdTail = /[§$@#%^&*_+=<>|~\/\[\]{}]/.test(last8.join(' '));
-      const initialChain = /(?:^|\s)(?:[A-Za-z]\.|[A-Za-z]{1,4}\.)\s*(?:[A-Za-z]\.|[A-Za-z]{1,4}\.)/.test(rawTail);
-      const dateLikeTail = /^\d+$/.test(lastToken) || /\d{1,4},?\s+\d{1,4}$/.test(rawTail);
-      const weakTailWord = /^(?:the|a|an|and|or|but|of|to|for|in|on|at|by|with|from)$/i.test(finalPlainWord);
-      const weakHeadWord = /^(?:and|or|but|of|to|for|in|on|at|by|with|from)$/i.test(firstAfterPlainWord);
-      const tailPunctDensity = (rawTail.match(/[^A-Za-z'\s]/g) || []).length;
-      const headPunctDensity = (rawHead.match(/[^A-Za-z'\s]/g) || []).length;
-      const preWindow = normalizeSpace(text.slice(Math.max(0, cand.punct - 260), cand.punct));
-      const postWindow = normalizeSpace(text.slice(cand.cut, Math.min(text.length, cand.cut + 260)));
-      const structuralRun = ((preWindow.match(/[,;:]/g) || []).length + (postWindow.match(/[,;:]/g) || []).length);
-      const sentenceBackIdx = Math.max(preWindow.lastIndexOf('. '), preWindow.lastIndexOf('? '), preWindow.lastIndexOf('! '));
-      const segmentTail = sentenceBackIdx >= 0 ? preWindow.slice(sentenceBackIdx + 2) : preWindow;
-      const segmentTokens = rawTokens(segmentTail);
-      const segmentLen = segmentTokens.length;
-      const segmentPunct = (segmentTail.match(/[^A-Za-z'\s]/g) || []).length;
-      return { left, right, beforePlain, afterPlain, finalPlainWord, firstAfterPlainWord, shortFinal, dottedTail, legalTail, afterStructured, commaLikeTail, weirdTail, initialChain, dateLikeTail, weakTailWord, weakHeadWord, tailPunctDensity, headPunctDensity, structuralRun, segmentLen, segmentPunct };
-    }
+    // Score one stop.  Returns null if the stop fails validation.
+    function scoreStop(text, stop, allStops) {
+      const { punct, cut } = stop;
 
-    function isHardInvalid(m) {
-      if (!m.left || !m.right) return true;
-      if (isProtectedBoundary(m.left, m.right)) return true;
-      if (m.beforePlain < 3) return true;
-      if (m.afterPlain < 3) return true;
-      if (m.shortFinal && !m.dateLikeTail) return true;
-      if (m.weakTailWord || m.weakHeadWord) return true;
-      if (m.dottedTail || m.legalTail || m.initialChain) return true;
-      if (m.afterStructured) return true;
-      if (startsLikeContinuation(m.right)) return true;
-      return false;
-    }
+      // Require 3 plain words immediately before the punctuation.
+      const preSlice = norm(text.slice(Math.max(0, punct - 200), punct));
+      if (plainCount(toks(preSlice)) < 3) return null;
 
-    function scoreCandidate(text, cand) {
-      const m = boundaryMetrics(text, cand);
-      if (isHardInvalid(m)) return null;
+      // Require 3 plain words immediately after the cut.
+      const postSlice = norm(text.slice(cut, Math.min(text.length, cut + 200)));
+      if (plainCount(toks(postSlice)) < 3) return null;
+
+      // ── Ending sentence shape ────────────────────────────────────────────
+      // The sentence closing this page. Longer = better page ending
+      // (signals a complete, full thought).
+      const prevStop  = [...allStops].reverse().find(s => s.cut <= Math.max(0, punct - 2));
+      const sentStart = prevStop ? prevStop.cut : 0;
+      const endingLen = plainCount(toks(norm(text.slice(sentStart, punct))));
+
+      // ── Starting sentence shape ──────────────────────────────────────────
+      // The sentence opening the next page. Shorter = better page start
+      // (crisp, readable opener).
+      const nextStop    = allStops.find(s => s.punct > cut);
+      const nextPunct   = nextStop ? nextStop.punct : Math.min(text.length, cut + 500);
+      const startingLen = plainCount(toks(norm(text.slice(cut, nextPunct))));
+
       let score = 0;
-      // Reward clean prose on both sides.
-      score += Math.min(m.beforePlain, 3) * 14;
-      score += Math.min(m.afterPlain, 3) * 12;
-      if (!m.commaLikeTail) score += 18;
-      if (!m.weirdTail) score += 10;
 
-      // Prefer simpler, shorter sentence segments over dense structured spans.
-      score -= m.tailPunctDensity * 4.8;
-      score -= m.headPunctDensity * 2.8;
-      score -= m.structuralRun * 3.8;
-      score -= Math.max(0, m.segmentLen - 18) * 2.8;
-      score -= m.segmentPunct * 3.2;
-      if (m.segmentLen <= 16 && m.segmentPunct <= 2) score += 26;
-      else if (m.segmentLen <= 24 && m.segmentPunct <= 4) score += 10;
-      if (m.dateLikeTail) score -= 14; // acceptable but weaker than plain prose
+      // Longer ending sentence → higher score (reward up to 30 plain words).
+      score += Math.min(endingLen, 30) * 2;
 
-      // Respect page-size as a soft target, but prefer earlier simple prose over later bloated spans.
-      const delta = cand.cut - target;
-      if (delta <= 0) {
-        score += 18;
-        score -= Math.abs(delta) / 20;
+      // Shorter starting sentence → higher score (peaks at \u22648 words, fades to 0 at 20).
+      score += Math.max(0, 20 - startingLen) * 1.5;
+
+      // Size proximity: gentle penalty for being short, steeper for overshooting.
+      const delta = cut - target;
+      if (delta < 0) {
+        score -= Math.abs(delta) / 40;
       } else {
-        score -= delta / 10;
-        score -= Math.max(0, delta - Math.round(target * 0.10)) / 4;
+        score -= delta / 15;
+        score -= Math.max(0, delta - Math.round(target * 0.1)) / 5;
       }
-      return { cut: cand.cut, score };
+
+      return { cut, score };
     }
 
     function chooseCut(text) {
       const t = String(text || '').trim();
       if (!t) return -1;
-      const center = Math.min(t.length, target);
-      const startAt = Math.max(minChars, center - searchBack);
-      const limit = Math.min(t.length, center + searchForward);
-      const all = collectSentenceStops(t, t.length).filter(c => c.cut >= minChars);
-      const near = all.filter(c => c.cut >= startAt && c.cut <= limit);
-      const scoredNear = near.map(c => scoreCandidate(t, c)).filter(Boolean);
-      const before = scoredNear.filter(c => c.cut <= center).sort((a, b) => b.score - a.score || b.cut - a.cut);
-      const after = scoredNear.filter(c => c.cut > center).sort((a, b) => b.score - a.score || a.cut - b.cut);
-      const reasonableScore = 48;
-      if (before.length) {
-        const bestBefore = before[0];
-      }
-      if (before.length) {
-        const bestBefore = before[0];
-        const bestAfter = after.length ? after[0] : null;
-        if (bestBefore.score >= reasonableScore) {
-          if (!bestAfter) return bestBefore.cut;
-          const materialBetter = bestAfter.score >= bestBefore.score + 22;
-          if (!materialBetter) return bestBefore.cut;
-        }
-      }
-      if (after.length && after[0].score >= reasonableScore) return after[0].cut;
-      const allNearSorted = scoredNear.sort((a, b) => b.score - a.score || (Math.abs(a.cut - center) - Math.abs(b.cut - center)) || a.cut - b.cut);
-      if (allNearSorted.length) return allNearSorted[0].cut;
-      const forward = all.filter(c => c.cut > limit).map(c => scoreCandidate(t, c)).filter(Boolean).sort((a, b) => a.cut - b.cut || b.score - a.score);
-      if (forward.length) return forward[0].cut;
-      const back = all.filter(c => c.cut >= minChars && c.cut < startAt).map(c => scoreCandidate(t, c)).filter(Boolean).sort((a, b) => b.score - a.score || b.cut - a.cut);
-      if (back.length) return back[0].cut;
-      return -1;
+
+      const allStops = collectStops(t).filter(s => s.cut >= minChars);
+      if (!allStops.length) return -1;
+
+      const scored = allStops.map(s => scoreStop(t, s, allStops)).filter(Boolean);
+      if (!scored.length) return -1;
+
+      scored.sort((a, b) => b.score - a.score || a.cut - b.cut);
+      return scored[0].cut;
     }
 
     function flushBuffer(force = false) {
       let t = String(buf || '').trim();
       while (t) {
         if (!force && t.length <= softMax) break;
-        let cut = chooseCut(t);
-        if (cut < 0 && !force) break;
-        if (cut <= 0 || cut >= t.length) {
-          if (force) {
-            pagesOut.push(t.trim());
-            t = '';
-          }
+        const cut = chooseCut(t);
+        if (cut < 0 || cut >= t.length) {
+          if (force) { pagesOut.push(t); t = ''; }
           break;
         }
-        const page = t.slice(0, cut).trim();
-        const rest = t.slice(cut).trim();
-        if (!page) break;
-        pagesOut.push(page);
-        t = rest;
+        pagesOut.push(t.slice(0, cut).trim());
+        t = t.slice(cut).trim();
       }
       buf = t;
     }
@@ -590,30 +510,29 @@
     const cleanBlocks = (blocks || []).map(b => String(b || '').trim()).filter(Boolean);
     let buf = '';
 
-    for (let i = 0; i < cleanBlocks.length; i++) {
-      const block = cleanBlocks[i];
+    for (const block of cleanBlocks) {
+      // Always start a fresh page at a major section heading.
       if (looksLikeMajorHeading(block) && buf.length >= minChars) {
         flushBuffer(true);
       }
-      buf = buf ? `${buf}
-
-${block}` : block;
+      buf = buf ? `${buf}\n\n${block}` : block;
       flushBuffer(false);
-      if (buf.length > hardMax) flushBuffer(false);
+      // Safety valve: force a break if the buffer grows far beyond hardMax.
+      if (buf.length > hardMax) flushBuffer(true);
     }
 
     flushBuffer(true);
 
+    // Absorb orphan pages (below minChars) into the preceding page.
     const merged = [];
     for (const p of pagesOut) {
       const page = String(p || '').trim();
       if (!page) continue;
       if (!merged.length) { merged.push(page); continue; }
       const prev = merged[merged.length - 1];
-      if (page.length < minChars && (prev.length + 2 + page.length) <= hardMax && !isProtectedBoundary(prev, page)) {
-        merged[merged.length - 1] = `${prev}
-
-${page}`.trim();
+      const combined = prev + '\n\n' + page;
+      if (page.length < minChars && combined.length <= hardMax && !isListLine(page)) {
+        merged[merged.length - 1] = combined.trim();
       } else {
         merged.push(page);
       }
@@ -1020,7 +939,7 @@ ${page}`.trim();
       const text = String(raw || "");
       const lines = text.split(/\r?\n/);
 
-      const pages = [];
+      let pages = [];
       let cur = null;
 
       function push() {
