@@ -31,7 +31,18 @@ const AUTOPLAY_STATE = {
   countdownTimerId: null,
 };
 
-function ttsAutoplayCancelCountdown() {
+function ttsSetButtonActive(key, active) {
+  try {
+    if (typeof key !== 'string' || !key.startsWith('page-')) return;
+    const pageIndex = parseInt(key.slice(5), 10);
+    if (!Number.isFinite(pageIndex)) return;
+    const pageEl = document.querySelectorAll('.page')[pageIndex];
+    if (!pageEl) return;
+    const btn = pageEl.querySelector('.tts-btn[data-tts="page"]');
+    if (!btn) return;
+    btn.classList.toggle('tts-active', active);
+  } catch (_) {}
+}
   // Capture index BEFORE resetting state so the button reset can find the right page.
   const idx = AUTOPLAY_STATE.countdownPageIndex;
 
@@ -45,7 +56,10 @@ function ttsAutoplayCancelCountdown() {
     const pageEls = document.querySelectorAll('.page');
     if (idx >= 0 && pageEls[idx]) {
       const btn = pageEls[idx].querySelector('.tts-btn[data-tts="page"]');
-      if (btn) btn.textContent = '🔊 Read page';
+      if (btn) {
+        btn.textContent = '🔊 Read page';
+        btn.classList.remove('tts-active');
+      }
     }
   } catch (_) {}
 }
@@ -63,7 +77,10 @@ function ttsAutoplayScheduleNext(pageIndex) {
   if (!btn) return;
 
   AUTOPLAY_STATE.countdownPageIndex = pageIndex;
-  AUTOPLAY_STATE.countdownSec = 5;
+  AUTOPLAY_STATE.countdownSec = 3;
+
+  // Keep the button visually active during the countdown
+  btn.classList.add('tts-active');
 
   function updateBtn() {
     if (btn) btn.textContent = `⏸ Next in ${AUTOPLAY_STATE.countdownSec}…`;
@@ -277,6 +294,11 @@ function browserPickVoice() {
 }
 
 function ttsStop() {
+  // Clear active state on any TTS read-page button
+  try {
+    document.querySelectorAll('.tts-btn[data-tts="page"].tts-active')
+      .forEach(btn => btn.classList.remove('tts-active'));
+  } catch (_) {}
 
   // ensures any countdown stops
   ttsAutoplayCancelCountdown(); 
@@ -426,6 +448,7 @@ async function ttsSpeakQueue(key, parts) {
     ttsStop();
   }
   TTS_STATE.activeKey = key;
+  ttsSetButtonActive(key, true);
 
   // Preferred path: Polly via /api/tts. If it fails, fall back to browser voices.
   try {
@@ -450,6 +473,7 @@ async function ttsSpeakQueue(key, parts) {
       });
     }
     TTS_STATE.activeKey = null;
+    ttsSetButtonActive(key, false);
     // Trigger autoplay if this was a page read and autoplay is enabled.
     if (optsForKeySentenceMarks(key)) {
       const pageIndex = parseInt(String(key).slice(5), 10);

@@ -1055,7 +1055,10 @@
       bookControls.style.display = isBook ? "flex" : "none";
       if (textControls) textControls.style.display = isBook ? "none" : "block";
 
-      // UX: "Add Pages" only makes sense for ad-hoc Text input.
+      // Load Pages only makes sense for Book source.
+      if (loadBtn) loadBtn.style.display = isBook ? "" : "none";
+
+      // Add Pages only makes sense for ad-hoc Text input.
       // For Books, allowing out-of-order appends adds confusion with no value.
       if (appendBtn) appendBtn.style.display = isBook ? "none" : "inline-block";
     }
@@ -1867,7 +1870,7 @@
     if (goalRow) goalRow.style.display = isReading ? 'none' : '';
 
     const thesisRow = document.getElementById('thesisRow');
-    if (thesisRow) thesisRow.style.display = isReading ? 'none' : '';
+    if (thesisRow) thesisRow.style.display = (appMode === 'thesis') ? '' : 'none';
 
     document.querySelectorAll('.page').forEach(pageEl => {
       const anchorsRow  = pageEl.querySelector('.anchors-row');

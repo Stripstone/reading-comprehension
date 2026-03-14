@@ -1257,6 +1257,15 @@ body {
       background: rgba(193, 125, 74, 0.1);
     }
 
+    /* TTS button active state — locked "on" appearance while reading or counting down */
+    .top-btn.tts-active,
+    .top-btn.tts-active:hover {
+      opacity: 1;
+      color: var(--accent);
+      background: rgba(193, 125, 74, 0.18);
+      box-shadow: 0 0 0 2px rgba(193, 125, 74, 0.35);
+    }
+
     .ai-btn.loading {
       opacity: 0.5;
       cursor: wait;

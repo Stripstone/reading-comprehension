@@ -760,6 +760,9 @@ function writeAnchorsToCache(pageHash, payload) {
       const anchors = await ensureAnchorsForPageIndex(pageIndex, pageEl);
       if (!anchors || !anchors.length) return;
       // Only apply if the text element is still for this page.
+      // Skip if TTS is actively highlighting this element — replacing innerHTML
+      // would destroy the sentence spans and break the highlight loop.
+      if (typeof TTS_STATE !== 'undefined' && TTS_STATE.highlightPageEl === textEl) return;
       textEl.innerHTML = buildAnchorsHtml(text, anchors);
 
       // If we failed to inject any spans, make it visible in debug.

@@ -201,18 +201,19 @@
 
     </div> <!-- /goal-time-row -->
 
-      <div class="goal-actions">
-        <button id="loadBookSelection" type="button">Load Pages</button>
-        <button id="appendBookSelection" type="button" title="Add pages to the end (do not clear existing pages)">Add Pages</button>
-        <button type="button" onclick="clearPages()" title="Removes your consolidations and feedback for loaded pages.">Clear Pages</button>
-      </div>
-
   </div> <!-- /bookControls -->
 
   <!-- Text Controls (for paste input) -->
   <div id="textControls" style="display:none; width:100%;">
     <textarea id="bulkInput" placeholder="Paste your full .md or text here..." style="height:80px;"></textarea>
     <p class="descriptor">Paste text here and it will be broken into pages automatically.</p>
+  </div>
+
+  <!-- Page action buttons — always visible, outside bookControls/textControls -->
+  <div class="goal-actions">
+    <button id="loadBookSelection" type="button">Load Pages</button>
+    <button id="appendBookSelection" type="button" title="Add pages to the end (do not clear existing pages)">Add Pages</button>
+    <button type="button" onclick="clearPages()" title="Removes your consolidations and feedback for loaded pages.">Clear Pages</button>
   </div>
 
 </div> <!-- /top-controls -->
