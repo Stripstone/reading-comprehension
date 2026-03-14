@@ -26,6 +26,9 @@ const TTS_STATE = {
 // Safari/iOS requires a user gesture before audio.play() is allowed.
 // We unlock audio on the first interaction so autoplay later works.
 let TTS_AUDIO_UNLOCKED = false;
+// Persistent audio element (Safari requires reuse for autoplay chains)
+const TTS_AUDIO_ELEMENT = new Audio();
+TTS_AUDIO_ELEMENT.preload = "auto";
 
 function ttsUnlockAudio() {
   if (TTS_AUDIO_UNLOCKED) return;
@@ -372,8 +375,9 @@ function ttsStop() {
   // Stop any audio playback
   if (TTS_STATE.audio) {
     try {
-      TTS_STATE.audio.pause();
-      TTS_STATE.audio.src = "";
+      TTS_AUDIO_ELEMENT.pause();
+      TTS_AUDIO_ELEMENT.removeAttribute("src");
+      TTS_AUDIO_ELEMENT.load();
     } catch (_) {}
     TTS_STATE.audio = null;
   }
@@ -526,7 +530,8 @@ async function ttsSpeakQueue(key, parts) {
 
       // Play URL (sequential)
       await new Promise((resolve, reject) => {
-        const audio = new Audio(url);
+        const audio = TTS_AUDIO_ELEMENT;
+        audio.src = url;
         TTS_STATE.audio = audio;
         // Polly audio volume (0..1). Persisted via the Voices slider.
         try { audio.volume = Math.max(0, Math.min(1, Number(TTS_STATE.volume ?? 1))); } catch (_) {}
