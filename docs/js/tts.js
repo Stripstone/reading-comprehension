@@ -140,6 +140,11 @@ function ttsClearSentenceHighlight() {
     cancelAnimationFrame(TTS_STATE.highlightRAF);
     TTS_STATE.highlightRAF = null;
   }
+
+  // Capture before clearing state — needed for deferred anchor re-hydration below.
+  const pageElToRehydrate = TTS_STATE.highlightPageEl;
+  const keyToRehydrate = TTS_STATE.highlightPageKey;
+
   if (TTS_STATE.highlightPageEl && TTS_STATE.highlightOriginalHTML != null) {
     TTS_STATE.highlightPageEl.innerHTML = TTS_STATE.highlightOriginalHTML;
   }
@@ -149,6 +154,18 @@ function ttsClearSentenceHighlight() {
   TTS_STATE.highlightSpans = null;
   TTS_STATE.highlightMarks = null;
   TTS_STATE.highlightEnds = null;
+
+  // If anchors were loaded while TTS was active (we skipped their innerHTML injection),
+  // re-apply them now that the original text is restored.
+  try {
+    if (pageElToRehydrate && keyToRehydrate && typeof hydrateAnchorsIntoPageEl === 'function') {
+      const pageIndex = Number(String(keyToRehydrate).slice(5));
+      if (Number.isFinite(pageIndex) && pageData?.[pageIndex]?.anchors?.length) {
+        const pageEl = pageElToRehydrate.closest('.page');
+        if (pageEl) hydrateAnchorsIntoPageEl(pageEl, pageIndex);
+      }
+    }
+  } catch (_) {}
 }
 
 function ttsMaybePrepareSentenceHighlight(key, rawText, marks) {

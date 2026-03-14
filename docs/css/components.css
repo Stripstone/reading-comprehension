@@ -846,6 +846,10 @@ body {
       overflow: hidden;
     }
 
+    .top-controls {
+      min-height: 260px;
+    }
+
     .page {
       border-left: 4px solid var(--accent);
       animation: slideIn 0.4s ease-out backwards;
