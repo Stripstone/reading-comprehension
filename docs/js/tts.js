@@ -43,6 +43,8 @@ function ttsSetButtonActive(key, active) {
     btn.classList.toggle('tts-active', active);
   } catch (_) {}
 }
+
+function ttsAutoplayCancelCountdown() {
   // Capture index BEFORE resetting state so the button reset can find the right page.
   const idx = AUTOPLAY_STATE.countdownPageIndex;
 

@@ -952,6 +952,14 @@ body {
       z-index: 1;
     }
 
+    .goal-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
     .difficulty-toggle {
       display: inline-flex;
       gap: 6px;
