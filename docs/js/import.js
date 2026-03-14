@@ -365,7 +365,6 @@
       const fileType = _isPdf ? 'PDF' : 'EPUB';
       setStatus(`Selected: ${_file.name} (${Math.round((_file.size || 0) / 1024)} KB) — ${fileType}`);
     }
-    }
 
     async function scanContents() {
       if (!_file) return;
