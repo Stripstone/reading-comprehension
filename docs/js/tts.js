@@ -23,6 +23,32 @@ const TTS_STATE = {
   highlightEnds: null,
 };
 
+// Safari/iOS requires a user gesture before audio.play() is allowed.
+// We unlock audio on the first interaction so autoplay later works.
+let TTS_AUDIO_UNLOCKED = false;
+
+function ttsUnlockAudio() {
+  if (TTS_AUDIO_UNLOCKED) return;
+
+  try {
+    const audio = new Audio();
+    audio.src =
+      "data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAA"; // tiny silent mp3
+    audio.volume = 0;
+
+    const p = audio.play();
+    if (p && typeof p.then === "function") {
+      p.then(() => {
+        audio.pause();
+        audio.src = "";
+        TTS_AUDIO_UNLOCKED = true;
+      }).catch(() => {});
+    } else {
+      TTS_AUDIO_UNLOCKED = true;
+    }
+  } catch (_) {}
+}
+
 //For autoplay
 const AUTOPLAY_STATE = {
   enabled: false,
@@ -468,6 +494,10 @@ function browserSpeakQueue(key, parts) {
 }
 
 async function ttsSpeakQueue(key, parts) {
+
+  // Unlock Safari audio during the user gesture
+  ttsUnlockAudio();
+
   const queue = (parts || []).map(t => String(t || "").trim()).filter(Boolean);
   if (!queue.length) return;
 
