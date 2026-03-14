@@ -262,12 +262,12 @@
 
         <div id="importStageUpload" class="import-stage">
           <div class="import-dropzone" id="importDropzone" role="button" tabindex="0" aria-label="Upload EPUB">
-            <div class="import-dropzone-title">Drag & drop an <strong>.epub</strong> here</div>
+            <div class="import-dropzone-title">Drag & drop an <strong>.epub</strong> or <strong>.pdf</strong> here</div>
             <div class="import-dropzone-sub">or click to browse</div>
             <button id="importBrowseBtn" type="button" class="btn-secondary" style="margin-top:10px;">Browse for EPUB</button>
             <!-- Keep the input in the DOM (mobile Safari can be picky), but do NOT overlay the dropzone.
                  We trigger it via user-initiated clicks on the dropzone/button. -->
-            <input id="importFileInput" class="import-file-input" type="file" accept=".epub,application/epub+zip" />
+            <input id="importFileInput" class="import-file-input" type="file" accept=".epub,application/epub+zip,.pdf,application/pdf" />
           </div>
           <div class="import-hint">Nothing is uploaded to a server. Imported books stay on this device unless you delete them.</div>
           <div id="importUploadStatus" class="import-status" style="display:none;"></div>
