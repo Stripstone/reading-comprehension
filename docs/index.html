@@ -109,7 +109,7 @@
     <!-- Desktop buttons -->
     <div class="top-actions-desktop">
       <button id="manageLibraryBtn" class="manage-library-btn" type="button" title="Manage books saved on this device">🗂️ Library</button>
-      <button id="importBookBtn" class="import-book-btn" type="button" title="Import an EPUB from your device">➕ Import EPUB</button>
+      <button id="importBookBtn" class="import-book-btn" type="button" title="Import an EPUB from your device">➕ Import BOOK</button>
       <button id="howItWorksBtn" class="how-it-works-btn" type="button" title="Instructions">📘 How This Works</button>
     </div>
 
@@ -263,13 +263,12 @@
         <div id="importStageUpload" class="import-stage">
           <div class="import-dropzone" id="importDropzone" role="button" tabindex="0" aria-label="Upload book or document">
             <div class="import-dropzone-title">Drag & drop a book or document here</div>
-            <div class="import-dropzone-sub">EPUB · PDF · DOCX · DOC · MOBI · RTF · ODT · FB2 · TXT · HTML</div>
             <button id="importBrowseBtn" type="button" class="btn-secondary" style="margin-top:10px;">Browse for File</button>
             <!-- Keep the input in the DOM (mobile Safari can be picky), but do NOT overlay the dropzone.
                  We trigger it via user-initiated clicks on the dropzone/button. -->
             <input id="importFileInput" class="import-file-input" type="file" accept=".epub,application/epub+zip,.pdf,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.rtf,.odt,.txt,.text,.html,.htm,.mobi,.fb2" />
           </div>
-          <div class="import-hint">Non-EPUB files are converted via FreeConvert before importing. Nothing is stored permanently on a server.</div>
+          <div class="import-hint">Files are converted to EPUB via FreeConvert before importing. Nothing is stored permanently on a server.</div>
           <div id="importUploadStatus" class="import-status" style="display:none;"></div>
           <div class="import-actions" style="margin-top:12px; display:flex; gap:10px;">
             <button id="importScanBtn" type="button" class="btn-primary" disabled>Scan Contents</button>
