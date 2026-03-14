@@ -564,7 +564,17 @@
         showStage('pick');
       } catch (e) {
         console.error('Book conversion scan error:', e);
-        setStatus(`Failed to convert ${formatLabel}: ${e.message || 'Unknown error'}`);
+        // Show a plain message plus a fallback link in case the API is rate-limited or unavailable.
+        const plainMsg = `Failed to convert ${formatLabel}: ${e.message || 'Unknown error'}. `;
+        const fallbackMsg = `You can convert it yourself at `;
+        if (uploadStatus) {
+          uploadStatus.style.display = 'block';
+          uploadStatus.innerHTML =
+            escapeHtmlLite(plainMsg) +
+            escapeHtmlLite(fallbackMsg) +
+            `<a href="https://www.freeconvert.com/epub-converter" target="_blank" rel="noopener noreferrer">freeconvert.com/epub-converter</a>` +
+            ` and then import the resulting EPUB here.`;
+        }
       } finally {
         scanBtn.disabled = !_file;
       }
