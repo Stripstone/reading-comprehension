@@ -30,22 +30,34 @@ let TTS_AUDIO_UNLOCKED = false;
 const TTS_AUDIO_ELEMENT = new Audio();
 TTS_AUDIO_ELEMENT.preload = "auto";
 
+// Tiny silent MP3 used to prime TTS_AUDIO_ELEMENT within a user gesture.
+const TTS_SILENT_SRC = "data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAA";
+
 function ttsUnlockAudio() {
-  if (TTS_AUDIO_UNLOCKED) return;
+  // Prime TTS_AUDIO_ELEMENT — the actual playback element — synchronously
+  // within the current user gesture. We do this on every gesture, not just
+  // once, because Safari (especially iPadOS) revokes permission when the
+  // element has been idle between interactions.
+  //
+  // Key fixes vs. the old implementation:
+  //  1. We prime TTS_AUDIO_ELEMENT itself, not a throwaway new Audio().
+  //     Safari's unlock is element-specific on iPadOS; priming a different
+  //     element does not carry over to TTS_AUDIO_ELEMENT.
+  //  2. No early-return guard — re-prime on every user-initiated call so the
+  //     element stays warm even if the user taps "Read page" on separate pages.
+  //  3. We intentionally do NOT await this play() call. It must fire and return
+  //     synchronously so Safari registers it within the gesture window. The
+  //     fetch (pollyFetchUrl) happens after this, keeping the element "live"
+  //     while the network request is in flight.
+  if (TTS_AUDIO_ELEMENT.loop) return; // already warm from autoplay keep-warm
 
   try {
-    const audio = new Audio();
-    audio.src =
-      "data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAA"; // tiny silent mp3
-    audio.volume = 0;
-
-    const p = audio.play();
+    TTS_AUDIO_ELEMENT.pause();
+    TTS_AUDIO_ELEMENT.src = TTS_SILENT_SRC;
+    TTS_AUDIO_ELEMENT.volume = 0;
+    const p = TTS_AUDIO_ELEMENT.play();
     if (p && typeof p.then === "function") {
-      p.then(() => {
-        audio.pause();
-        audio.src = "";
-        TTS_AUDIO_UNLOCKED = true;
-      }).catch(() => {});
+      p.then(() => { TTS_AUDIO_UNLOCKED = true; }).catch(() => {});
     } else {
       TTS_AUDIO_UNLOCKED = true;
     }
@@ -59,6 +71,21 @@ const AUTOPLAY_STATE = {
   countdownSec: 0,
   countdownTimerId: null,
 };
+
+// Keep TTS_AUDIO_ELEMENT silently "active" between pages during an autoplay
+// countdown so Safari (iPadOS) does not revoke playback permission across the
+// 3-second gap. Without this, the element goes idle after onended fires and
+// Safari rejects the next programmatic .play() call.
+// Call this right before ttsAutoplayScheduleNext(); ttsStop() clears the loop.
+function ttsKeepWarmForAutoplay() {
+  if (!AUTOPLAY_STATE.enabled) return;
+  try {
+    TTS_AUDIO_ELEMENT.loop = true;
+    TTS_AUDIO_ELEMENT.src = TTS_SILENT_SRC;
+    TTS_AUDIO_ELEMENT.volume = 0;
+    TTS_AUDIO_ELEMENT.play().catch(() => {});
+  } catch (_) {}
+}
 
 function ttsSetButtonActive(key, active) {
   try {
@@ -372,9 +399,10 @@ function ttsStop() {
     try { TTS_STATE.abort.abort(); } catch (_) {}
     TTS_STATE.abort = null;
   }
-  // Stop any audio playback
+  // Stop any audio playback (including the autoplay keep-warm silent loop)
   if (TTS_STATE.audio) {
     try {
+      TTS_AUDIO_ELEMENT.loop = false;
       TTS_AUDIO_ELEMENT.pause();
       TTS_AUDIO_ELEMENT.removeAttribute("src");
       TTS_AUDIO_ELEMENT.load();
@@ -531,6 +559,10 @@ async function ttsSpeakQueue(key, parts) {
       // Play URL (sequential)
       await new Promise((resolve, reject) => {
         const audio = TTS_AUDIO_ELEMENT;
+        // Stop the silent primer (or autoplay keep-warm loop) before switching
+        // to the real audio URL. Resetting loop here is critical — if we landed
+        // here from autoplay, loop=true is still set from ttsKeepWarmForAutoplay.
+        try { audio.loop = false; audio.pause(); } catch (_) {}
         audio.src = url;
         TTS_STATE.audio = audio;
         // Polly audio volume (0..1). Persisted via the Voices slider.
@@ -548,7 +580,12 @@ async function ttsSpeakQueue(key, parts) {
     // Trigger autoplay if this was a page read and autoplay is enabled.
     if (optsForKeySentenceMarks(key)) {
       const pageIndex = parseInt(String(key).slice(5), 10);
-      if (Number.isFinite(pageIndex)) ttsAutoplayScheduleNext(pageIndex);
+      if (Number.isFinite(pageIndex)) {
+        // Keep TTS_AUDIO_ELEMENT silently active through the countdown gap so
+        // Safari does not revoke autoplay permission before the next page loads.
+        ttsKeepWarmForAutoplay();
+        ttsAutoplayScheduleNext(pageIndex);
+      }
     }
   } catch (err) {
     // IMPORTANT: If the user explicitly stopped (or switched actions) while Polly
