@@ -1881,8 +1881,13 @@
       const headers     = pageEl.querySelectorAll('.page-header');
       const consolidationHeader = headers.length > 1 ? headers[1] : null;
 
-      [anchorsRow, sandWrapper, infoRow, aiFeedback, actionBtns, consolidationHeader]
+      [anchorsRow, sandWrapper, infoRow, actionBtns, consolidationHeader]
         .forEach(el => { if (el) el.style.display = isReading ? 'none' : ''; });
+
+      // ai-feedback has its own per-page visibility state managed by the AI
+      // evaluation flow. Only force-hide it in reading mode — never force-show
+      // it when switching modes, or unexpanded panels will appear prematurely.
+      if (aiFeedback && isReading) aiFeedback.style.display = 'none';
     });
 
     const submitBtn = document.getElementById('submitBtn');
