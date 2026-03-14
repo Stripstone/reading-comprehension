@@ -44,6 +44,19 @@ function ttsSetButtonActive(key, active) {
   } catch (_) {}
 }
 
+function ttsSetHintButton(key, disabled) {
+  try {
+    if (typeof key !== 'string' || !key.startsWith('page-')) return;
+    const pageIndex = parseInt(key.slice(5), 10);
+    if (!Number.isFinite(pageIndex)) return;
+    const pageEl = document.querySelectorAll('.page')[pageIndex];
+    if (!pageEl) return;
+    const btn = pageEl.querySelector('.hint-btn');
+    if (!btn) return;
+    btn.disabled = disabled;
+  } catch (_) {}
+}
+
 function ttsAutoplayCancelCountdown() {
   // Capture index BEFORE resetting state so the button reset can find the right page.
   const idx = AUTOPLAY_STATE.countdownPageIndex;
@@ -140,13 +153,17 @@ function ttsClearSentenceHighlight() {
     cancelAnimationFrame(TTS_STATE.highlightRAF);
     TTS_STATE.highlightRAF = null;
   }
-
-  // Capture before clearing state — needed for deferred anchor re-hydration below.
-  const pageElToRehydrate = TTS_STATE.highlightPageEl;
-  const keyToRehydrate = TTS_STATE.highlightPageKey;
-
   if (TTS_STATE.highlightPageEl && TTS_STATE.highlightOriginalHTML != null) {
     TTS_STATE.highlightPageEl.innerHTML = TTS_STATE.highlightOriginalHTML;
+
+    // Re-enable the Hint button for this page now that TTS is done.
+    try {
+      const pageEl = TTS_STATE.highlightPageEl.closest('.page');
+      if (pageEl) {
+        const hintBtn = pageEl.querySelector('.hint-btn');
+        if (hintBtn) hintBtn.disabled = false;
+      }
+    } catch (_) {}
   }
   TTS_STATE.highlightPageKey = null;
   TTS_STATE.highlightPageEl = null;
@@ -154,18 +171,6 @@ function ttsClearSentenceHighlight() {
   TTS_STATE.highlightSpans = null;
   TTS_STATE.highlightMarks = null;
   TTS_STATE.highlightEnds = null;
-
-  // If anchors were loaded while TTS was active (we skipped their innerHTML injection),
-  // re-apply them now that the original text is restored.
-  try {
-    if (pageElToRehydrate && keyToRehydrate && typeof hydrateAnchorsIntoPageEl === 'function') {
-      const pageIndex = Number(String(keyToRehydrate).slice(5));
-      if (Number.isFinite(pageIndex) && pageData?.[pageIndex]?.anchors?.length) {
-        const pageEl = pageElToRehydrate.closest('.page');
-        if (pageEl) hydrateAnchorsIntoPageEl(pageEl, pageIndex);
-      }
-    }
-  } catch (_) {}
 }
 
 function ttsMaybePrepareSentenceHighlight(key, rawText, marks) {
@@ -224,6 +229,13 @@ function ttsMaybePrepareSentenceHighlight(key, rawText, marks) {
 
   textEl.innerHTML = spansHtml.join("");
   TTS_STATE.highlightSpans = Array.from(textEl.querySelectorAll(".tts-sentence"));
+
+  // Disable Hint button while TTS is highlighting — clicking it would replace
+  // innerHTML and destroy the sentence spans. Re-enabled in ttsClearSentenceHighlight.
+  try {
+    const hintBtn = pageEl.querySelector('.hint-btn');
+    if (hintBtn) hintBtn.disabled = true;
+  } catch (_) {}
 }
 
 function ttsStartHighlightLoop(audio) {
@@ -313,10 +325,13 @@ function browserPickVoice() {
 }
 
 function ttsStop() {
-  // Clear active state on any TTS read-page button
+  // Clear active state and re-enable hint buttons on any TTS read-page button
   try {
     document.querySelectorAll('.tts-btn[data-tts="page"].tts-active')
       .forEach(btn => btn.classList.remove('tts-active'));
+  } catch (_) {}
+  try {
+    if (TTS_STATE.activeKey) ttsSetHintButton(TTS_STATE.activeKey, false);
   } catch (_) {}
 
   // ensures any countdown stops
@@ -468,6 +483,7 @@ async function ttsSpeakQueue(key, parts) {
   }
   TTS_STATE.activeKey = key;
   ttsSetButtonActive(key, true);
+  ttsSetHintButton(key, true);
 
   // Preferred path: Polly via /api/tts. If it fails, fall back to browser voices.
   try {
@@ -493,6 +509,7 @@ async function ttsSpeakQueue(key, parts) {
     }
     TTS_STATE.activeKey = null;
     ttsSetButtonActive(key, false);
+    ttsSetHintButton(key, false);
     // Trigger autoplay if this was a page read and autoplay is enabled.
     if (optsForKeySentenceMarks(key)) {
       const pageIndex = parseInt(String(key).slice(5), 10);
