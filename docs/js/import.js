@@ -116,22 +116,7 @@
 
   // ===================================
 
-  // ─── PDF Import Support ─────────────────────────────────────────────────────
-  // PDF files are converted to EPUB server-side via the FreeConvert API
-  // (proxied through /api/pdf-to-epub to keep the API key off the client).
-  //
-  // Flow:
-  //   1. POST /api/pdf-to-epub?step=upload  → get FreeConvert upload URL + signature
-  //   2. POST directly to FreeConvert upload URL (bypasses Vercel body limits)
-  //   3. POST /api/pdf-to-epub?step=convert → kick off PDF→EPUB conversion
-  //   4. Poll  /api/pdf-to-epub?step=status → wait for completion, get EPUB URL
-  //   5. Fetch EPUB → load into JSZip → hand off to existing epubParseToc flow
-  //
-  // After step 5, the PDF path is invisible — the chapter picker and import
-  // pipeline run identically to a natively uploaded EPUB.
-  // ─── End PDF Import Support ──────────────────────────────────────────────────
-
-  // ➕ Import EPUB UI (local-first)
+  // ➕ Import Book UI (local-first)
   // ===================================
 
   (function initEpubImportModal() {
@@ -175,7 +160,6 @@
 
     let _file = null;
     let _zip = null;
-    let _isPdf = false;
     let _tocItems = []; // {id,title,href,selected,tags,type,preview}
     let _activeId = null;
     let _spineHrefs = [];
@@ -351,10 +335,9 @@
     async function onFileSelected(file) {
       _file = file || null;
       _zip = null;
-      _isPdf = _file ? /\.pdf$/i.test(_file.name) : false;
       _tocItems = [];
       _activeId = null;
-      _bookTitle = _file ? _file.name.replace(/\.(epub|pdf)$/i, '').trim() : '';
+      _bookTitle = _file ? _file.name.replace(/\.epub$/i, '').trim() : '';
       if (!scanBtn) return;
       if (!_file) {
         scanBtn.disabled = true;
@@ -362,16 +345,11 @@
         return;
       }
       scanBtn.disabled = false;
-      const fileType = _isPdf ? 'PDF' : 'EPUB';
-      setStatus(`Selected: ${_file.name} (${Math.round((_file.size || 0) / 1024)} KB) — ${fileType}`);
+      setStatus(`Selected: ${_file.name} (${Math.round((_file.size || 0) / 1024)} KB)`);
     }
 
     async function scanContents() {
       if (!_file) return;
-
-      // Branch to the PDF path when a .pdf was selected.
-      if (_isPdf) { await scanContentsPdf(); return; }
-
       if (!window.JSZip) {
         setStatus('JSZip failed to load. Check your network connection.');
         return;
@@ -379,7 +357,7 @@
 
       try {
         scanBtn.disabled = true;
-        setStatus('Reading EPUB…');
+        setStatus('Reading book…');
         const buf = await _file.arrayBuffer();
         _zip = await JSZip.loadAsync(buf);
         const opfPath = await epubFindOpfPath(_zip);
@@ -433,128 +411,15 @@
         renderToc();
         showStage('pick');
       } catch (e) {
-        console.error('EPUB scan error:', e);
-        setStatus('Failed to scan EPUB. Try another file.');
-      } finally {
-        scanBtn.disabled = !_file;
-      }
-    }
-
-    async function scanContentsPdf() {
-      try {
-        scanBtn.disabled = true;
-
-        if (!window.JSZip) {
-          setStatus('JSZip failed to load. Check your network connection.');
-          return;
-        }
-
-        const base = (typeof resolveApiBase === 'function') ? resolveApiBase() : '';
-        const endpoint = base ? `${base}/api/pdf-to-epub` : '/api/pdf-to-epub';
-
-        // ── Step 1: Get a FreeConvert upload URL (API key stays server-side) ──
-        setStatus('Preparing upload…');
-        const uploadTaskRes = await fetch(`${endpoint}?step=upload`, { method: 'POST' });
-        if (!uploadTaskRes.ok) throw new Error('Failed to create upload task');
-        const { importTaskId, uploadUrl, signature } = await uploadTaskRes.json();
-
-        // ── Step 2: Upload PDF directly to FreeConvert ────────────────────────
-        // Uploading directly avoids Vercel's body size limit entirely.
-        setStatus(`Uploading PDF (${Math.round(_file.size / 1024)} KB)…`);
-        const formData = new FormData();
-        formData.append('signature', signature);
-        formData.append('file', _file, _file.name);
-        const uploadRes = await fetch(uploadUrl, { method: 'POST', body: formData });
-        if (!uploadRes.ok) throw new Error('PDF upload failed');
-
-        // ── Step 3: Kick off PDF → EPUB conversion ────────────────────────────
-        setStatus('Starting PDF → EPUB conversion…');
-        const convertRes = await fetch(`${endpoint}?step=convert`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ importTaskId }),
-        });
-        if (!convertRes.ok) throw new Error('Failed to start conversion');
-        const { exportTaskId } = await convertRes.json();
-
-        // ── Step 4: Poll until done (max 90 seconds) ──────────────────────────
-        // Polling is done client-side so no single Vercel function hangs.
-        let epubUrl = null;
-        for (let i = 0; i < 45; i++) {
-          await new Promise(r => setTimeout(r, 2000));
-          const statusRes = await fetch(`${endpoint}?step=status`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ exportTaskId }),
-          });
-          if (!statusRes.ok) throw new Error('Status check failed');
-          const { status, url } = await statusRes.json();
-          if (status === 'completed' && url) { epubUrl = url; break; }
-          if (status === 'failed') throw new Error('Conversion failed on FreeConvert');
-          setStatus(`Converting PDF → EPUB… (${(i + 1) * 2}s)`);
-        }
-        if (!epubUrl) throw new Error('Conversion timed out after 90s');
-
-        // ── Step 5: Download the EPUB and hand off to the existing EPUB flow ──
-        // From this point the code is identical to scanning a natively uploaded EPUB.
-        setStatus('Downloading converted EPUB…');
-        const epubRes = await fetch(epubUrl);
-        if (!epubRes.ok) throw new Error('Failed to download converted EPUB');
-        const epubBuf = await epubRes.arrayBuffer();
-
-        setStatus('Reading EPUB…');
-        _zip = await JSZip.loadAsync(epubBuf);
-        const opfPath = await epubFindOpfPath(_zip);
-        if (!opfPath) throw new Error('OPF not found in converted EPUB');
-        const { metadata, items, spineHrefs } = await epubParseToc(_zip, opfPath);
-        _spineHrefs = Array.isArray(spineHrefs) ? spineHrefs : [];
-        const baseTitle = (metadata?.title || _bookTitle).trim();
-        _bookTitle = baseTitle;
-
-        _tocItems = (items || []).map((it, idx) => {
-          const t = (it.title || `Section ${idx + 1}`).trim();
-          const words = t.split(/\s+/).filter(Boolean);
-          const looksLikeParagraph = (t.length > 120) || (t.length > 80 && words.length > 14) || (words.length > 24);
-          if (looksLikeParagraph) return null;
-          const cls = classifySection(t);
-          return {
-            id: `${idx}:${t}`,
-            title: t,
-            href: it.href,
-            blockIndex: Number.isFinite(it.blockIndex) ? it.blockIndex : null,
-            _order: idx,
-            type: cls.type,
-            tags: cls.tags,
-            selected: defaultSelectedForTitle(t)
-          };
-        }).filter(Boolean);
-
-        const seenLoc = new Set();
-        _tocItems = _tocItems.filter((x) => {
-          if (!x.title || x.title.length < 2) return false;
-          if (!x.href) return false;
-          const locKey = `${x.href}|${Number.isFinite(x.blockIndex) ? x.blockIndex : ''}|${x.title.toLowerCase()}`;
-          if (seenLoc.has(locKey)) return false;
-          seenLoc.add(locKey);
-          return true;
-        });
-        _tocItems.forEach((x, i) => { x._order = i; });
-
-        if (previewTitle) previewTitle.textContent = baseTitle;
-        if (previewBody) previewBody.textContent = 'Select a section on the left to preview it.';
-
-        updateSelectionMeta();
-        renderToc();
-        showStage('pick');
-      } catch (e) {
-        console.error('PDF scan error:', e);
-        setStatus(`Failed to convert PDF: ${e.message || 'Unknown error'}`);
+        console.error('Book scan error:', e);
+        setStatus('Failed to scan book. Try another file.');
       } finally {
         scanBtn.disabled = !_file;
       }
     }
 
     async function doImportSelected() {
+      if (!_file || !_zip) return;
       const selectedIds = new Set(_tocItems.filter(x => x.selected).map(x => x.id));
       if (selectedIds.size === 0) return;
 
@@ -568,7 +433,7 @@
 
         // Create a stable record id per file hash
         const id = bookHash;
-        const title = _file.name.replace(/\.(epub|pdf)$/i, '').trim();
+        const title = _file.name.replace(/\.epub$/i, '').trim();
 
         const total = selectedIds.size;
         let createdPages = 0;

@@ -15,6 +15,15 @@
 
 const FC_API = 'https://api.freeconvert.com/v1';
 
+// Required on every response: the site is served from GitHub Pages and calls
+// this Vercel function cross-origin. Without these headers the browser blocks
+// the request before it reaches the function body (CORS preflight fails).
+function setCors(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+}
+
 function fcHeaders() {
   const key = process.env.FREECONVERT_API_KEY;
   if (!key) throw new Error('FREECONVERT_API_KEY env var is not set');
@@ -26,12 +35,18 @@ function fcHeaders() {
 }
 
 export default async function handler(req, res) {
-  // Only accept POST
+  setCors(res);
+
+  // Handle CORS preflight — browser sends OPTIONS before every cross-origin POST.
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const step = req.query.step || (req.body && req.body.step);
+  const step = req.query.step;
 
   try {
     // ── step=upload ─────────────────────────────────────────────────────────
@@ -45,7 +60,7 @@ export default async function handler(req, res) {
       });
       const data = await r.json();
       if (!r.ok) {
-        return res.status(r.status).json({ error: 'FreeConvert upload task failed', detail: data });
+        return res.status(r.status).json({ error: 'Upload task failed', detail: data });
       }
       return res.status(200).json({
         importTaskId: data.id,
@@ -60,7 +75,7 @@ export default async function handler(req, res) {
     // task, then returns the exportTaskId for the client to poll.
     if (step === 'convert') {
       const { importTaskId } = req.body || {};
-      if (!importTaskId) return res.status(400).json({ error: 'importTaskId is required' });
+      if (!importTaskId) return res.status(400).json({ error: 'importTaskId required' });
 
       // Convert: pdf → epub
       const convertRes = await fetch(`${FC_API}/process/convert`, {
@@ -74,10 +89,10 @@ export default async function handler(req, res) {
       });
       const convertData = await convertRes.json();
       if (!convertRes.ok) {
-        return res.status(convertRes.status).json({ error: 'Convert task failed', detail: convertData });
+        return res.status(convertRes.status).json({ error: 'Convert failed', detail: convertData });
       }
 
-      // Export: generate a download URL for the EPUB
+      // Export: generate a download URL for the converted EPUB
       const exportRes = await fetch(`${FC_API}/process/export/url`, {
         method: 'POST',
         headers: fcHeaders(),
@@ -92,11 +107,11 @@ export default async function handler(req, res) {
     }
 
     // ── step=status ──────────────────────────────────────────────────────────
-    // Called repeatedly by the client until status === 'completed'.
+    // Called repeatedly by the client (every 2s) until status === 'completed'.
     // Returns { status, url } where url is the EPUB download link when done.
     if (step === 'status') {
       const { exportTaskId } = req.body || {};
-      if (!exportTaskId) return res.status(400).json({ error: 'exportTaskId is required' });
+      if (!exportTaskId) return res.status(400).json({ error: 'exportTaskId required' });
 
       const r = await fetch(`${FC_API}/process/tasks/${exportTaskId}`, {
         headers: fcHeaders(),
