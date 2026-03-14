@@ -175,7 +175,8 @@
 
     let _file = null;
     let _zip = null;
-    let _isPdf = false;
+    let _needsConversion = false; // true for any non-EPUB format that goes through /api/book-import
+    let _inputFormat = '';        // the source format string passed to FreeConvert (e.g. 'pdf', 'docx')
     let _tocItems = []; // {id,title,href,selected,tags,type,preview}
     let _activeId = null;
     let _spineHrefs = [];
@@ -351,26 +352,42 @@
     async function onFileSelected(file) {
       _file = file || null;
       _zip = null;
-      _isPdf = _file ? /\.pdf$/i.test(_file.name) : false;
+      _needsConversion = false;
+      _inputFormat = '';
       _tocItems = [];
       _activeId = null;
-      _bookTitle = _file ? _file.name.replace(/\.(epub|pdf)$/i, '').trim() : '';
-      if (!scanBtn) return;
-      if (!_file) {
-        scanBtn.disabled = true;
-        setStatus('');
-        return;
+
+      if (_file) {
+        const ext = (_file.name.match(/\.([^.]+)$/i) || [])[1]?.toLowerCase() || '';
+        const CONVERSION_FORMATS = {
+          pdf: 'pdf', doc: 'doc', docx: 'docx', rtf: 'rtf',
+          odt: 'odt', txt: 'txt', text: 'txt', html: 'html', htm: 'html',
+          mobi: 'mobi', fb2: 'fb2'
+        };
+        if (ext === 'epub') {
+          _needsConversion = false;
+          _inputFormat = 'epub';
+        } else if (CONVERSION_FORMATS[ext]) {
+          _needsConversion = true;
+          _inputFormat = CONVERSION_FORMATS[ext];
+        }
+        _bookTitle = _file.name.replace(/\.[^.]+$/, '').trim();
+      } else {
+        _bookTitle = '';
       }
+
+      if (!scanBtn) return;
+      if (!_file) { scanBtn.disabled = true; setStatus(''); return; }
       scanBtn.disabled = false;
-      const fileType = _isPdf ? 'PDF' : 'EPUB';
+      const fileType = _inputFormat.toUpperCase() || 'Unknown';
       setStatus(`Selected: ${_file.name} (${Math.round((_file.size || 0) / 1024)} KB) — ${fileType}`);
     }
 
     async function scanContents() {
       if (!_file) return;
 
-      // Branch to the PDF path when a .pdf was selected.
-      if (_isPdf) { await scanContentsPdf(); return; }
+      // Branch to the FreeConvert conversion path for all non-EPUB formats.
+      if (_needsConversion) { await scanContentsViaConversion(); return; }
 
       if (!window.JSZip) {
         setStatus('JSZip failed to load. Check your network connection.');
@@ -440,7 +457,8 @@
       }
     }
 
-    async function scanContentsPdf() {
+    async function scanContentsViaConversion() {
+      const formatLabel = _inputFormat.toUpperCase();
       try {
         scanBtn.disabled = true;
 
@@ -450,7 +468,7 @@
         }
 
         const base = (typeof resolveApiBase === 'function') ? resolveApiBase() : '';
-        const endpoint = base ? `${base}/api/pdf-to-epub` : '/api/pdf-to-epub';
+        const endpoint = base ? `${base}/api/book-import` : '/api/book-import';
 
         // ── Step 1: Get a FreeConvert upload URL (API key stays server-side) ──
         setStatus('Preparing upload…');
@@ -458,21 +476,21 @@
         if (!uploadTaskRes.ok) throw new Error(`Upload task failed (${uploadTaskRes.status})`);
         const { importTaskId, uploadUrl, signature } = await uploadTaskRes.json();
 
-        // ── Step 2: Upload PDF directly to FreeConvert ────────────────────────
+        // ── Step 2: Upload file directly to FreeConvert ───────────────────────
         // Uploading directly avoids Vercel's body size limit entirely.
-        setStatus(`Uploading PDF (${Math.round(_file.size / 1024)} KB)…`);
+        setStatus(`Uploading ${formatLabel} (${Math.round(_file.size / 1024)} KB)…`);
         const formData = new FormData();
         formData.append('signature', signature);
         formData.append('file', _file, _file.name);
         const uploadRes = await fetch(uploadUrl, { method: 'POST', body: formData });
-        if (!uploadRes.ok) throw new Error('PDF upload to FreeConvert failed');
+        if (!uploadRes.ok) throw new Error(`${formatLabel} upload to FreeConvert failed`);
 
-        // ── Step 3: Kick off PDF → EPUB conversion ────────────────────────────
-        setStatus('Starting PDF → EPUB conversion…');
+        // ── Step 3: Kick off conversion to EPUB ───────────────────────────────
+        setStatus(`Starting ${formatLabel} → EPUB conversion…`);
         const convertRes = await fetch(`${endpoint}?step=convert`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ importTaskId }),
+          body: JSON.stringify({ importTaskId, inputFormat: _inputFormat }),
         });
         if (!convertRes.ok) throw new Error(`Conversion start failed (${convertRes.status})`);
         const { exportTaskId } = await convertRes.json();
@@ -490,7 +508,7 @@
           const { status, url } = await statusRes.json();
           if (status === 'completed' && url) { epubUrl = url; break; }
           if (status === 'failed') throw new Error('FreeConvert reported conversion failed');
-          setStatus(`Converting PDF → EPUB… (${(i + 1) * 2}s)`);
+          setStatus(`Converting ${formatLabel} → EPUB… (${(i + 1) * 2}s)`);
         }
         if (!epubUrl) throw new Error('Conversion timed out after 90s');
 
@@ -545,8 +563,8 @@
         renderToc();
         showStage('pick');
       } catch (e) {
-        console.error('PDF scan error:', e);
-        setStatus(`Failed to convert PDF: ${e.message || 'Unknown error'}`);
+        console.error('Book conversion scan error:', e);
+        setStatus(`Failed to convert ${formatLabel}: ${e.message || 'Unknown error'}`);
       } finally {
         scanBtn.disabled = !_file;
       }
@@ -567,7 +585,7 @@
 
         // Create a stable record id per file hash
         const id = bookHash;
-        const title = _file.name.replace(/\.(epub|pdf)$/i, '').trim();
+        const title = _file.name.replace(/\.[^.]+$/, '').trim();
 
         const total = selectedIds.size;
         let createdPages = 0;
