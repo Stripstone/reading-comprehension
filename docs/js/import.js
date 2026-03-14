@@ -116,20 +116,21 @@
 
   // ===================================
 
-  // ─── PDF Import Support ─────────────────────────────────────────────────────
-  // PDF files are converted to EPUB server-side via the FreeConvert API
-  // (proxied through /api/pdf-to-epub to keep the API key off the client).
+  // ─── Non-EPUB Import Support ────────────────────────────────────────────────
+  // Non-EPUB files (PDF, DOCX, MOBI, RTF, ODT, TXT, HTML, FB2, etc.) are converted
+  // to EPUB server-side via the FreeConvert API, proxied through /api/book-import
+  // to keep the API key off the client.
   //
   // Flow:
-  //   1. POST /api/pdf-to-epub?step=upload  → get FreeConvert upload URL + signature
+  //   1. POST /api/book-import?step=upload  → get FreeConvert upload URL + signature
   //   2. POST directly to FreeConvert upload URL (bypasses Vercel body limits)
-  //   3. POST /api/pdf-to-epub?step=convert → kick off PDF→EPUB conversion
-  //   4. Poll  /api/pdf-to-epub?step=status → wait for completion, get EPUB URL
+  //   3. POST /api/book-import?step=convert → kick off {format}→EPUB conversion
+  //   4. Poll  /api/book-import?step=status → wait for completion, get EPUB URL
   //   5. Fetch EPUB → load into JSZip → hand off to existing epubParseToc flow
   //
-  // After step 5, the PDF path is invisible — the chapter picker and import
+  // After step 5, the conversion path is invisible — the chapter picker and import
   // pipeline run identically to a natively uploaded EPUB.
-  // ─── End PDF Import Support ──────────────────────────────────────────────────
+  // ─── End Non-EPUB Import Support ─────────────────────────────────────────────
 
   // ➕ Import Book UI (local-first)
   // ===================================
@@ -388,6 +389,12 @@
 
       // Branch to the FreeConvert conversion path for all non-EPUB formats.
       if (_needsConversion) { await scanContentsViaConversion(); return; }
+
+      // Guard: if the file isn't recognized as EPUB or a convertible format, stop early.
+      if (_inputFormat !== 'epub') {
+        setStatus(`Unsupported file type. Please upload an EPUB, PDF, DOCX, MOBI, RTF, ODT, FB2, TXT, or HTML file.`);
+        return;
+      }
 
       if (!window.JSZip) {
         setStatus('JSZip failed to load. Check your network connection.');
