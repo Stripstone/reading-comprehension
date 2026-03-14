@@ -52,35 +52,40 @@ function ttsAutoplayCancelCountdown() {
 
 function ttsAutoplayScheduleNext(pageIndex) {
   if (!AUTOPLAY_STATE.enabled) return;
-  try {
-    const pageEls = document.querySelectorAll('.page');
-    const nextIndex = pageIndex + 1;
-    if (nextIndex >= pageEls.length) return;
 
-    const currentPageEl = pageEls[pageIndex];
-    const btn = currentPageEl?.querySelector('.tts-btn[data-tts="page"]');
-    if (!btn) return;
+  const pageEls = document.querySelectorAll('.page');
+  const nextIndex = pageIndex + 1;
+  if (nextIndex >= pageEls.length) return; // no next page
 
-    AUTOPLAY_STATE.countdownPageIndex = pageIndex;
-    AUTOPLAY_STATE.countdownSec = 5;
+  const currentPageEl = pageEls[pageIndex];
+  if (!currentPageEl) return;
+  const btn = currentPageEl.querySelector('.tts-btn[data-tts="page"]');
+  if (!btn) return;
 
-    function updateBtn() { if (btn) btn.textContent = `⏸ Next in ${AUTOPLAY_STATE.countdownSec}…`; }
-    updateBtn();
+  AUTOPLAY_STATE.countdownPageIndex = pageIndex;
+  AUTOPLAY_STATE.countdownSec = 5;
 
-    AUTOPLAY_STATE.countdownTimerId = setInterval(() => {
-      AUTOPLAY_STATE.countdownSec -= 1;
-      if (AUTOPLAY_STATE.countdownSec <= 0) {
-        ttsAutoplayCancelCountdown();
-        try {
-          if (typeof goToNext === 'function') goToNext(pageIndex);
-          setTimeout(() => {
-            const text = pages[nextIndex] || '';
-            if (text) ttsSpeakQueue(`page-${nextIndex}`, [text]);
-          }, 350);
-        } catch (_) {}
-      } else updateBtn();
-    }, 1000);
-  } catch (_) {}
+  function updateBtn() {
+    if (btn) btn.textContent = `⏸ Next in ${AUTOPLAY_STATE.countdownSec}…`;
+  }
+  updateBtn();
+
+  AUTOPLAY_STATE.countdownTimerId = setInterval(() => {
+    AUTOPLAY_STATE.countdownSec -= 1;
+    if (AUTOPLAY_STATE.countdownSec <= 0) {
+      ttsAutoplayCancelCountdown();
+      // Scroll to next page
+      const nextPageEl = pageEls[nextIndex];
+      if (nextPageEl) nextPageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Start reading next page after scroll settles
+      setTimeout(() => {
+        const text = (typeof pages !== 'undefined' && pages[nextIndex]) ? pages[nextIndex] : '';
+        if (text) ttsSpeakQueue(`page-${nextIndex}`, [text]);
+      }, 400);
+    } else {
+      updateBtn();
+    }
+  }, 1000);
 }
 
 function optsForKeySentenceMarks(key) {
@@ -385,12 +390,10 @@ function browserSpeakQueue(key, parts) {
     if (idx >= queue.length) {
       TTS_STATE.activeKey = null;
       // Trigger autoplay for browser TTS fallback path too.
-      try {
-        if (optsForKeySentenceMarks(key)) {
-          const pageIndex = parseInt(String(key).slice(5), 10);
-          if (Number.isFinite(pageIndex)) ttsAutoplayScheduleNext(pageIndex);
-        }
-      } catch (_) {}
+      if (optsForKeySentenceMarks(key)) {
+        const pageIndex = parseInt(String(key).slice(5), 10);
+        if (Number.isFinite(pageIndex)) ttsAutoplayScheduleNext(pageIndex);
+      }
       return;
     }
     const utter = new SpeechSynthesisUtterance(queue[idx]);
@@ -448,12 +451,10 @@ async function ttsSpeakQueue(key, parts) {
     }
     TTS_STATE.activeKey = null;
     // Trigger autoplay if this was a page read and autoplay is enabled.
-    try {
-      if (optsForKeySentenceMarks(key)) {
-        const pageIndex = parseInt(String(key).slice(5), 10);
-        if (Number.isFinite(pageIndex)) ttsAutoplayScheduleNext(pageIndex);
-      }
-    } catch (_) {}
+    if (optsForKeySentenceMarks(key)) {
+      const pageIndex = parseInt(String(key).slice(5), 10);
+      if (Number.isFinite(pageIndex)) ttsAutoplayScheduleNext(pageIndex);
+    }
   } catch (err) {
     // IMPORTANT: If the user explicitly stopped (or switched actions) while Polly
     // was fetching/playing, do NOT fall back to browser TTS.

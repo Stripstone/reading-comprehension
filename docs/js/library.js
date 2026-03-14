@@ -1861,6 +1861,8 @@
   function applyModeVisibility() {
     const isReading = appMode === 'reading';
 
+    // Hide Time/Characters/Difficulty knobs in reading mode.
+    // goal-actions (Load/Add/Clear Pages) is a sibling div and always visible.
     const goalRow = document.querySelector('.goal-time-row');
     if (goalRow) goalRow.style.display = isReading ? 'none' : '';
 
