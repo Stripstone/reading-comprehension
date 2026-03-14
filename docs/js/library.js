@@ -1674,10 +1674,6 @@
       // TTS: Read page text
       const ttsPageBtn = page.querySelector('.tts-btn[data-tts="page"]');
       if (ttsPageBtn) {
-        if (AUTOPLAY_STATE.countdownPageIndex === i) {
-          ttsAutoplayCancelCountdown();
-          return;
-        }
         ttsPageBtn.addEventListener("click", () => {
           if (AUTOPLAY_STATE.countdownPageIndex === i) {
             ttsAutoplayCancelCountdown();
@@ -1867,6 +1863,9 @@
 
     const goalRow = document.querySelector('.goal-time-row');
     if (goalRow) goalRow.style.display = isReading ? 'none' : '';
+
+    const thesisRow = document.getElementById('thesisRow');
+    if (thesisRow) thesisRow.style.display = isReading ? 'none' : '';
 
     document.querySelectorAll('.page').forEach(pageEl => {
       const anchorsRow  = pageEl.querySelector('.anchors-row');

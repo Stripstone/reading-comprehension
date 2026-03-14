@@ -32,15 +32,17 @@ const AUTOPLAY_STATE = {
 };
 
 function ttsAutoplayCancelCountdown() {
+  // Capture index BEFORE resetting state so the button reset can find the right page.
+  const idx = AUTOPLAY_STATE.countdownPageIndex;
+
   if (AUTOPLAY_STATE.countdownTimerId) clearInterval(AUTOPLAY_STATE.countdownTimerId);
   AUTOPLAY_STATE.countdownTimerId = null;
   AUTOPLAY_STATE.countdownPageIndex = -1;
   AUTOPLAY_STATE.countdownSec = 0;
 
-  // Reset button text if needed
+  // Reset button text on the page that was counting down.
   try {
     const pageEls = document.querySelectorAll('.page');
-    const idx = AUTOPLAY_STATE.countdownPageIndex;
     if (idx >= 0 && pageEls[idx]) {
       const btn = pageEls[idx].querySelector('.tts-btn[data-tts="page"]');
       if (btn) btn.textContent = '🔊 Read page';
@@ -382,6 +384,13 @@ function browserSpeakQueue(key, parts) {
   const speakNext = () => {
     if (idx >= queue.length) {
       TTS_STATE.activeKey = null;
+      // Trigger autoplay for browser TTS fallback path too.
+      try {
+        if (optsForKeySentenceMarks(key)) {
+          const pageIndex = parseInt(String(key).slice(5), 10);
+          if (Number.isFinite(pageIndex)) ttsAutoplayScheduleNext(pageIndex);
+        }
+      } catch (_) {}
       return;
     }
     const utter = new SpeechSynthesisUtterance(queue[idx]);
@@ -438,6 +447,13 @@ async function ttsSpeakQueue(key, parts) {
       });
     }
     TTS_STATE.activeKey = null;
+    // Trigger autoplay if this was a page read and autoplay is enabled.
+    try {
+      if (optsForKeySentenceMarks(key)) {
+        const pageIndex = parseInt(String(key).slice(5), 10);
+        if (Number.isFinite(pageIndex)) ttsAutoplayScheduleNext(pageIndex);
+      }
+    } catch (_) {}
   } catch (err) {
     // IMPORTANT: If the user explicitly stopped (or switched actions) while Polly
     // was fetching/playing, do NOT fall back to browser TTS.
@@ -458,13 +474,11 @@ if (browserTtsSupported()) {
 
 
 // Best-practice stop conditions:
-// - If the user navigates away or the tab is hidden, stop speaking.
-// - This prevents "no way to turn it off" situations on mobile.
+// - If the user navigates away or the page is unloaded, stop speaking.
+// - visibilitychange (tab switching) intentionally NOT included so audio
+//   continues playing in the background while the user reads elsewhere.
 try {
   window.addEventListener("pagehide", () => ttsStop(), { passive: true });
   window.addEventListener("beforeunload", () => ttsStop(), { passive: true });
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) ttsStop();
-  }, { passive: true });
 } catch (_) {}
 

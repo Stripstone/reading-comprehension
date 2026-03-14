@@ -101,111 +101,120 @@
 <div class="container">
   <h1>Reading Comprehension</h1>
 
-  <div class="top-controls">
-    <div class="top-actions">
-      <!-- Desktop actions -->
-      <div class="top-actions-desktop">
-        <button id="manageLibraryBtn" class="manage-library-btn" type="button" title="Manage books saved on this device">🗂️ Library</button>
-        <button id="importBookBtn" class="import-book-btn" type="button" title="Import an EPUB from your device">➕ Import EPUB</button>
-        <button id="howItWorksBtn" class="how-it-works-btn" type="button" title="Instructions">📘 How This Works</button>
-      </div>
+<div class="top-controls">
 
-      <!-- Mobile hamburger -->
-      <button id="topMenuBtn" class="top-menu-btn" type="button" aria-haspopup="true" aria-expanded="false" title="Menu">☰</button>
-      <div id="topMenu" class="top-menu" style="display:none;" role="menu" aria-label="Top menu">
-        <button id="topMenuLibrary" type="button" role="menuitem" class="top-menu-item">🗂️ Library</button>
-        <button id="topMenuImport" type="button" role="menuitem" class="top-menu-item">➕ Import EPUB</button>
-        <button id="topMenuHow" type="button" role="menuitem" class="top-menu-item">📘 How This Works</button>
+  <!-- Top Actions -->
+  <div class="top-actions">
+
+    <!-- Desktop buttons -->
+    <div class="top-actions-desktop">
+      <button id="manageLibraryBtn" class="manage-library-btn" type="button" title="Manage books saved on this device">🗂️ Library</button>
+      <button id="importBookBtn" class="import-book-btn" type="button" title="Import an EPUB from your device">➕ Import EPUB</button>
+      <button id="howItWorksBtn" class="how-it-works-btn" type="button" title="Instructions">📘 How This Works</button>
+    </div>
+
+    <!-- Mobile Hamburger -->
+    <button id="topMenuBtn" class="top-menu-btn" type="button" aria-haspopup="true" aria-expanded="false" title="Menu">☰</button>
+    <div id="topMenu" class="top-menu" style="display:none;" role="menu" aria-label="Top menu">
+      <button id="topMenuLibrary" type="button" role="menuitem" class="top-menu-item">🗂️ Library</button>
+      <button id="topMenuImport" type="button" role="menuitem" class="top-menu-item">➕ Import EPUB</button>
+      <button id="topMenuHow" type="button" role="menuitem" class="top-menu-item">📘 How This Works</button>
+    </div>
+
+  </div> <!-- /top-actions -->
+
+  <!-- Import & Mode Selection Row -->
+  <div class="import-row" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin-bottom:12px; position:relative; z-index:1;">
+    <div class="input-group" style="min-width:160px;">
+      <label class="input-label">Source</label>
+      <select id="importSource" style="padding:10px 14px; font-size:15px; font-family:'Karla',sans-serif; font-weight:500; border:2px solid var(--border); border-radius:8px; background:var(--secondary-bg); color:var(--text-primary); outline:none;">
+        <option value="book" selected>Book</option>
+        <option value="text">Text</option>
+      </select>
+    </div>
+
+    <div class="input-group" style="min-width:160px;">
+      <label class="input-label">Mode</label>
+      <select id="modeSelect" style="padding:10px 14px; font-size:15px; font-family:'Karla',sans-serif; font-weight:500; border:2px solid var(--border); border-radius:8px; background:var(--secondary-bg); color:var(--text-primary); outline:none;">
+        <option value="reading" selected>Reading</option>
+        <option value="comprehension">Comprehension</option>
+        <option value="thesis">Thesis</option>
+      </select>
+    </div>
+
+    <div id="thesisRow" style="display:none; width:100%; margin-bottom:4px;">
+      <div class="input-group" style="width:100%;">
+        <label class="input-label">Your Thesis</label>
+        <textarea id="thesisInput" placeholder="Enter your thesis statement..." style="height:64px; width:100%; padding:10px 14px; font-size:14px; font-family:'Karla',sans-serif; font-weight:500; border:2px solid var(--border); border-radius:8px; background:var(--secondary-bg); color:var(--text-primary); resize:vertical; outline:none; box-sizing:border-box;"></textarea>
       </div>
     </div>
-    <div class="import-row" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin-bottom:12px; position:relative; z-index:1;">
-      <div class="input-group" style="min-width: 160px;">
-        <label class="input-label">Source</label>
-        <select id="importSource" style="padding: 10px 14px; font-size: 15px; font-family: 'Karla', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;">
-          <option value="book" selected>Book</option>
-          <option value="text">Text</option>
+  </div> <!-- /import-row -->
+
+  <!-- Book Controls -->
+  <div id="bookControls" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
+    <div class="input-group" style="min-width:220px;">
+      <label class="input-label">Book</label>
+      <select id="bookSelect" style="padding:10px 14px; font-size:15px; font-family:'Karla',sans-serif; font-weight:500; border:2px solid var(--border); border-radius:8px; background:var(--secondary-bg); color:var(--text-primary); outline:none;">
+        <option value="">Loading…</option>
+      </select>
+    </div>
+
+    <div id="chapterControls" class="input-group" style="min-width:280px;">
+      <label class="input-label">Chapter</label>
+      <select id="chapterSelect" style="padding:10px 14px; font-size:15px; font-family:'Karla',sans-serif; font-weight:500; border:2px solid var(--border); border-radius:8px; background:var(--secondary-bg); color:var(--text-primary); outline:none;">
+        <option value="">Select a book first</option>
+      </select>
+    </div>
+
+    <div id="pageControls" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
+      <div class="input-group" style="min-width:240px;">
+        <label class="input-label">Pages</label>
+        <select id="pageStart" style="padding:10px 14px; font-size:15px; font-family:'Karla',sans-serif; font-weight:500; border:2px solid var(--border); border-radius:8px; background:var(--secondary-bg); color:var(--text-primary); outline:none;">
+          <option value="">Loading…</option>
         </select>
       </div>
-      <div class="input-group" style="min-width: 160px;">
-        <label class="input-label">Mode</label>
-        <select id="modeSelect" style="padding: 10px 14px; font-size: 15px; font-family: 'Karla', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;">
-          <option value="reading" selected>Reading</option>
-          <option value="comprehension">Comprehension</option>
-          <option value="thesis">Thesis</option>
+
+      <div class="input-group" style="min-width:240px;">
+        <label class="input-label">to</label>
+        <select id="pageEnd" style="padding:10px 14px; font-size:15px; font-family:'Karla',sans-serif; font-weight:500; border:2px solid var(--border); border-radius:8px; background:var(--secondary-bg); color:var(--text-primary); outline:none;">
+          <option value="">Loading…</option>
         </select>
       </div>
-      <div id="thesisRow" style="display:none; width:100%; margin-bottom:4px;">
-        <div class="input-group" style="width:100%;">
-          <label class="input-label">Your Thesis</label>
-          <textarea id="thesisInput" placeholder="Enter your thesis statement..." style="height:64px; width:100%; padding:10px 14px; font-size:14px; font-family:'Karla', sans-serif; font-weight:500; border:2px solid var(--border); border-radius:8px; background:var(--secondary-bg); color:var(--text-primary); resize:vertical; outline:none; box-sizing:border-box;"></textarea>
-        </div>
+    </div>
+
+    <!-- Goal-Time Row is nested inside Book Controls -->
+    <div class="goal-time-row" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; width:100%; margin-top:12px;">
+      <div class="input-group">
+        <label class="input-label">Time (sec)</label>
+        <input type="number" id="goalTimeInput" min="5">
       </div>
-    </div>
-      <div id="bookControls" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
-        <div class="input-group" style="min-width: 220px;">
-          <label class="input-label">Book</label>
-          <select id="bookSelect" style="padding: 10px 14px; font-size: 15px; font-family: 'Karla', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;">
-            <option value="">Loading…</option>
-          </select>
-        </div>
-
-        <div id="chapterControls" class="input-group" style="min-width: 280px;">
-          <label class="input-label">Chapter</label>
-          <select id="chapterSelect" style="padding: 10px 14px; font-size: 15px; font-family: 'Karla', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;">
-            <option value="">Select a book first</option>
-          </select>
-        </div>
-
-	      <div id="pageControls" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
-          <div class="input-group" style="min-width: 240px;">
-            <label class="input-label">Pages</label>
-            <select id="pageStart" style="padding: 10px 14px; font-size: 15px; font-family: 'Karla', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;">
-              <option value="">Loading…</option>
-            </select>
-          </div>
-
-          <div class="input-group" style="min-width: 240px;">
-            <label class="input-label">to</label>
-            <select id="pageEnd" style="padding: 10px 14px; font-size: 15px; font-family: 'Karla', sans-serif; font-weight: 500; border: 2px solid var(--border); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); outline:none;">
-              <option value="">Loading…</option>
-            </select>
-          </div>
-        </div>
-
-	        <!-- Load button is positioned in the goal row to serve both Book + Text -->
+      <div class="input-group">
+        <label class="input-label">Characters</label>
+        <input type="number" id="goalCharInput" min="10">
       </div>
-    </div>
-    <div id="textControls" style="display:none; width:100%;">
-      <textarea id="bulkInput" placeholder="Paste your full .md or text here..." style="height: 80px;"></textarea>
 
-      <p class="descriptor">Paste text here and it will be broken into pages automatically.</p>
-    </div>
+      <div class="difficulty-toggle" role="group" aria-label="Difficulty presets">
+        <button id="difficultyEasy" type="button" class="difficulty-btn" aria-pressed="false">Easy</button>
+        <button id="difficultyMedium" type="button" class="difficulty-btn" aria-pressed="false">Medium</button>
+        <button id="difficultyHard" type="button" class="difficulty-btn" aria-pressed="false">Hard</button>
+      </div>
 
-	    <div class="goal-time-row">
-	      <div class="input-group">
-	        <label class="input-label">Time (sec)</label>
-	        <input type="number" id="goalTimeInput" min="5">
-	      </div>
-	      <div class="input-group">
-	        <label class="input-label">Characters</label>
-	        <input type="number" id="goalCharInput" min="10">
-	      </div>
+      <div class="goal-actions">
+        <button id="loadBookSelection" type="button">Load Pages</button>
+        <button id="appendBookSelection" type="button" title="Add pages to the end (do not clear existing pages)">Add Pages</button>
+        <button type="button" onclick="clearPages()" title="Removes your consolidations and feedback for loaded pages.">Clear Pages</button>
+      </div>
+    </div> <!-- /goal-time-row -->
 
-	      <!-- Difficulty presets sit between Characters and Load Pages -->
-	      <div class="difficulty-toggle" role="group" aria-label="Difficulty presets">
-	        <button id="difficultyEasy" type="button" class="difficulty-btn" aria-pressed="false">Easy</button>
-	        <button id="difficultyMedium" type="button" class="difficulty-btn" aria-pressed="false">Medium</button>
-	        <button id="difficultyHard" type="button" class="difficulty-btn" aria-pressed="false">Hard</button>
-	      </div>
+  </div> <!-- /bookControls -->
 
-	      <!-- Replaces legacy "Update Goal & Add Pages" in the same position area -->
-         <div class="goal-actions">
-	        <button id="loadBookSelection" type="button">Load Pages</button>
-	        <button id="appendBookSelection" type="button" title="Add pages to the end (do not clear existing pages)">Add Pages</button>
-	        <button type="button" onclick="clearPages()" title="Removes your consolidations and feedback for loaded pages.">Clear Pages</button>
-	      </div>
-	    </div>
+  <!-- Text Controls (for paste input) -->
+  <div id="textControls" style="display:none; width:100%;">
+    <textarea id="bulkInput" placeholder="Paste your full .md or text here..." style="height:80px;"></textarea>
+    <p class="descriptor">Paste text here and it will be broken into pages automatically.</p>
   </div>
+
+</div> <!-- /top-controls -->
 
   <!-- How This Works Modal -->
   <div id="howItWorksModal" class="modal-overlay" style="display:none;" aria-hidden="true">
