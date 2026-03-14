@@ -847,7 +847,7 @@ body {
     }
 
     .top-controls {
-      min-height: 260px;
+      min-height: 340px;
     }
 
     .page {
@@ -948,10 +948,11 @@ body {
     }
 
     .goal-time-row {
-      display: inline-flex;
+      display: flex;
       align-items: flex-end;
       gap: 12px;
       flex-wrap: wrap;
+      width: 100%;
       position: relative;
       z-index: 1;
     }
