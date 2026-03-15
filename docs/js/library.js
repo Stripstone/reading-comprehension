@@ -1859,6 +1859,7 @@
 
     
     applyModeVisibility();
+    if (typeof applyTierAccess === 'function') applyTierAccess();
   }
 
   function applyModeVisibility() {

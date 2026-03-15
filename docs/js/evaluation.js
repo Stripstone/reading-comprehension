@@ -436,13 +436,21 @@
     html += `</div>`;
     feedbackDiv.innerHTML = html;
 
-    // TTS: Read feedback statement (analysis) then better consolidation
+    // TTS: Read feedback statement (analysis), lead-in phrase, then better consolidation
     const ttsBetterBtn = feedbackDiv.querySelector('.tts-btn[data-tts="better"]');
     if (ttsBetterBtn) {
       ttsBetterBtn.addEventListener("click", () => {
         const a = pageData?.[pageIndex]?.aiAnalysisText || analysis || "";
+        const leadIns = [
+          "Here's another way to approach this.",
+          "Try phrasing it like this.",
+          "Let's take it a step further.",
+          "Here's how to sharpen it.",
+        ];
+        const leadIn = leadIns[pageIndex % leadIns.length];
         const b = pageData?.[pageIndex]?.aiBetterText || betterExample || "";
-        ttsSpeakQueue(`better-${pageIndex}`, [a, b]);
+        const parts = [a, leadIn, b].filter(Boolean);
+        ttsSpeakQueue(`better-${pageIndex}`, parts);
       });
     }
 
