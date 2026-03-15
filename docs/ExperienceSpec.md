@@ -74,24 +74,21 @@ The Consolidation Box is the most important element on the page. It should be th
 
 ### Discovering Anchors
 
-Anchor discovery is the primary feedback mechanic — not a supplement to AI, but the core signal of whether a reader understood the page.
+Anchor discovery is a micro-reward mechanic. When the reader's consolidation captures a key idea from the passage, an anchor lights up.
 
-- Anchors light up as the reader writes. This is the main loop reward.
 - These moments should feel like small wins, not scoring events.
 - The Hint button reveals anchors when the reader is stuck. It should feel like asking for a nudge, not admitting defeat.
-- A reader who captures all anchors without using AI evaluation has fully succeeded.
 
 ### Feedback
 
-AI feedback supports anchor discovery — it does not replace it. The anchor count is the lead signal. AI adds texture and a suggested example.
-
 Feedback should feel like a reading partner responding, not a grade being issued.
 
-- Lead with what the reader got right, anchored in what they captured.
+- Lead with what the reader got right.
 - One main thing to improve, stated plainly.
 - Benefit of the doubt on minor errors — close is close enough.
 - The "better consolidation" example should feel instructive, not corrective.
-- The lead-in phrase before the better example should be read aloud by TTS when the reader uses the Read button on feedback.
+
+AI feedback is secondary to anchor discovery. A reader who captures all anchors but skips AI evaluation has still succeeded.
 
 ### Continuing
 
@@ -142,41 +139,21 @@ Known edge cases to watch:
 
 ## 6. Tier System
 
-Three tiers exist: **Free**, **Paid**, and **Premium**. Tier controls which features are accessible and how many tokens a user receives.
+Three tiers exist: **Free**, **Paid**, and **Premium**. Tier controls which features are accessible.
 
-### What Tokens Are
-
-Tokens are consumption units spent on cost-bearing actions:
-
-- **TTS pages** — each page narrated via Polly costs tokens
-- **AI interactions** — each evaluate, anchor generation, or summary costs tokens
-- **Book uploads** — each book added to the library costs tokens
-
-Tokens are not a score or a reward. They are a sustainability mechanism to keep API costs covered at scale. Each tier comes with a monthly token allowance. Users can purchase refill packs when they run out.
-
-| Tier | Monthly Tokens | Key Access |
-|---|---|---|
-| Free | Small (e.g. 20–50) | Reading mode, limited TTS (1–3 pages), limited AI feedback, 1 upload |
-| Paid | Mid (e.g. 500–1000) | All modes, TTS with token cost per page, core AI features, more uploads |
-| Premium | Large (e.g. 10,000+) | Full access, all voices, generous TTS cap, unlimited uploads |
+| Tier | Key Access |
+|---|---|
+| Free | Basic reading, limited AI feedback, limited TTS, 1 library upload |
+| Paid | Core AI features, TTS with token cost, more uploads |
+| Premium | Full AI feedback, multiple voices, generous TTS, unlimited uploads |
 
 ### Prototype Behavior
 
-During testing, tier selection is functional — it changes feature access in the UI — but no payment is enforced and **tokens do not run out**. This allows all features to be tested at any tier without restriction.
+During testing, tier selection is functional — it changes feature access in the UI — but no payment is enforced and usage is unrestricted. This allows all features to be tested regardless of tier.
 
-The tier selector is visible in the top controls. Switching tiers takes effect immediately without a page reload.
+The tier selector should be accessible from settings or a visible control. Switching tiers should take effect immediately without a page reload.
 
-Payment processing and token enforcement will be wired in after the prototype is validated.
-
-### Debug Mode (`?debug=1`)
-
-When the URL contains `?debug=1`, the app enters development environment mode. In addition to existing diagnostics, debug mode exposes:
-
-- A **token counter** visible in the top-right of the viewport, showing tokens consumed this session by category (TTS, AI, uploads)
-- The **active tier** displayed alongside the counter
-- Any additional diagnostic overlays relevant to the current session
-
-The token counter in debug mode is always live and unrestricted — it shows consumption without enforcing limits, so all features remain testable.
+Payment processing will be wired in after the prototype is validated.
 
 ---
 
@@ -213,9 +190,7 @@ Platform-specific behavior discovered at runtime should be documented in **Syste
 
 | Date | Platform | Observation | Resolution |
 |---|---|---|---|
-| 2026-03-15 | All | Tier selector visible but switching tiers had no effect on UI | Bug — `applyTierAccess()` ran before `render()` built the DOM. Fix: call after `render()` |
-| 2026-03-15 | All | TTS Read on AI feedback did not speak lead-in phrase before better consolidation | Bug — lead-in string not included in `ttsSpeakQueue` parts array. Fix: add to parts |
-| 2026-03-15 | All | Per-page read/consolidate/evaluate loop felt mechanical rather than rewarding | Spec update — anchors elevated to primary mechanic; AI repositioned as support signal |
+| — | — | — | — |
 
 ---
 
