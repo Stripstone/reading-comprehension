@@ -439,6 +439,67 @@
 })();
 
 // ===================================
+// 💳 Tier Selector
+// ===================================
+(function initTierSelector() {
+  const select = document.getElementById('tierSelect');
+  if (!select) return;
+
+  const VALID_TIERS = ['free', 'paid', 'premium'];
+
+  // Restore persisted tier
+  try {
+    const saved = localStorage.getItem('rc_app_tier');
+    if (saved && VALID_TIERS.includes(saved)) {
+      appTier = saved;
+    }
+  } catch (_) {}
+
+  select.value = appTier;
+
+  select.addEventListener('change', () => {
+    const newTier = select.value;
+    if (!VALID_TIERS.includes(newTier) || newTier === appTier) return;
+    appTier = newTier;
+    try { localStorage.setItem('rc_app_tier', appTier); } catch (_) {}
+    applyTierAccess();
+  });
+
+  // Apply on boot
+  applyTierAccess();
+
+  function applyTierAccess() {
+    // Tier access rules (prototype: feature gating active, usage unrestricted).
+    //
+    // free    — Reading + Comprehension modes only. No AI Evaluate, no TTS voices beyond default.
+    // paid    — All modes accessible. AI Evaluate available. Standard voices.
+    // premium — Full access. All voices, all modes, all features.
+    //
+    // NOTE: These rules gate UI visibility only. No server-side enforcement yet.
+
+    const isFree    = appTier === 'free';
+    const isPaid    = appTier === 'paid';
+    const isPremium = appTier === 'premium';
+
+    // AI Evaluate buttons — hidden on Free
+    document.querySelectorAll('.ai-btn, #submitBtn').forEach(el => {
+      if (el) el.style.display = isFree ? 'none' : '';
+    });
+
+    // Thesis mode option — hidden on Free
+    const modeSelect = document.getElementById('modeSelect');
+    if (modeSelect) {
+      const thesisOpt = modeSelect.querySelector('option[value="thesis"]');
+      if (thesisOpt) thesisOpt.disabled = isFree;
+    }
+
+    // Voice selector (male/female toggle) — hidden on Free
+    const voiceControls = document.getElementById('voiceFemaleBtn')?.closest('.voice-controls');
+    if (voiceControls) voiceControls.style.display = isFree ? 'none' : '';
+  }
+})();
+
+// ===================================
 // 📝 Thesis Input
 // ===================================
 (function initThesisInput() {

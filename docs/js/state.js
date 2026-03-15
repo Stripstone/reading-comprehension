@@ -25,6 +25,10 @@
   let appMode = 'reading';   // default mode
   let thesisText = ''; // coming soon
 
+  // Current subscription tier: 'free', 'paid', 'premium'
+  // During prototype: controls feature access in UI but does not enforce usage limits.
+  let appTier = 'free';
+
 // ---- Persistence ----
 // Persist learner work per-page-hash so switching chapters/sources doesn't wipe progress.
 // Also persist the last-opened session so refresh restores the current view.

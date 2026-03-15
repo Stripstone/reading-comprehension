@@ -412,9 +412,16 @@
     }
 
     if (betterExample) {
+      const leadIns = [
+        "Here's another way to approach this…",
+        "Try phrasing it like this →",
+        "Let's take it a step further…",
+        "Here's how to sharpen it…",
+      ];
+      const leadIn = leadIns[pageIndex % leadIns.length];
       html += `<div class="better-example">
         <div class="better-header">
-          <div class="better-label">Better consolidation:</div>
+          <div class="better-label">${leadIn}</div>
           <button type="button" class="top-btn tts-btn tts-better" data-tts="better" data-page="${pageIndex}">🔊 Read</button>
         </div>
         <div class="better-text">"${betterExample}"</div>
