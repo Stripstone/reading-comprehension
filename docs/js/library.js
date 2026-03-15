@@ -1871,7 +1871,7 @@
     if (goalRow) goalRow.style.display = isReading ? 'none' : '';
 
     const thesisRow = document.getElementById('thesisRow');
-    if (thesisRow) thesisRow.style.display = (appMode === 'thesis') ? '' : 'none';
+    if (thesisRow) thesisRow.style.display = (appMode === 'research') ? '' : 'none';
 
     document.querySelectorAll('.page').forEach(pageEl => {
       const anchorsRow  = pageEl.querySelector('.anchors-row');

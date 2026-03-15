@@ -50,9 +50,11 @@ The full training loop. This is the primary mode.
 
 **Navigation:** the Next button scrolls to the next page and focuses its Consolidation Box.
 
-### Thesis Mode *(future)*
+### Research Mode *(future)*
 
 Tracks an argument across multiple pages. Not yet implemented.
+
+Previously referred to as "Thesis Mode." Renamed to broaden appeal beyond academic users to lawyers, analysts, and writers.
 
 ---
 
@@ -142,23 +144,47 @@ Known edge cases to watch:
 
 ## 6. Tier System
 
-Three tiers exist: **Free**, **Paid**, and **Premium**. Tier controls which features are accessible and how many tokens a user receives.
+Three tiers exist: **Free**, **Paid**, and **Premium**. Tier controls which modes are accessible and how many tokens a user receives.
 
 ### What Tokens Are
 
-Tokens are consumption units spent on cost-bearing actions:
+Tokens are consumption units spent on cost-bearing backend actions:
 
-- **TTS pages** — each page narrated via Polly costs tokens
-- **AI interactions** — each evaluate, anchor generation, or summary costs tokens
-- **Book uploads** — each book added to the library costs tokens
+| Action | Token Cost |
+|---|---|
+| Read page via TTS (cloud) | 1 |
+| AI Evaluate | 2 |
+| Generate anchors | 1 |
+| Research Mode analysis | 3 |
 
-Tokens are not a score or a reward. They are a sustainability mechanism to keep API costs covered at scale. Each tier comes with a monthly token allowance. Users can purchase refill packs when they run out.
+Tokens are not a score or a reward. They are a sustainability mechanism to keep API costs covered at scale. Each tier includes a monthly allowance and a daily cap to prevent abuse. Users can purchase refill packs when they run out.
 
-| Tier | Monthly Tokens | Key Access |
-|---|---|---|
-| Free | Small (e.g. 20–50) | Reading mode, limited TTS (1–3 pages), limited AI feedback, 1 upload |
-| Paid | Mid (e.g. 500–1000) | All modes, TTS with token cost per page, core AI features, more uploads |
-| Premium | Large (e.g. 10,000+) | Full access, all voices, generous TTS cap, unlimited uploads |
+Book uploads do not cost tokens. Uploads are not a meaningful cost driver — only API calls are.
+
+### Tier Table
+
+| Tier | Monthly Tokens | Daily Cap | Mode Access | TTS Voice |
+|---|---|---|---|---|
+| Free | 100 | 50 | Reading only | Browser `speechSynthesis` (best available auto-selected) |
+| Paid | 1,000 | 500 | Reading + Comprehension | Cloud neural (Polly or equivalent) |
+| Premium | 10,000 | 2,000 | All modes incl. Research | Cloud neural, all voices |
+
+### Free Tier TTS
+
+Free users do not spend tokens on TTS — they use the browser's built-in `speechSynthesis` API at zero cost. The app should intelligently select the best available system voice rather than accepting the browser default:
+
+Preferred voices (in order): Edge Aria / Jenny / Guy, macOS Samantha, iOS Enhanced Siri, Google voices on Android.
+
+This often sounds significantly better than the raw default with no API cost. Free users should not see voice selection controls — the best available voice is chosen automatically.
+
+### TTS Cost Strategy
+
+- **Caching:** TTS audio is generated once per page and stored. Subsequent plays — by any user — serve the cached file. This is the primary cost control mechanism and should be confirmed working before any scaling.
+- **Provider:** Currently AWS Polly Neural for Paid/Premium. Future optimization options include Deepgram Aura (~$10/1M chars) or PlayHT (~$5–12/1M chars) as cheaper Paid-tier alternatives. Long-term, self-hosted Piper TTS could reduce costs to near zero. No provider changes should be made until caching is confirmed solid.
+
+### Skill Gate (Future Conversion Pattern)
+
+When a Free user finishes a page, the UI may show a soft prompt such as "How well did you understand this?" with Comprehension Mode indicated as available on Paid. This frames the upgrade as gaining a cognitive capability rather than hitting a paywall. Not yet implemented — noted here for when conversion prompts are prioritized.
 
 ### Prototype Behavior
 
@@ -223,7 +249,7 @@ Platform-specific behavior discovered at runtime should be documented in **Syste
 
 These are not current development concerns.
 
-- Thesis Mode implementation
+- Research Mode implementation (formerly Thesis Mode)
 - Progress tracking and streaks
 - Reader annotations
 - Gamification

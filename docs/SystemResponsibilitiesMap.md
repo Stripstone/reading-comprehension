@@ -209,6 +209,25 @@ The autoplay fix works by pre-fetching the next page's Polly URL and calling `au
 
 **Hint button interaction:** While sentence highlighting is active, the Hint button is disabled to prevent anchor `innerHTML` injection from destroying the TTS sentence spans. It is re-enabled in `ttsClearSentenceHighlight()` when TTS finishes.
 
+**Free tier — browser `speechSynthesis` fallback:**
+
+When `appTier === 'free'`, the frontend must not call `/api/tts`. Instead it uses the browser's built-in `speechSynthesis` API at zero cost.
+
+The app should not simply accept the browser default voice. It should select the best available voice using a priority list:
+
+```js
+const PREFERRED_VOICES = ['Aria', 'Jenny', 'Guy', 'Samantha', 'Google', 'Siri'];
+const voices = speechSynthesis.getVoices();
+const best = voices.find(v => PREFERRED_VOICES.some(p => v.name.includes(p)))
+             || voices.find(v => v.lang.startsWith('en'))
+             || voices[0];
+utterance.voice = best;
+```
+
+Note: `getVoices()` may return an empty array on first call in some browsers. Wire to the `voiceschanged` event to retry after voices load.
+
+Free users do not see voice selection controls. Voice is chosen automatically.
+
 ---
 
 ### `anchors.js`
@@ -477,6 +496,34 @@ Generates narration audio for a page.
 - `sentenceMarks` — array of `{ time, start, end }` for sentence highlighting
 
 **Provider:** Amazon Polly (neural voices). Voice controlled by `POLLY_VOICE_ID` / `POLLY_ENGINE` env vars. `voiceVariant: 'male'` routes to a separate env var.
+
+**Tier routing:**
+
+| Tier | TTS Source | Token Cost |
+|---|---|---|
+| Free | Browser `speechSynthesis` — no API call made | 0 |
+| Paid | Cloud neural (currently Polly) | 1 per page |
+| Premium | Cloud neural, all voices | 1 per page |
+
+Free users never hit this endpoint. The frontend detects `appTier === 'free'` and routes to the browser speech fallback instead. See `tts.js` for browser voice selection logic.
+
+**Caching:**
+
+TTS audio is generated once per unique page hash and the resulting S3 URL is stored. Subsequent requests for the same page — by any user — should serve the cached URL without calling Polly again. This is the primary cost control mechanism. Caching must be confirmed working before any scaling effort.
+
+Cost reference: ~1,500 chars/page × $16/1M chars (Polly Neural) ≈ $0.006/page. A 300-page book costs ~$1.80 to generate once and zero thereafter.
+
+**Potential provider optimisations (not yet actioned):**
+
+| Provider | Cost per 1M chars | Notes |
+|---|---|---|
+| AWS Polly Neural | ~$16 | Current provider |
+| Deepgram Aura | ~$10 | Good quality, cheaper — candidate for Paid tier |
+| PlayHT | ~$5–12 | Affordable, many voices |
+| ElevenLabs | ~$18–22 | Best quality — candidate for Premium tier voices |
+| Self-hosted Piper | ~$0.50 (compute only) | Long-term option, requires infrastructure |
+
+No provider changes should be made until audio caching is confirmed solid end-to-end.
 
 ---
 

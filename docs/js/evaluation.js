@@ -79,6 +79,22 @@
     }
   }
 
+  // Activate a page card without a textarea focus — plays the page turn sound and
+  // applies the .page-active class. Used by goToNext in Reading mode.
+  function activatePageCard(pageEl, pageIndex) {
+    if (!pageEl) return;
+    pageEl.classList.add('page-active');
+    lastFocusedPageIndex = pageIndex;
+    try {
+      if (!allSoundsMuted) {
+        pageTurnSound.currentTime = 0;
+        pageTurnSound.play();
+      }
+    } catch (_) {}
+    // Remove the active class after a short beat so it doesn't linger indefinitely.
+    setTimeout(() => pageEl.classList.remove('page-active'), 600);
+  }
+
   function goToNext(currentIndex) {
     // Navigation rules:
     // - Consolidation phase: focus the next editable textarea.
@@ -121,6 +137,7 @@
       // In reading mode there is no textarea — advance to the next page regardless.
       if (appMode === 'reading' || isEditable) {
         pageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (appMode === 'reading') activatePageCard(pageEl, j);
         if (isEditable) ta.focus();
         return;
       }
@@ -167,8 +184,8 @@
     const feedbackDiv = document.querySelector(`.ai-feedback[data-page="${pageIndex}"]`);
     if (!aiBtn || !feedbackDiv) return;
 
-    if (appMode === 'thesis') {
-      alert('Thesis mode evaluation is coming soon!\n\nIn this mode, your consolidations will be evaluated for consistency with your thesis statement rather than general comprehension.');
+    if (appMode === 'research') {
+      alert('Research Mode evaluation is coming soon!\n\nIn this mode, your consolidations will be evaluated for consistency with your research thesis rather than general comprehension.');
       return;
     }
     // Toggle if already open
@@ -609,8 +626,8 @@
     const btn = document.getElementById("submitBtn");
     btn.disabled = true;
 
-    if (appMode === 'thesis') {
-      alert('Thesis mode scoring is coming soon!\n\nFull evaluation against your thesis will be available in an upcoming update.');
+    if (appMode === 'research') {
+      alert('Research Mode scoring is coming soon!\n\nFull evaluation against your research thesis will be available in an upcoming update.');
       return;
     }
     // Calculate scores

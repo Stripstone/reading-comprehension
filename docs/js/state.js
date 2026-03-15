@@ -21,9 +21,9 @@
   let pages = [];
   let pageData = [];
   
-  // Current mode: 'reading', 'comprehension', 'thesis'
+  // Current mode: 'reading', 'comprehension', 'research'
   let appMode = 'reading';   // default mode
-  let thesisText = ''; // coming soon
+  let thesisText = ''; // research mode input — coming soon
 
   // Current subscription tier: 'free', 'paid', 'premium'
   // During prototype: controls feature access in UI but does not enforce usage limits.

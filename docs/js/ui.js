@@ -415,7 +415,7 @@
 
   try {
     const saved = localStorage.getItem('rc_app_mode');
-    if (saved && ['reading','comprehension','thesis'].includes(saved)) {
+    if (saved && ['reading','comprehension','research'].includes(saved)) {
       appMode = saved;
     }
   } catch (_) {}
@@ -471,7 +471,7 @@
   function applyTierAccess() {
     // Tier access rules (prototype: feature gating active, usage unrestricted).
     //
-    // free    — Reading mode only. Comprehension and Thesis disabled.
+    // free    — Reading mode only. Comprehension and Research disabled.
     //           No AI Evaluate, no TTS voices beyond default.
     // paid    — All modes accessible. AI Evaluate available. Standard voices.
     // premium — Full access. All voices, all modes, all features.
@@ -485,13 +485,13 @@
     // Mode options:
     //   Free        — Reading only. Comprehension disabled.
     //   Paid+       — Reading + Comprehension.
-    //   All tiers   — Thesis always disabled until implemented.
+    //   All tiers   — Research always disabled until implemented.
     const modeSelect = document.getElementById('modeSelect');
     if (modeSelect) {
       const comprehensionOpt = modeSelect.querySelector('option[value="comprehension"]');
-      const thesisOpt        = modeSelect.querySelector('option[value="thesis"]');
+      const researchOpt      = modeSelect.querySelector('option[value="research"]');
       if (comprehensionOpt) comprehensionOpt.disabled = isFree;
-      if (thesisOpt)        thesisOpt.disabled = true; // all tiers until implemented
+      if (researchOpt)      researchOpt.disabled = true; // all tiers until implemented
 
       // If currently on a gated mode, drop back to Reading
       if (isFree && appMode !== 'reading') {
@@ -519,7 +519,7 @@
 })();
 
 // ===================================
-// 📝 Thesis Input
+// 📝 Research Input
 // ===================================
 (function initThesisInput() {
   const input = document.getElementById('thesisInput');

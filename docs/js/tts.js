@@ -366,16 +366,35 @@ function browserTtsStop() {
 }
 
 function browserPickVoice() {
+  // Select the best available system voice for Free tier TTS.
+  // Prefers named neural-quality voices (Edge, macOS, Google, iOS) over generic defaults.
+  // Respects TTS_STATE.voiceVariant ('male'/'female') when suitable voices are available.
+  // Falls back gracefully through quality tiers to any English voice.
   try {
     const voices = window.speechSynthesis.getVoices() || [];
+    const isMale = String(TTS_STATE.voiceVariant || '').toLowerCase() === 'male';
+
+    const enVoices = voices.filter(v => (v.lang || '').toLowerCase().startsWith('en'));
+
+    // Named high-quality voices by gender preference
+    const femaleNames = ['Aria', 'Jenny', 'Samantha', 'Google UK English Female', 'Google US English', 'Karen', 'Moira', 'Serena', 'Tessa'];
+    const maleNames   = ['Guy', 'Ryan', 'Google UK English Male', 'Daniel', 'Rishi', 'Alex', 'Fred'];
+    const preferred   = isMale ? maleNames : femaleNames;
+    const fallback    = isMale ? femaleNames : maleNames;
+
+    const findNamed = (nameList) =>
+      enVoices.find(v => nameList.some(n => v.name.includes(n)));
+
     return (
-      voices.find(v => /Google/i.test(v.name) && /en/i.test(v.lang)) ||
-      voices.find(v => /Microsoft/i.test(v.name) && /en/i.test(v.lang)) ||
-      voices.find(v => (v.lang || "").toLowerCase().startsWith("en")) ||
-      voices[0] ||
+      findNamed(preferred) ||
+      findNamed(fallback)  ||
+      enVoices.find(v => /Microsoft/i.test(v.name)) ||
+      enVoices.find(v => /Google/i.test(v.name))    ||
+      enVoices[0]  ||
+      voices[0]    ||
       null
     );
-  } catch {
+  } catch (_) {
     return null;
   }
 }
@@ -527,6 +546,14 @@ function browserSpeakQueue(key, parts) {
 
 async function ttsSpeakQueue(key, parts) {
 
+  // Free tier: route directly to browser speechSynthesis — no Polly call, no token cost.
+  // Voice variant (male/female) is respected via browserPickVoice().
+  // Sentence highlighting is not available on browser TTS (no speech marks).
+  if (typeof appTier !== 'undefined' && appTier === 'free') {
+    browserSpeakQueue(key, parts);
+    return;
+  }
+
   // Unlock Safari audio during the user gesture
   ttsUnlockAudio();
 
@@ -600,9 +627,13 @@ async function ttsSpeakQueue(key, parts) {
   }
 }
 
-// Some browsers load voices asynchronously.
+// Some browsers (Chrome, Edge) load voices asynchronously.
+// Trigger getVoices() once on voiceschanged so the list is warm
+// by the time a Free tier user first presses Read Page.
 if (browserTtsSupported()) {
-  window.speechSynthesis.onvoiceschanged = () => { /* no-op */ };
+  window.speechSynthesis.onvoiceschanged = () => {
+    try { window.speechSynthesis.getVoices(); } catch (_) {}
+  };
 }
 
 
