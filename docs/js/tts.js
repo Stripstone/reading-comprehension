@@ -516,14 +516,96 @@ function browserSpeakQueue(key, parts) {
   }
 
   TTS_STATE.activeKey = key;
+  ttsSetButtonActive(key, true);
+  ttsSetHintButton(key, true);
   let idx = 0;
   const voice = browserPickVoice();
+
+  // Build sentence-level highlight spans for the first part (the page text),
+  // using the same DOM structure as the Polly path so CSS styling is consistent.
+  // Browser speechSynthesis fires 'boundary' events with charIndex/charLength,
+  // which we use to determine the active sentence.
+  const isPageRead = optsForKeySentenceMarks(key);
+  let browserSentenceRanges = null; // [{start, end}] char index ranges into queue[0]
+
+  if (isPageRead && queue.length > 0) {
+    // Split the page text into sentence ranges by splitting on sentence-ending punctuation.
+    const text = queue[0];
+    const sentenceRegex = /[^.!?]*[.!?]+["']?\s*/g;
+    const ranges = [];
+    let match;
+    while ((match = sentenceRegex.exec(text)) !== null) {
+      ranges.push({ start: match.index, end: match.index + match[0].length });
+    }
+    // If regex found nothing (no punctuation), treat the whole text as one sentence.
+    if (!ranges.length) ranges.push({ start: 0, end: text.length });
+    browserSentenceRanges = ranges;
+
+    // Inject spans into the page-text element (mirrors Polly highlight structure).
+    try {
+      const pageIndex = parseInt(String(key).slice(5), 10);
+      const pageEl = document.querySelectorAll('.page')[pageIndex];
+      const textEl = pageEl?.querySelector('.page-text');
+      if (textEl) {
+        ttsClearSentenceHighlight();
+        const spansHtml = [];
+        let cursor = 0;
+        for (let i = 0; i < ranges.length; i++) {
+          const r = ranges[i];
+          if (r.start > cursor) spansHtml.push(escapeHTML(text.slice(cursor, r.start)));
+          spansHtml.push(`<span class="tts-sentence" data-tts-sent="${i}">${escapeHTML(text.slice(r.start, r.end))}</span>`);
+          cursor = r.end;
+        }
+        if (cursor < text.length) spansHtml.push(escapeHTML(text.slice(cursor)));
+
+        TTS_STATE.highlightPageKey = key;
+        TTS_STATE.highlightPageEl = textEl;
+        TTS_STATE.highlightOriginalHTML = textEl.innerHTML;
+        TTS_STATE.highlightSpans = null; // set after innerHTML swap
+        TTS_STATE.highlightMarks = ranges.map((r, i) => ({ time: i, start: r.start, end: r.end }));
+        TTS_STATE.highlightEnds = ranges.map((_, i) => i + 1 < ranges.length ? i + 1 : Infinity);
+        textEl.innerHTML = spansHtml.join('');
+        TTS_STATE.highlightSpans = Array.from(textEl.querySelectorAll('.tts-sentence'));
+
+        try {
+          const hintBtn = pageEl.querySelector('.hint-btn');
+          if (hintBtn) hintBtn.disabled = true;
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
+  let lastHighlightedIdx = -1;
+
+  function highlightAtChar(charIndex) {
+    if (!browserSentenceRanges || !TTS_STATE.highlightSpans) return;
+    // Find which sentence range contains this charIndex
+    let idx = -1;
+    for (let i = 0; i < browserSentenceRanges.length; i++) {
+      if (charIndex >= browserSentenceRanges[i].start && charIndex < browserSentenceRanges[i].end) {
+        idx = i; break;
+      }
+    }
+    if (idx === lastHighlightedIdx) return;
+    // Fade out previous
+    if (lastHighlightedIdx >= 0 && TTS_STATE.highlightSpans[lastHighlightedIdx]) {
+      TTS_STATE.highlightSpans[lastHighlightedIdx].style.setProperty('--tts-alpha', '0');
+    }
+    // Fade in current
+    if (idx >= 0 && TTS_STATE.highlightSpans[idx]) {
+      TTS_STATE.highlightSpans[idx].style.setProperty('--tts-alpha', '1');
+    }
+    lastHighlightedIdx = idx;
+  }
 
   const speakNext = () => {
     if (idx >= queue.length) {
       TTS_STATE.activeKey = null;
-      // Trigger autoplay for browser TTS fallback path too.
-      if (optsForKeySentenceMarks(key)) {
+      ttsSetButtonActive(key, false);
+      ttsSetHintButton(key, false);
+      ttsClearSentenceHighlight();
+      // Trigger autoplay for browser TTS path.
+      if (isPageRead) {
         const pageIndex = parseInt(String(key).slice(5), 10);
         if (Number.isFinite(pageIndex)) ttsAutoplayScheduleNext(pageIndex);
       }
@@ -533,11 +615,24 @@ function browserSpeakQueue(key, parts) {
     utter.lang = "en-US";
     utter.rate = 1;
     utter.pitch = 1;
-    // Browser TTS volume (0..1). Persisted via the Voices slider.
     try { utter.volume = Math.max(0, Math.min(1, Number(TTS_STATE.volume ?? 1))); } catch (_) {}
     if (voice) utter.voice = voice;
+
+    // Drive sentence highlighting via boundary events (word and sentence boundaries).
+    // charIndex points into the utterance text — use it to find the active sentence.
+    if (idx === 0 && browserSentenceRanges) {
+      utter.onboundary = (e) => {
+        try { highlightAtChar(e.charIndex); } catch (_) {}
+      };
+    }
+
     utter.onend = () => { idx += 1; speakNext(); };
-    utter.onerror = () => { TTS_STATE.activeKey = null; };
+    utter.onerror = () => {
+      TTS_STATE.activeKey = null;
+      ttsSetButtonActive(key, false);
+      ttsSetHintButton(key, false);
+      ttsClearSentenceHighlight();
+    };
     window.speechSynthesis.speak(utter);
   };
 

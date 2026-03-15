@@ -491,7 +491,9 @@
       const comprehensionOpt = modeSelect.querySelector('option[value="comprehension"]');
       const researchOpt      = modeSelect.querySelector('option[value="research"]');
       if (comprehensionOpt) comprehensionOpt.disabled = isFree;
-      if (researchOpt)      researchOpt.disabled = true; // all tiers until implemented
+      // Research is selectable on Paid/Premium (evaluation.js shows coming-soon alert on use).
+      // Disabled only on Free alongside Comprehension.
+      if (researchOpt)      researchOpt.disabled = isFree;
 
       // If currently on a gated mode, drop back to Reading
       if (isFree && appMode !== 'reading') {
