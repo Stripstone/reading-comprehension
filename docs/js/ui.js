@@ -471,7 +471,8 @@
   function applyTierAccess() {
     // Tier access rules (prototype: feature gating active, usage unrestricted).
     //
-    // free    — Reading + Comprehension modes only. No AI Evaluate, no TTS voices beyond default.
+    // free    — Reading mode only. Comprehension and Thesis disabled.
+    //           No AI Evaluate, no TTS voices beyond default.
     // paid    — All modes accessible. AI Evaluate available. Standard voices.
     // premium — Full access. All voices, all modes, all features.
     //
@@ -481,19 +482,37 @@
     const isPaid    = appTier === 'paid';
     const isPremium = appTier === 'premium';
 
-    // AI Evaluate buttons — hidden on Free
-    document.querySelectorAll('.ai-btn, #submitBtn').forEach(el => {
-      if (el) el.style.display = isFree ? 'none' : '';
-    });
-
-    // Thesis mode option — hidden on Free
+    // Mode options:
+    //   Free        — Reading only. Comprehension disabled.
+    //   Paid+       — Reading + Comprehension.
+    //   All tiers   — Thesis always disabled until implemented.
     const modeSelect = document.getElementById('modeSelect');
     if (modeSelect) {
-      const thesisOpt = modeSelect.querySelector('option[value="thesis"]');
-      if (thesisOpt) thesisOpt.disabled = isFree;
+      const comprehensionOpt = modeSelect.querySelector('option[value="comprehension"]');
+      const thesisOpt        = modeSelect.querySelector('option[value="thesis"]');
+      if (comprehensionOpt) comprehensionOpt.disabled = isFree;
+      if (thesisOpt)        thesisOpt.disabled = true; // all tiers until implemented
+
+      // If currently on a gated mode, drop back to Reading
+      if (isFree && appMode !== 'reading') {
+        modeSelect.value = 'reading';
+        appMode = 'reading';
+        try { localStorage.setItem('rc_app_mode', 'reading'); } catch (_) {}
+        if (typeof applyModeVisibility === 'function') applyModeVisibility();
+      }
     }
 
-    // Voice selector (male/female toggle) — hidden on Free
+    // Anchors row (counter + Hint button) — hidden on Free
+    document.querySelectorAll('.anchors-row').forEach(el => {
+      el.style.display = isFree ? 'none' : '';
+    });
+
+    // AI Evaluate buttons and Submit — hidden on Free
+    document.querySelectorAll('.ai-btn, #submitBtn').forEach(el => {
+      el.style.display = isFree ? 'none' : '';
+    });
+
+    // Voice selector (male/female toggle) — paid+ only
     const voiceControls = document.getElementById('voiceFemaleBtn')?.closest('.voice-controls');
     if (voiceControls) voiceControls.style.display = isFree ? 'none' : '';
   }
