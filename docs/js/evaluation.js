@@ -111,12 +111,17 @@
       return;
     }
 
-    // Consolidation phase: focus the next editable textarea.
-    const textareas = document.querySelectorAll('.page textarea');
-    for (let j = currentIndex + 1; j < textareas.length; j++) {
-      const ta = textareas[j];
-      if (ta && !ta.readOnly && !ta.disabled) {
-        ta.focus();
+    // Consolidation phase: scroll to the next page, then focus its textarea
+    // (textarea focus is skipped in reading mode, which has no consolidation fields).
+    for (let j = currentIndex + 1; j < pageEls.length; j++) {
+      const pageEl = pageEls[j];
+      if (!pageEl) continue;
+      const ta = pageEl.querySelector('textarea');
+      const isEditable = ta && !ta.readOnly && !ta.disabled;
+      // In reading mode there is no textarea — advance to the next page regardless.
+      if (appMode === 'reading' || isEditable) {
+        pageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (isEditable) ta.focus();
         return;
       }
     }
