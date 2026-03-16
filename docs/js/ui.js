@@ -209,12 +209,12 @@
 
         selectEl.innerHTML = '';
 
-        // Placeholder — only show "none found" if BOTH gender lists are empty (e.g. LibreWolf)
+        // Placeholder option — uses 'hidden' not 'disabled' so Firefox/LibreWolf
+        // renders the text correctly as the visible selection label.
         const placeholder = document.createElement('option');
         placeholder.value = '';
-        placeholder.disabled = true;
+        placeholder.hidden = true;
         if (bothListsEmpty) {
-          // Both dropdowns empty — show gender label without "none found" noise; user sees both are blank equally
           placeholder.textContent = gender === 'female' ? 'Female' : 'Male';
         } else if (!hasAnyVoices) {
           placeholder.textContent = gender === 'female' ? 'Female — none found' : 'Male — none found';
@@ -653,14 +653,20 @@
       }
     }
 
-    // Anchors row (counter + Hint button) — hidden on Free
+    // Anchors row (counter + Hint button) — hidden on Free tier AND in reading mode.
+    // applyModeVisibility already hides these in reading mode; we must not override that.
+    const isReadingMode = appMode === 'reading';
     document.querySelectorAll('.anchors-row').forEach(el => {
-      el.style.display = isFree ? 'none' : '';
+      if (isFree || isReadingMode) {
+        el.style.display = 'none';
+      } else {
+        el.style.display = '';
+      }
     });
 
-    // AI Evaluate buttons and Submit — hidden on Free
+    // AI Evaluate buttons and Submit — hidden on Free and in reading mode
     document.querySelectorAll('.ai-btn, #submitBtn').forEach(el => {
-      el.style.display = isFree ? 'none' : '';
+      el.style.display = (isFree || isReadingMode) ? 'none' : '';
     });
 
     // Voice dropdowns are visible at all tiers — Free sees browser voices,
