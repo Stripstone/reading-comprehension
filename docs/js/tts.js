@@ -367,18 +367,32 @@ function browserTtsStop() {
 
 function browserPickVoice() {
   // Select the best available system voice for Free tier TTS.
-  // Prefers named neural-quality voices (Edge, macOS, Google, iOS) over generic defaults.
-  // Respects TTS_STATE.voiceVariant ('male'/'female') when suitable voices are available.
-  // Falls back gracefully through quality tiers to any English voice.
+  // Filters out Safari novelty/novelty voices before ranking.
+  // Prefers named high-quality voices with gender awareness.
+  // Falls back gracefully to any usable English voice.
+  //
+  // Safari note: do NOT return null to "let Safari decide" — Safari will sometimes
+  // pick novelty voices (Albert, Zarvox, Boing, etc.) as its default. Instead we
+  // filter the bad voices out and pick the best remaining one explicitly.
   try {
     const voices = window.speechSynthesis.getVoices() || [];
     const isMale = String(TTS_STATE.voiceVariant || '').toLowerCase() === 'male';
 
-    const enVoices = voices.filter(v => (v.lang || '').toLowerCase().startsWith('en'));
+    // Safari exposes novelty/effects voices that are unusable for narration.
+    // Filter these before any selection logic.
+    const BAD_VOICES = [
+      'Albert', 'Bad News', 'Bells', 'Boing', 'Bubbles', 'Cellos',
+      'Deranged', 'Good News', 'Hysterical', 'Jester', 'Organ',
+      'Superstar', 'Whisper', 'Zarvox', 'Trinoids'
+    ];
+    const usable = voices.filter(v => !BAD_VOICES.some(b => v.name.includes(b)));
+    const enVoices = usable.filter(v => (v.lang || '').toLowerCase().startsWith('en'));
 
-    // Named high-quality voices by gender preference
-    const femaleNames = ['Aria', 'Jenny', 'Samantha', 'Google UK English Female', 'Google US English', 'Karen', 'Moira', 'Serena', 'Tessa'];
-    const maleNames   = ['Guy', 'Ryan', 'Google UK English Male', 'Daniel', 'Rishi', 'Alex', 'Fred'];
+    // Named high-quality voices by gender preference.
+    // Daniel ranks first on male — best sounding Safari voice on Apple devices.
+    // Alex is macOS high-quality, sometimes exposed by Safari.
+    const femaleNames = ['Aria', 'Jenny', 'Samantha', 'Karen', 'Moira', 'Serena', 'Tessa'];
+    const maleNames   = ['Daniel', 'Alex', 'Guy', 'Ryan', 'Rishi'];
     const preferred   = isMale ? maleNames : femaleNames;
     const fallback    = isMale ? femaleNames : maleNames;
 
@@ -391,7 +405,7 @@ function browserPickVoice() {
       enVoices.find(v => /Microsoft/i.test(v.name)) ||
       enVoices.find(v => /Google/i.test(v.name))    ||
       enVoices[0]  ||
-      voices[0]    ||
+      usable[0]    ||
       null
     );
   } catch (_) {
