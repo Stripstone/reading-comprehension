@@ -63,7 +63,7 @@ function parseSpeechMarksLines(buf) {
       }
     } catch (_) {}
   }
-  marks.sort((a,b) => a.time - b.time);
+  marks.sort((a, b) => a.time - b.time);
   return marks;
 }
 
@@ -113,6 +113,7 @@ export default async function handler(req, res) {
     "https://stripstone.github.io",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "null", // local file access (some browsers send 'null' as origin)
   ];
   if (withCors(req, res, allowed)) return;
 
@@ -153,12 +154,12 @@ export default async function handler(req, res) {
       resolvedVoiceId = String(body?.voiceId || (voiceVariant === "male" ? envMale : envFemale)).trim();
     } else {
       provider = "polly";
-      const envStandard = requiredEnv("POLLY_ENGINE_STANDARD") || requiredEnv("POLLY_ENGINE") || "standard";
-      const envPremium  = requiredEnv("POLLY_ENGINE_PREMIUM")  || requiredEnv("POLLY_ENGINE") || "neural";
-      const engine      = (debug ? envPremium : envStandard) === "standard" ? "standard" : "neural";
-      const envFemale      = requiredEnv("POLLY_VOICE_ID_FEMALE") || requiredEnv("POLLY_VOICE_ID");
-      const envMaleStd     = requiredEnv("POLLY_VOICE_ID_MALE")   || requiredEnv("POLLY_VOICE_ID");
-      const envMaleNeural  = requiredEnv("POLLY_VOICE_ID_MALE_2") || envMaleStd;
+      const envStandard   = requiredEnv("POLLY_ENGINE_STANDARD") || requiredEnv("POLLY_ENGINE") || "standard";
+      const envPremium    = requiredEnv("POLLY_ENGINE_PREMIUM")  || requiredEnv("POLLY_ENGINE") || "neural";
+      const engine        = (debug ? envPremium : envStandard) === "standard" ? "standard" : "neural";
+      const envFemale     = requiredEnv("POLLY_VOICE_ID_FEMALE") || requiredEnv("POLLY_VOICE_ID");
+      const envMaleStd    = requiredEnv("POLLY_VOICE_ID_MALE")   || requiredEnv("POLLY_VOICE_ID");
+      const envMaleNeural = requiredEnv("POLLY_VOICE_ID_MALE_2") || envMaleStd;
       resolvedVoiceId = String(body?.voiceId || (voiceVariant === "male"
         ? (engine === "standard" ? envMaleStd : envMaleNeural)
         : envFemale
@@ -184,7 +185,29 @@ export default async function handler(req, res) {
     if (!cacheHit) {
       let audioBuf;
       if (useDeepgram) {
-        audioBuf = await deepgramSynthesize(text, resolvedVoiceId);
+        try {
+          audioBuf = await deepgramSynthesize(text, resolvedVoiceId);
+        } catch (dgErr) {
+          // Deepgram failed — fall back to Polly if configured, else surface the error
+          const pollyVoice = requiredEnv("POLLY_VOICE_ID_FEMALE") || requiredEnv("POLLY_VOICE_ID");
+          if (!pollyVoice) {
+            console.error("[tts] Deepgram failed, no Polly fallback configured:", dgErr);
+            throw dgErr;
+          }
+          console.warn("[tts] Deepgram failed, falling back to Polly:", dgErr.message);
+          provider = "polly";
+          resolvedVoiceId = voiceVariant === "male"
+            ? (requiredEnv("POLLY_VOICE_ID_MALE") || pollyVoice)
+            : pollyVoice;
+          const engine = "neural";
+          const cmd = new SynthesizeSpeechCommand({
+            OutputFormat: "mp3", Text: text, VoiceId: resolvedVoiceId,
+            Engine: engine, TextType: "text",
+          });
+          const out = await (new PollyClient({ region })).send(cmd);
+          if (!out?.AudioStream) return json(res, 502, { error: "Polly synthesis failed (Deepgram fallback)" });
+          audioBuf = await streamToBuffer(out.AudioStream);
+        }
       } else {
         // Polly path
         const engineRaw = String(body?.engine || (debug ? "neural" : "standard")).trim().toLowerCase();
@@ -253,253 +276,6 @@ export default async function handler(req, res) {
     if (debug) payload.debug = { provider, voiceId: resolvedVoiceId, objectKey, textLength: text.length };
     return json(res, 200, payload);
 
-  } catch (err) {
-    return json(res, 500, { error: "Server error", detail: String(err) });
-  }
-}
-
-import crypto from "node:crypto";
-import { PollyClient, SynthesizeSpeechCommand } from "@aws-sdk/client-polly";
-import { S3Client, HeadObjectCommand, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { json, withCors, readJsonBody } from "../_lib/http.js";
-
-function requiredEnv(name) {
-  const v = process.env[name];
-  return typeof v === "string" && v.trim() ? v.trim() : "";
-}
-
-function sha256Hex(s) {
-  return crypto.createHash("sha256").update(String(s || ""), "utf8").digest("hex");
-}
-
-function toSafePrefix(prefix) {
-  let p = String(prefix || "").trim();
-  if (!p) return "tts/";
-  if (!p.endsWith("/")) p += "/";
-  // Prevent traversal-like keys
-  p = p.replace(/\.+\//g, "");
-  return p;
-}
-
-async function streamToBuffer(stream) {
-  // AWS SDK returns a Readable stream (Node runtime).
-  const chunks = [];
-  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
-  return Buffer.concat(chunks);
-}
-
-function parseSpeechMarksLines(buf) {
-  // Polly returns newline-delimited JSON objects
-  const text = buf.toString("utf8").trim();
-  if (!text) return [];
-  const lines = text.split(/\r?\n/).filter(Boolean);
-  const marks = [];
-  for (const line of lines) {
-    try {
-      const obj = JSON.parse(line);
-      // We only care about sentence marks in this feature
-      if (obj && obj.type === "sentence") {
-        marks.push({
-          time: Number(obj.time) || 0,
-          start: Number(obj.start) || 0,
-          end: Number(obj.end) || 0,
-          value: String(obj.value || ""),
-        });
-      }
-    } catch (_) {}
-  }
-  // Ensure sorted by time
-  marks.sort((a,b)=>a.time-b.time);
-  return marks;
-}
-
-export default async function handler(req, res) {
-  const allowed = [
-    "https://stripstone.github.io",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-  ];
-  if (withCors(req, res, allowed)) return;
-
-  try {
-    if (req.method !== "POST") {
-      return json(res, 405, { error: "Method not allowed. Use POST." });
-    }
-
-    const body = await readJsonBody(req);
-    const text = String(body?.text ?? "").trim();
-    const debug = String(body?.debug ?? "").trim() === "1" || body?.debug === true;
-    const nocache = body?.nocache === true || String(body?.nocache ?? "").trim() === "1";    const speechMarks = String(body?.speechMarks ?? "").trim().toLowerCase();
-    const wantSentenceMarks = speechMarks === "sentence" || speechMarks === "1" || body?.speechMarks === true;
-
-
-
-    if (!text) {
-      return json(res, 400, { error: "Missing text" });
-    }
-
-    // Keep payloads bounded to prevent abuse.
-    // Polly max is higher (and depends on SSML), but we keep this conservative.
-    if (text.length > 8000) {
-      return json(res, 400, { error: "Text too long", detail: "Max 8000 characters." });
-    }
-
-    const region = requiredEnv("AWS_REGION") || requiredEnv("AWS_DEFAULT_REGION");
-    const bucket = requiredEnv("AWS_S3_BUCKET");
-
-    if (!region || !bucket) {
-      return json(res, 500, {
-        error: "Missing AWS configuration",
-        detail: "Set AWS_REGION (or AWS_DEFAULT_REGION) and AWS_S3_BUCKET.",
-      });
-    }
-
-    // Engine selection (cost control):
-    // - Explicit body.engine wins (rare).
-    // - Otherwise default to STANDARD unless debug=1, where we use PREMIUM.
-    // Env vars (preferred):
-    //   POLLY_ENGINE_STANDARD=standard
-    //   POLLY_ENGINE_PREMIUM=neural
-    // Fallback: POLLY_ENGINE, else "standard".
-    const envStandard = requiredEnv("POLLY_ENGINE_STANDARD") || requiredEnv("POLLY_ENGINE") || "standard";
-    const envPremium = requiredEnv("POLLY_ENGINE_PREMIUM") || requiredEnv("POLLY_ENGINE") || "neural";
-    const defaultEngine = debug ? envPremium : envStandard;
-    const engineRaw = String(body?.engine || defaultEngine).trim().toLowerCase();
-    const engine = engineRaw === "standard" ? "standard" : "neural";
-
-    // Voice selection
-    // - If body.voiceId is provided, it wins (explicit override).
-    // - Otherwise, if body.voiceVariant is 'male' or 'female', map to env vars.
-    //   Defaults to female.
-    // NOTE: Some voices are not available across both engines. We support a
-    // dedicated premium male voice via POLLY_VOICE_ID_MALE_2 when engine=neural.
-    const voiceVariant = String(body?.voiceVariant ?? "").trim().toLowerCase();
-    const envFemale = requiredEnv("POLLY_VOICE_ID_FEMALE") || requiredEnv("POLLY_VOICE_ID");
-    const envMaleStandard = requiredEnv("POLLY_VOICE_ID_MALE") || requiredEnv("POLLY_VOICE_ID");
-    const envMalePremium = requiredEnv("POLLY_VOICE_ID_MALE_2") || envMaleStandard;
-    const pickedEnv = (voiceVariant === "male")
-      ? (engine === "standard" ? envMaleStandard : envMalePremium)
-      : envFemale;
-    const voiceId = String(body?.voiceId || pickedEnv || "Joanna").trim();
-
-    const prefix = toSafePrefix(requiredEnv("AWS_S3_PREFIX"));
-    const identity = JSON.stringify({ voiceId, engine, text });
-    const hash = sha256Hex(identity);
-    const objectKey = `${prefix}${hash}.mp3`;
-    const marksKey = `${prefix}${hash}.sentence.json`;
-
-    const s3 = new S3Client({ region });
-    const polly = new PollyClient({ region });
-
-    // Cache check (can be disabled via { nocache: true } while auditioning voices)
-    let cacheHit = false;
-    if (!nocache) {
-      try {
-        await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: objectKey }));
-        cacheHit = true;
-      } catch (_) {
-        cacheHit = false;
-      }
-    }
-
-    // Sentence speech-marks cache check (optional)
-    let marksCacheHit = false;
-    let sentenceMarks = null;
-
-    if (wantSentenceMarks && !nocache) {
-      try {
-        await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: marksKey }));
-        marksCacheHit = true;
-      } catch (_) {
-        marksCacheHit = false;
-      }
-    }
-
-if (!cacheHit) {
-      const cmd = new SynthesizeSpeechCommand({
-        OutputFormat: "mp3",
-        Text: text,
-        VoiceId: voiceId,
-        Engine: engine,
-        TextType: "text",
-      });
-
-      const out = await polly.send(cmd);
-      if (!out?.AudioStream) {
-        return json(res, 502, { error: "Polly synthesis failed" });
-      }
-      const audioBuf = await streamToBuffer(out.AudioStream);
-
-      await s3.send(
-        new PutObjectCommand({
-          Bucket: bucket,
-          Key: objectKey,
-          Body: audioBuf,
-          ContentType: "audio/mpeg",
-          CacheControl: "public, max-age=31536000, immutable",
-        })
-      );
-    }
-
-// If sentence marks are requested, generate or load them (and cache in S3).
-    if (wantSentenceMarks) {
-      try {
-        if (!marksCacheHit) {
-          const marksCmd = new SynthesizeSpeechCommand({
-            OutputFormat: "json",
-            Text: text,
-            VoiceId: voiceId,
-            Engine: engine,
-            TextType: "text",
-            SpeechMarkTypes: ["sentence"],
-          });
-
-          const marksOut = await polly.send(marksCmd);
-          if (marksOut?.AudioStream) {
-            const marksBuf = await streamToBuffer(marksOut.AudioStream);
-            sentenceMarks = parseSpeechMarksLines(marksBuf);
-
-            // Cache marks for replay/highlighting.
-            await s3.send(
-              new PutObjectCommand({
-                Bucket: bucket,
-                Key: marksKey,
-                Body: Buffer.from(JSON.stringify(sentenceMarks), "utf8"),
-                ContentType: "application/json; charset=utf-8",
-                CacheControl: "public, max-age=31536000, immutable",
-              })
-            );
-          } else {
-            sentenceMarks = [];
-          }
-        } else {
-          // Load cached marks
-          const got = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: marksKey }));
-          const buf = got?.Body ? await streamToBuffer(got.Body) : Buffer.from("[]");
-          try {
-            sentenceMarks = JSON.parse(buf.toString("utf8"));
-          } catch (_) {
-            sentenceMarks = [];
-          }
-        }
-      } catch (e) {
-        // Do not fail TTS audio if marks fail; just omit marks.
-        sentenceMarks = null;
-      }
-    }
-
-    // Short-lived presigned URL (client can replay while it lasts; S3 caching still applies).
-    const url = await getSignedUrl(
-      s3,
-      new GetObjectCommand({ Bucket: bucket, Key: objectKey }),
-      { expiresIn: 60 * 60 } // 1 hour
-    );
-
-        const payload = { url, cacheHit };
-    if (wantSentenceMarks && Array.isArray(sentenceMarks)) payload.sentenceMarks = sentenceMarks;
-    if (debug) payload.debug = { voiceId, engine, objectKey, marksKey, textLength: text.length, nocache, wantSentenceMarks, marksCount: Array.isArray(sentenceMarks)? sentenceMarks.length : 0 };
-    return json(res, 200, payload);
   } catch (err) {
     return json(res, 500, { error: "Server error", detail: String(err) });
   }
