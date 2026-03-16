@@ -671,13 +671,44 @@ function browserSpeakQueue(key, parts) {
 
 async function ttsSpeakQueue(key, parts) {
 
-  // Free tier: route directly to browser speechSynthesis — no Polly call, no token cost.
+  // Free tier: route directly to browser speechSynthesis — no API call, no token cost.
   // Voice variant (male/female) is respected via browserPickVoice().
-  // Sentence highlighting is not available on browser TTS (no speech marks).
+  // Sentence highlighting uses boundary events on browser TTS path.
   if (typeof appTier !== 'undefined' && appTier === 'free') {
     browserSpeakQueue(key, parts);
     return;
   }
+
+  // Edge browser optimisation: Azure Neural voices (Aria, Jenny, Ryan, Guy etc.) are
+  // available natively in Edge via speechSynthesis. If the user has selected a cloud
+  // voice that matches an available browser voice, route to browserSpeakQueue instead
+  // of calling /api/tts — same quality, zero API cost, zero token spend.
+  try {
+    const savedVoice = localStorage.getItem('rc_browser_voice') || '';
+    if (savedVoice.startsWith('cloud:')) {
+      const azureShortName = savedVoice.slice('cloud:'.length); // e.g. "en-US-AriaNeural"
+      // Extract the plain voice name — Azure browser voices are listed as e.g.
+      // "Microsoft Aria Online (Natural) - English (United States)"
+      // Match by the first segment before "Neural" in the short name (e.g. "Aria")
+      const nameMatch = azureShortName.match(/en-[A-Z]{2}-([A-Za-z]+)Neural/);
+      const plainName = nameMatch ? nameMatch[1] : null;
+      if (plainName && browserTtsSupported()) {
+        const voices = window.speechSynthesis.getVoices() || [];
+        const browserMatch = voices.find(v =>
+          v.name.includes(plainName) && /Microsoft/i.test(v.name)
+        );
+        if (browserMatch) {
+          // Temporarily override voice picker to use this specific browser voice
+          const orig = localStorage.getItem('rc_browser_voice');
+          try { localStorage.setItem('rc_browser_voice', browserMatch.name); } catch(_) {}
+          browserSpeakQueue(key, parts);
+          // Restore cloud selection so the picker still shows the cloud voice
+          try { localStorage.setItem('rc_browser_voice', orig); } catch(_) {}
+          return;
+        }
+      }
+    }
+  } catch(_) {}
 
   // Unlock Safari audio during the user gesture
   ttsUnlockAudio();

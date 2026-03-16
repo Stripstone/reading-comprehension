@@ -224,35 +224,35 @@
         placeholder.selected = !isThisVoiceActive || (!savedBrowser && savedVariant !== gender && isFree);
         selectEl.appendChild(placeholder);
 
-        // Cloud voices for Paid/Premium — Deepgram Aura voice catalogue
+        // Cloud voices for Paid/Premium — Azure Neural voice catalogue
+        // Voices match what Edge browser exposes natively, so Edge users
+        // may get these for free via browserSpeakQueue (see tts.js Edge optimisation).
         if (!isFree) {
           const cloudGrp = document.createElement('optgroup');
           cloudGrp.label = '☁️ Cloud (Neural)';
 
-          const DEEPGRAM_VOICES = gender === 'female'
+          const AZURE_VOICES = gender === 'female'
             ? [
-                { id: 'aura-asteria-en',  label: 'Asteria (US Female)' },
-                { id: 'aura-luna-en',     label: 'Luna (US Female)' },
-                { id: 'aura-stella-en',   label: 'Stella (US Female)' },
-                { id: 'aura-athena-en',   label: 'Athena (UK Female)' },
-                { id: 'aura-hera-en',     label: 'Hera (US Female)' },
+                { id: 'en-US-AriaNeural',     label: 'Aria (US)' },
+                { id: 'en-US-JennyNeural',    label: 'Jenny (US)' },
+                { id: 'en-US-SaraNeural',     label: 'Sara (US)' },
+                { id: 'en-GB-SoniaNeural',    label: 'Sonia (UK)' },
+                { id: 'en-AU-NatashaNeural',  label: 'Natasha (AU)' },
               ]
             : [
-                { id: 'aura-orion-en',    label: 'Orion (US Male)' },
-                { id: 'aura-arcas-en',    label: 'Arcas (US Male)' },
-                { id: 'aura-perseus-en',  label: 'Perseus (US Male)' },
-                { id: 'aura-angus-en',    label: 'Angus (Irish Male)' },
-                { id: 'aura-orpheus-en',  label: 'Orpheus (US Male)' },
-                { id: 'aura-helios-en',   label: 'Helios (UK Male)' },
+                { id: 'en-US-RyanNeural',     label: 'Ryan (US)' },
+                { id: 'en-US-GuyNeural',      label: 'Guy (US)' },
+                { id: 'en-US-DavisNeural',    label: 'Davis (US)' },
+                { id: 'en-GB-RyanNeural',     label: 'Ryan (UK)' },
+                { id: 'en-AU-WilliamNeural',  label: 'William (AU)' },
               ];
 
-          DEEPGRAM_VOICES.forEach(v => {
+          AZURE_VOICES.forEach(v => {
             const opt = document.createElement('option');
             opt.value = `cloud:${v.id}`;
             opt.textContent = v.label;
             if (savedVariant === gender && savedBrowser === `cloud:${v.id}`) opt.selected = true;
-            // Default selection — first voice if no cloud voice saved for this gender
-            if (!savedBrowser && savedVariant === gender && v === DEEPGRAM_VOICES[0]) opt.selected = true;
+            if (!savedBrowser && savedVariant === gender && v === AZURE_VOICES[0]) opt.selected = true;
             cloudGrp.appendChild(opt);
           });
           selectEl.appendChild(cloudGrp);

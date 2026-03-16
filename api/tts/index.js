@@ -1,10 +1,10 @@
 // api/tts/index.js
 // TTS endpoint with S3 caching.
-// Provider selection: Deepgram (preferred, if DEEPGRAM_SECRET_KEY is set) or Amazon Polly (fallback).
+// Provider selection: Azure Neural TTS (preferred, if AZURE_SPEECH_KEY is set) or Amazon Polly (fallback).
 //
 // Request JSON:
 //   - text (string, required)
-//   - voiceId (string, optional)      // Deepgram model id or Polly voice id
+//   - voiceId (string, optional)      // Azure voice short name (e.g. "en-US-AriaNeural") or Polly voice id
 //   - voiceVariant (string, optional) // 'male' | 'female' — maps to env var defaults
 //   - engine (string, optional)       // Polly only: 'neural' | 'standard'
 //   - speechMarks (string, optional)  // Polly only: 'sentence' to request timing marks
@@ -14,7 +14,13 @@
 // Response JSON:
 //   - url (string)        // presigned S3 URL for the mp3
 //   - cacheHit (boolean)
-//   - provider (string)   // 'deepgram' | 'polly'
+//   - provider (string)   // 'azure' | 'polly'
+//
+// Azure env vars:
+//   AZURE_SPEECH_KEY      (required for Azure)
+//   AZURE_SPEECH_REGION   (required for Azure, e.g. "eastus")
+//   AZURE_VOICE_FEMALE    (default female voice, e.g. "en-US-AriaNeural")
+//   AZURE_VOICE_MALE      (default male voice, e.g. "en-US-RyanNeural")
 
 import crypto from "node:crypto";
 import { PollyClient, SynthesizeSpeechCommand } from "@aws-sdk/client-polly";
@@ -67,45 +73,59 @@ function parseSpeechMarksLines(buf) {
   return marks;
 }
 
-// ── Deepgram synthesis ────────────────────────────────────────────────────────
-// Deepgram TTS REST API: POST https://api.deepgram.com/v1/speak?model=<model>
-// Returns raw audio/mpeg. No speech marks equivalent — sentence highlighting
-// uses the browser boundary-event approach on the client side.
+function escapeXml(str) {
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+// ── Azure Neural TTS synthesis ────────────────────────────────────────────────
+// Azure Cognitive Services Speech REST API.
+// Uses SSML for voice selection with slight rate reduction for reading clarity.
+// Returns raw audio/mpeg at 24kHz.
 //
-// Default voice model env vars:
-//   DEEPGRAM_MODEL_FEMALE  (e.g. "aura-asteria-en")
-//   DEEPGRAM_MODEL_MALE    (e.g. "aura-orion-en")
-//   DEEPGRAM_MODEL         (fallback for both)
-//
-// Full Deepgram Aura voice list (English):
-//   Female: aura-asteria-en, aura-luna-en, aura-stella-en, aura-athena-en,
-//           aura-hera-en, aura-nova-en, aura-zeus-en (neutral)
-//   Male:   aura-orion-en, aura-arcas-en, aura-perseus-en, aura-angus-en,
-//           aura-orpheus-en, aura-helios-en
+// Curated English narration voices:
+//   Female: en-US-AriaNeural, en-US-JennyNeural, en-US-SaraNeural,
+//           en-GB-SoniaNeural, en-AU-NatashaNeural
+//   Male:   en-US-RyanNeural, en-US-GuyNeural, en-US-DavisNeural,
+//           en-GB-RyanNeural, en-AU-WilliamNeural
 
-async function deepgramSynthesize(text, modelId) {
-  const key = requiredEnv("DEEPGRAM_SECRET_KEY");
-  if (!key) throw new Error("DEEPGRAM_SECRET_KEY not set");
+async function azureSynthesize(text, voiceName) {
+  const key    = requiredEnv("AZURE_SPEECH_KEY");
+  const region = requiredEnv("AZURE_SPEECH_REGION");
+  if (!key || !region) throw new Error("AZURE_SPEECH_KEY or AZURE_SPEECH_REGION not set");
 
-  const model = modelId || requiredEnv("DEEPGRAM_MODEL") || "aura-asteria-en";
-  const url = `https://api.deepgram.com/v1/speak?model=${encodeURIComponent(model)}`;
+  const voice = voiceName || "en-US-AriaNeural";
 
-  const res = await fetch(url, {
+  // rate="0.95" — slight reduction for reading comprehension clarity
+  const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
+  <voice name="${voice}">
+    <prosody rate="0.95">${escapeXml(text)}</prosody>
+  </voice>
+</speak>`;
+
+  const endpoint = `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`;
+
+  const res = await fetch(endpoint, {
     method: "POST",
     headers: {
-      "Authorization": `Token ${key}`,
-      "Content-Type": "application/json",
+      "Ocp-Apim-Subscription-Key": key,
+      "Content-Type": "application/ssml+xml",
+      "X-Microsoft-OutputFormat": "audio-24khz-96kbitrate-mono-mp3",
+      "User-Agent": "ReadingTrainer/1.0",
     },
-    body: JSON.stringify({ text }),
+    body: ssml,
   });
 
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(`Deepgram API error ${res.status}: ${detail}`);
+    throw new Error(`Azure TTS error ${res.status}: ${detail}`);
   }
 
-  const buf = Buffer.from(await res.arrayBuffer());
-  return buf;
+  return Buffer.from(await res.arrayBuffer());
 }
 
 export default async function handler(req, res) {
@@ -113,7 +133,7 @@ export default async function handler(req, res) {
     "https://stripstone.github.io",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "null", // local file access (some browsers send 'null' as origin)
+    "null",
   ];
   if (withCors(req, res, allowed)) return;
 
@@ -132,25 +152,23 @@ export default async function handler(req, res) {
     if (!text) return json(res, 400, { error: "Missing text" });
     if (text.length > 8000) return json(res, 400, { error: "Text too long", detail: "Max 8000 characters." });
 
-    const region = requiredEnv("AWS_REGION") || requiredEnv("AWS_DEFAULT_REGION");
+    const awsRegion = requiredEnv("AWS_REGION") || requiredEnv("AWS_DEFAULT_REGION");
     const bucket = requiredEnv("AWS_S3_BUCKET");
-    if (!region || !bucket) {
+    if (!awsRegion || !bucket) {
       return json(res, 500, { error: "Missing AWS S3 configuration", detail: "Set AWS_REGION and AWS_S3_BUCKET." });
     }
 
     // ── Provider selection ────────────────────────────────────────────────────
-    // Use Deepgram if DEEPGRAM_SECRET_KEY is set, otherwise fall back to Polly.
-    const useDeepgram = Boolean(requiredEnv("DEEPGRAM_SECRET_KEY"));
-
+    const useAzure = Boolean(requiredEnv("AZURE_SPEECH_KEY"));
     const voiceVariant = String(body?.voiceVariant ?? "").trim().toLowerCase();
 
-    // Resolve voice/model id
     let resolvedVoiceId;
     let provider;
-    if (useDeepgram) {
-      provider = "deepgram";
-      const envFemale = requiredEnv("DEEPGRAM_MODEL_FEMALE") || requiredEnv("DEEPGRAM_MODEL") || "aura-asteria-en";
-      const envMale   = requiredEnv("DEEPGRAM_MODEL_MALE")   || requiredEnv("DEEPGRAM_MODEL") || "aura-orion-en";
+
+    if (useAzure) {
+      provider = "azure";
+      const envFemale = requiredEnv("AZURE_VOICE_FEMALE") || "en-US-AriaNeural";
+      const envMale   = requiredEnv("AZURE_VOICE_MALE")   || "en-US-RyanNeural";
       resolvedVoiceId = String(body?.voiceId || (voiceVariant === "male" ? envMale : envFemale)).trim();
     } else {
       provider = "polly";
@@ -173,7 +191,7 @@ export default async function handler(req, res) {
     const objectKey = `${prefix}${hash}.mp3`;
     const marksKey  = `${prefix}${hash}.sentence.json`;
 
-    const s3 = new S3Client({ region });
+    const s3 = new S3Client({ region: awsRegion });
 
     let cacheHit = false;
     if (!nocache) {
@@ -184,39 +202,36 @@ export default async function handler(req, res) {
     // ── Synthesis ─────────────────────────────────────────────────────────────
     if (!cacheHit) {
       let audioBuf;
-      if (useDeepgram) {
+      if (useAzure) {
         try {
-          audioBuf = await deepgramSynthesize(text, resolvedVoiceId);
-        } catch (dgErr) {
-          // Deepgram failed — fall back to Polly if configured, else surface the error
+          audioBuf = await azureSynthesize(text, resolvedVoiceId);
+        } catch (azErr) {
           const pollyVoice = requiredEnv("POLLY_VOICE_ID_FEMALE") || requiredEnv("POLLY_VOICE_ID");
           if (!pollyVoice) {
-            console.error("[tts] Deepgram failed, no Polly fallback configured:", dgErr);
-            throw dgErr;
+            console.error("[tts] Azure failed, no Polly fallback configured:", azErr);
+            throw azErr;
           }
-          console.warn("[tts] Deepgram failed, falling back to Polly:", dgErr.message);
+          console.warn("[tts] Azure failed, falling back to Polly:", azErr.message);
           provider = "polly";
           resolvedVoiceId = voiceVariant === "male"
             ? (requiredEnv("POLLY_VOICE_ID_MALE") || pollyVoice)
             : pollyVoice;
-          const engine = "neural";
           const cmd = new SynthesizeSpeechCommand({
             OutputFormat: "mp3", Text: text, VoiceId: resolvedVoiceId,
-            Engine: engine, TextType: "text",
+            Engine: "neural", TextType: "text",
           });
-          const out = await (new PollyClient({ region })).send(cmd);
-          if (!out?.AudioStream) return json(res, 502, { error: "Polly synthesis failed (Deepgram fallback)" });
+          const out = await (new PollyClient({ region: awsRegion })).send(cmd);
+          if (!out?.AudioStream) return json(res, 502, { error: "Polly synthesis failed (Azure fallback)" });
           audioBuf = await streamToBuffer(out.AudioStream);
         }
       } else {
-        // Polly path
         const engineRaw = String(body?.engine || (debug ? "neural" : "standard")).trim().toLowerCase();
         const engine = engineRaw === "standard" ? "standard" : "neural";
         const cmd = new SynthesizeSpeechCommand({
           OutputFormat: "mp3", Text: text, VoiceId: resolvedVoiceId,
           Engine: engine, TextType: "text",
         });
-        const out = await (new PollyClient({ region })).send(cmd);
+        const out = await (new PollyClient({ region: awsRegion })).send(cmd);
         if (!out?.AudioStream) return json(res, 502, { error: "Polly synthesis failed" });
         audioBuf = await streamToBuffer(out.AudioStream);
       }
@@ -228,9 +243,9 @@ export default async function handler(req, res) {
       }));
     }
 
-    // ── Polly sentence marks (Polly only — Deepgram has no equivalent) ────────
+    // ── Sentence marks (Polly only — Azure SSML word boundaries not implemented) ──
     let sentenceMarks = null;
-    if (wantSentenceMarks && !useDeepgram) {
+    if (wantSentenceMarks && !useAzure) {
       let marksCacheHit = false;
       if (!nocache) {
         try { await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: marksKey })); marksCacheHit = true; }
@@ -238,7 +253,7 @@ export default async function handler(req, res) {
       }
       try {
         if (!marksCacheHit) {
-          const polly = new PollyClient({ region });
+          const polly = new PollyClient({ region: awsRegion });
           const engineRaw = String(body?.engine || (debug ? "neural" : "standard")).trim().toLowerCase();
           const engine = engineRaw === "standard" ? "standard" : "neural";
           const marksCmd = new SynthesizeSpeechCommand({
