@@ -397,7 +397,7 @@ function browserPickVoice() {
     // Daniel ranks first on male — best sounding Safari voice on Apple devices.
     // Alex is macOS high-quality, sometimes exposed by Safari.
     const femaleNames = ['Aria', 'Jenny', 'Samantha', 'Karen', 'Moira', 'Serena', 'Tessa'];
-    const maleNames   = ['Daniel', 'Alex', 'Guy', 'Ryan', 'Rishi'];
+    const maleNames   = ['Daniel', 'Rishi', 'Alex', 'Guy', 'Ryan', 'Fred'];
     const preferred   = isMale ? maleNames : femaleNames;
     const fallback    = isMale ? femaleNames : maleNames;
 
@@ -478,6 +478,15 @@ async function pollyFetchUrl(text, opts = {}) {
   try {
     if (String(TTS_STATE.voiceVariant || '').toLowerCase() === 'male') {
       payload.voiceVariant = 'male';
+    }
+  } catch (_) {}
+
+  // If the user selected a specific cloud voice (stored as 'cloud:aura-orion-en'),
+  // forward the model id to the backend as voiceId so it overrides the env default.
+  try {
+    const saved = localStorage.getItem('rc_browser_voice') || '';
+    if (saved.startsWith('cloud:')) {
+      payload.voiceId = saved.slice('cloud:'.length);
     }
   } catch (_) {}
 
@@ -694,6 +703,10 @@ async function ttsSpeakQueue(key, parts) {
   try {
     for (let i = 0; i < queue.length; i++) {
       const wantMarks = (i === 0 && optsForKeySentenceMarks(key));
+      // Spend 1 token per page read via cloud TTS (first part only — not lead-ins or feedback)
+      if (i === 0 && optsForKeySentenceMarks(key)) {
+        try { if (typeof tokenSpend === 'function') tokenSpend('tts'); } catch(_) {}
+      }
       const tts = await pollyFetchUrl(queue[i], { sentenceMarks: wantMarks });
       const url = tts.url;
       if (wantMarks) ttsMaybePrepareSentenceHighlight(key, queue[i], tts.sentenceMarks);

@@ -404,6 +404,8 @@ function writeAnchorsToCache(pageHash, payload) {
       err.details = data;
       throw err;
     }
+    // Spend 1 token for anchor generation
+    try { if (typeof tokenSpend === 'function') tokenSpend('anchors'); } catch(_) {}
     // Basic schema check
     if (!Array.isArray(data?.anchors) || !data?.meta?.pageHash) {
       const err = new Error('Invalid /api/anchors response schema');

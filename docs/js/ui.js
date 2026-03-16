@@ -187,7 +187,7 @@
       ];
 
       const FEMALE_NAMES = ['Aria','Jenny','Samantha','Karen','Moira','Serena','Tessa','Zira','Eva','Susan','Victoria','Fiona','Allison','Ava','Nora'];
-      const MALE_NAMES   = ['Daniel','Alex','Guy','Ryan','Rishi','David','Mark','Tom','Fred','Bruce','James'];
+      const MALE_NAMES   = ['Daniel','Rishi','Alex','Guy','Ryan','Fred','David','Mark','Tom','Bruce','James'];
 
       function buildVoiceSelect(selectEl, gender) {
         if (!selectEl) return;
@@ -203,18 +203,20 @@
 
         const nameList  = gender === 'female' ? FEMALE_NAMES : MALE_NAMES;
         const quality   = allVoices.filter(v => nameList.some(n => v.name.toLowerCase().includes(n.toLowerCase())));
-        // Note: "Other English" (gender-neutral voices) removed — cannot be reliably
-        // categorised by gender. See SystemResponsibilitiesMap for future consideration.
 
         const hasAnyVoices = quality.length > 0 || (!isFree);
+        const bothListsEmpty = !allVoices.length;
 
         selectEl.innerHTML = '';
 
-        // Placeholder — label + "no voices" message if nothing is available
+        // Placeholder — only show "none found" if BOTH gender lists are empty (e.g. LibreWolf)
         const placeholder = document.createElement('option');
         placeholder.value = '';
         placeholder.disabled = true;
-        if (!hasAnyVoices) {
+        if (bothListsEmpty) {
+          // Both dropdowns empty — show gender label without "none found" noise; user sees both are blank equally
+          placeholder.textContent = gender === 'female' ? 'Female' : 'Male';
+        } else if (!hasAnyVoices) {
           placeholder.textContent = gender === 'female' ? 'Female — none found' : 'Male — none found';
         } else {
           placeholder.textContent = gender === 'female' ? 'Female' : 'Male';
@@ -222,30 +224,63 @@
         placeholder.selected = !isThisVoiceActive || (!savedBrowser && savedVariant !== gender && isFree);
         selectEl.appendChild(placeholder);
 
-        // Cloud voices for Paid/Premium
+        // Cloud voices for Paid/Premium — Deepgram Aura voice catalogue
         if (!isFree) {
           const cloudGrp = document.createElement('optgroup');
           cloudGrp.label = '☁️ Cloud (Neural)';
-          const pollyOpt = document.createElement('option');
-          pollyOpt.value = `polly:${gender}`;
-          pollyOpt.textContent = gender === 'female' ? 'Neural Female' : 'Neural Male';
-          if (savedVariant === gender && !savedBrowser) pollyOpt.selected = true;
-          cloudGrp.appendChild(pollyOpt);
+
+          const DEEPGRAM_VOICES = gender === 'female'
+            ? [
+                { id: 'aura-asteria-en',  label: 'Asteria (US Female)' },
+                { id: 'aura-luna-en',     label: 'Luna (US Female)' },
+                { id: 'aura-stella-en',   label: 'Stella (US Female)' },
+                { id: 'aura-athena-en',   label: 'Athena (UK Female)' },
+                { id: 'aura-hera-en',     label: 'Hera (US Female)' },
+              ]
+            : [
+                { id: 'aura-orion-en',    label: 'Orion (US Male)' },
+                { id: 'aura-arcas-en',    label: 'Arcas (US Male)' },
+                { id: 'aura-perseus-en',  label: 'Perseus (US Male)' },
+                { id: 'aura-angus-en',    label: 'Angus (Irish Male)' },
+                { id: 'aura-orpheus-en',  label: 'Orpheus (US Male)' },
+                { id: 'aura-helios-en',   label: 'Helios (UK Male)' },
+              ];
+
+          DEEPGRAM_VOICES.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = `cloud:${v.id}`;
+            opt.textContent = v.label;
+            if (savedVariant === gender && savedBrowser === `cloud:${v.id}`) opt.selected = true;
+            // Default selection — first voice if no cloud voice saved for this gender
+            if (!savedBrowser && savedVariant === gender && v === DEEPGRAM_VOICES[0]) opt.selected = true;
+            cloudGrp.appendChild(opt);
+          });
           selectEl.appendChild(cloudGrp);
         }
 
-        // Recommended browser voices for this gender
+        // Browser voices — no group label on free tier
         if (quality.length) {
-          const grp = document.createElement('optgroup');
-          grp.label = isFree ? '⭐ Recommended' : '⭐ Browser';
-          quality.forEach(v => {
-            const opt = document.createElement('option');
-            opt.value = v.name;
-            opt.textContent = v.name.replace(/^com\.apple\.[^.]+\./, '').replace(/-compact$/, '');
-            if (v.name === savedBrowser && savedVariant === gender) opt.selected = true;
-            grp.appendChild(opt);
-          });
-          selectEl.appendChild(grp);
+          if (isFree) {
+            // Free: no optgroup label, voices appear directly
+            quality.forEach(v => {
+              const opt = document.createElement('option');
+              opt.value = v.name;
+              opt.textContent = v.name.replace(/^com\.apple\.[^.]+\./, '').replace(/-compact$/, '');
+              if (v.name === savedBrowser && savedVariant === gender) opt.selected = true;
+              selectEl.appendChild(opt);
+            });
+          } else {
+            const grp = document.createElement('optgroup');
+            grp.label = '🖥️ Browser';
+            quality.forEach(v => {
+              const opt = document.createElement('option');
+              opt.value = v.name;
+              opt.textContent = v.name.replace(/^com\.apple\.[^.]+\./, '').replace(/-compact$/, '');
+              if (v.name === savedBrowser && savedVariant === gender) opt.selected = true;
+              grp.appendChild(opt);
+            });
+            selectEl.appendChild(grp);
+          }
         }
 
         // Accent border on the active dropdown
@@ -263,14 +298,15 @@
         if (!selectEl) return;
         selectEl.addEventListener('change', () => {
           const val = selectEl.value;
-          if (!val) return; // placeholder selected — ignore
+          if (!val) return;
           setVoiceVariant(gender);
-          if (val.startsWith('polly:')) {
-            try { localStorage.removeItem('rc_browser_voice'); } catch(_) {}
+          if (val.startsWith('polly:') || val.startsWith('cloud:')) {
+            // Cloud voice — store the full value so pollyFetchUrl can forward the model id
+            try { localStorage.setItem('rc_browser_voice', val); } catch(_) {}
           } else {
+            // Browser voice
             try { localStorage.setItem('rc_browser_voice', val); } catch(_) {}
           }
-          // Rebuild both — other resets to placeholder, this one shows selection
           populateBrowserVoicePicker();
         });
       }
@@ -415,8 +451,15 @@
           diagPanel.style.display = 'none';
           return;
         }
+        const totalSpent = Object.values(sessionTokens?.spent || {}).reduce((a, b) => a + b, 0);
         const merged = {
-          tier: typeof appTier !== 'undefined' ? appTier : 'unknown',
+          tokens: {
+            tier: typeof appTier !== 'undefined' ? appTier : 'unknown',
+            remaining: sessionTokens?.remaining ?? '—',
+            allowance: (typeof TOKEN_ALLOWANCES !== 'undefined' && appTier) ? TOKEN_ALLOWANCES[appTier] : '—',
+            totalSpent,
+            breakdown: sessionTokens?.spent || {},
+          },
           tts: {
             variant: TTS_STATE?.voiceVariant || 'female',
             activeBrowserVoice: TTS_STATE?.activeBrowserVoiceName || null,
@@ -567,6 +610,7 @@
     if (!VALID_TIERS.includes(newTier) || newTier === appTier) return;
     appTier = newTier;
     try { localStorage.setItem('rc_app_tier', appTier); } catch (_) {}
+    try { if (typeof tokenReset === 'function') tokenReset(); } catch(_) {}
     applyTierAccess();
   });
 

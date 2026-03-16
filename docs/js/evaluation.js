@@ -283,6 +283,8 @@
         };
         throw new Error(rawText);
       }
+      // Spend 2 tokens for AI evaluation
+      try { if (typeof tokenSpend === 'function') tokenSpend('evaluate'); } catch(_) {}
 
       const data = JSON.parse(rawText || "{}");
       lastAIDiagnostics = {

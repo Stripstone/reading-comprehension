@@ -29,6 +29,49 @@
   // During prototype: controls feature access in UI but does not enforce usage limits.
   let appTier = 'free';
 
+  // ---- Token Tracking ----
+  // Session token counter. Counts consumption per category for diagnostic purposes.
+  // Tokens do not enforce limits during prototype — this is observational only.
+  // Resets when tier changes.
+  //
+  // Token costs (must match ExperienceSpec):
+  //   TTS page (cloud)     = 1
+  //   AI Evaluate          = 2
+  //   Generate anchors     = 1
+  //   Research analysis    = 3
+
+  const TOKEN_COSTS = {
+    tts:      1,
+    evaluate: 2,
+    anchors:  1,
+    research: 3,
+  };
+
+  const TOKEN_ALLOWANCES = {
+    free:    100,
+    paid:    1000,
+    premium: 10000,
+  };
+
+  let sessionTokens = {
+    remaining: TOKEN_ALLOWANCES['free'],
+    spent: { tts: 0, evaluate: 0, anchors: 0, research: 0 },
+  };
+
+  function tokenSpend(category) {
+    const cost = TOKEN_COSTS[category] || 0;
+    if (!cost) return;
+    sessionTokens.spent[category] = (sessionTokens.spent[category] || 0) + cost;
+    sessionTokens.remaining = Math.max(0, sessionTokens.remaining - cost);
+  }
+
+  function tokenReset() {
+    sessionTokens = {
+      remaining: TOKEN_ALLOWANCES[appTier] || 1000,
+      spent: { tts: 0, evaluate: 0, anchors: 0, research: 0 },
+    };
+  }
+
 // ---- Persistence ----
 // Persist learner work per-page-hash so switching chapters/sources doesn't wipe progress.
 // Also persist the last-opened session so refresh restores the current view.
