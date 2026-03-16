@@ -186,71 +186,93 @@
         'Superstar','Whisper','Zarvox','Trinoids'
       ];
 
-      const FEMALE_NAMES = ['Aria','Jenny','Samantha','Karen','Moira','Serena','Tessa'];
-      const MALE_NAMES   = ['Daniel','Alex','Guy','Ryan','Rishi'];
+      const FEMALE_NAMES = ['Aria','Jenny','Samantha','Karen','Moira','Serena','Tessa','Zira','Eva','Susan','Victoria','Fiona','Allison','Ava','Nora'];
+      const MALE_NAMES   = ['Daniel','Alex','Guy','Ryan','Rishi','David','Mark','Tom','Fred','Bruce','James'];
 
       function buildVoiceSelect(selectEl, gender) {
         if (!selectEl) return;
-        const isFree = typeof appTier !== 'undefined' && appTier === 'free';
-        const isThisGender = String(TTS_STATE?.voiceVariant || 'female').toLowerCase() === gender;
+        const isFree      = typeof appTier !== 'undefined' && appTier === 'free';
+        const isActive    = String(TTS_STATE?.voiceVariant || 'female').toLowerCase() === gender;
         const savedBrowser = (() => { try { return localStorage.getItem('rc_browser_voice') || ''; } catch(_) { return ''; } })();
         const savedVariant = (() => { try { return localStorage.getItem('rc_voice_variant') || 'female'; } catch(_) { return 'female'; } })();
+        const isThisVoiceActive = isActive && (savedVariant === gender);
 
+        // Collect all usable English voices — broad match so no voices are silently dropped
         const allVoices = (window.speechSynthesis?.getVoices() || [])
           .filter(v => !BAD_VOICES.some(b => v.name.includes(b)))
           .filter(v => (v.lang || '').toLowerCase().startsWith('en'));
 
-        const nameList  = gender === 'female' ? FEMALE_NAMES : MALE_NAMES;
-        const quality   = allVoices.filter(v => nameList.some(n => v.name.includes(n)));
-        const other     = allVoices.filter(v =>
-          ![...FEMALE_NAMES, ...MALE_NAMES].some(n => v.name.includes(n))
-        );
+        const nameList = gender === 'female' ? FEMALE_NAMES : MALE_NAMES;
+        const otherList = gender === 'female' ? MALE_NAMES : FEMALE_NAMES;
+
+        // Quality: matches this gender's name list
+        const quality = allVoices.filter(v => nameList.some(n => v.name.toLowerCase().includes(n.toLowerCase())));
+        // Other: doesn't match either gender list — shown in both dropdowns
+        const neutral = allVoices.filter(v => !nameList.some(n => v.name.toLowerCase().includes(n.toLowerCase()))
+                                           && !otherList.some(n => v.name.toLowerCase().includes(n.toLowerCase())));
 
         selectEl.innerHTML = '';
 
-        // Polly cloud voices at the top for Paid/Premium
+        // Default placeholder — shown when this gender is not active
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = gender === 'female' ? 'Female' : 'Male';
+        placeholder.disabled = true;
+        // Show placeholder selected only if this gender is not active
+        placeholder.selected = !isThisVoiceActive || (!savedBrowser && savedVariant !== gender);
+        selectEl.appendChild(placeholder);
+
+        // Cloud voices for Paid/Premium
         if (!isFree) {
           const cloudGrp = document.createElement('optgroup');
           cloudGrp.label = '☁️ Cloud (Neural)';
           const pollyOpt = document.createElement('option');
           pollyOpt.value = `polly:${gender}`;
           pollyOpt.textContent = gender === 'female' ? 'Neural Female' : 'Neural Male';
-          // Select this if it's the active variant and no browser override is set
           if (savedVariant === gender && !savedBrowser) pollyOpt.selected = true;
           cloudGrp.appendChild(pollyOpt);
           selectEl.appendChild(cloudGrp);
         }
 
-        // Recommended browser voices for this gender
+        // Recommended browser voices
         if (quality.length) {
           const grp = document.createElement('optgroup');
-          grp.label = isFree ? '⭐ Recommended' : '⭐ Browser — Recommended';
+          grp.label = isFree ? '⭐ Recommended' : '⭐ Browser';
           quality.forEach(v => {
             const opt = document.createElement('option');
             opt.value = v.name;
-            opt.textContent = v.name;
+            opt.textContent = v.name.replace(/^com\.apple\.[^.]+\./, '').replace(/-compact$/, '');
             if (v.name === savedBrowser && savedVariant === gender) opt.selected = true;
             grp.appendChild(opt);
           });
           selectEl.appendChild(grp);
         }
 
-        // Other English voices (gender-neutral — shown in both dropdowns)
-        if (other.length) {
+        // Neutral voices shown in both dropdowns
+        if (neutral.length) {
           const grp = document.createElement('optgroup');
           grp.label = 'Other English';
-          other.forEach(v => {
+          neutral.forEach(v => {
             const opt = document.createElement('option');
             opt.value = v.name;
-            opt.textContent = v.name;
+            opt.textContent = v.name.replace(/^com\.apple\.[^.]+\./, '').replace(/-compact$/, '');
             if (v.name === savedBrowser && savedVariant === gender) opt.selected = true;
             grp.appendChild(opt);
           });
           selectEl.appendChild(grp);
         }
 
-        // Highlight the active select with a border to show which gender is live
-        selectEl.style.borderColor = isThisGender
+        // If no voices found at all, show a disabled note
+        if (!quality.length && !neutral.length && isFree) {
+          const none = document.createElement('option');
+          none.value = '';
+          none.disabled = true;
+          none.textContent = 'No system voices found';
+          selectEl.appendChild(none);
+        }
+
+        // Accent border on the active dropdown
+        selectEl.style.borderColor = isThisVoiceActive
           ? 'var(--accent, #c17d4a)'
           : 'var(--border)';
       }
@@ -264,16 +286,14 @@
         if (!selectEl) return;
         selectEl.addEventListener('change', () => {
           const val = selectEl.value;
-          // Always switch active variant to match which dropdown was used
+          if (!val) return; // placeholder selected — ignore
           setVoiceVariant(gender);
           if (val.startsWith('polly:')) {
-            // Polly cloud voice — clear any browser override
             try { localStorage.removeItem('rc_browser_voice'); } catch(_) {}
           } else {
-            // Browser voice — store the name
             try { localStorage.setItem('rc_browser_voice', val); } catch(_) {}
           }
-          // Re-highlight active select
+          // Rebuild both — other resets to placeholder, this one shows selection
           populateBrowserVoicePicker();
         });
       }
