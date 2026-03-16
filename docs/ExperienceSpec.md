@@ -163,24 +163,29 @@ Book uploads do not cost tokens. Uploads are not a meaningful cost driver — on
 
 ### Tier Table
 
-| Tier | Monthly Tokens | Daily Cap | Mode Access | TTS Voice |
+| Tier | Monthly Tokens | Daily Cap | Mode Access | TTS Source |
 |---|---|---|---|---|
-| Free | 100 | 50 | Reading only | Browser `speechSynthesis` (best available auto-selected) |
-| Paid | 1,000 | 500 | Reading + Comprehension | Cloud neural (Polly or equivalent) |
-| Premium | 10,000 | 2,000 | All modes incl. Research | Cloud neural, all voices |
+| Free | 100 | 50 | Reading only | Browser `speechSynthesis` — automatic, no tokens spent |
+| Paid | 1,000 | 500 | Reading + Comprehension | Cloud neural (Deepgram) — 1 token per page |
+| Premium | 10,000 | 2,000 | All modes incl. Research | Cloud neural (Deepgram) — 1 token per page, all voices |
 
-### Free Tier TTS
+Higher tiers have backwards access — Premium can use Paid-tier voices, Paid falls back to browser if the cloud endpoint is unavailable.
 
-Free users do not spend tokens on TTS — they use the browser's built-in `speechSynthesis` API at zero cost. The app should intelligently select the best available system voice rather than accepting the browser default:
+### TTS Behavior by Tier
 
-Preferred voices (in order): Edge Aria / Jenny / Guy, macOS Samantha, iOS Enhanced Siri, Google voices on Android.
+**Free:** Browser `speechSynthesis` is used automatically. The app selects the best available English voice from the user's system using a prioritised name list. Free users do not see voice selection controls and spend no tokens on TTS. This is intentional — the tier boundary is the TTS source itself (browser vs cloud), not user configuration.
 
-This often sounds significantly better than the raw default with no API cost. Free users should not see voice selection controls — the best available voice is chosen automatically.
+**Paid / Premium:** Cloud neural TTS via `/api/tts` (Deepgram). Replaces browser voice entirely. Users see the voice picker in the volume panel showing available cloud voices for their tier. 1 token is spent per page read. If the cloud endpoint fails, the app falls back to browser TTS silently.
+
+Novelty voices (Albert, Zarvox, Boing, Bells, Cellos etc.) are filtered out before any browser voice selection — Safari exposes these in `getVoices()` and they are unusable for narration.
 
 ### TTS Cost Strategy
 
-- **Caching:** TTS audio is generated once per page and stored. Subsequent plays — by any user — serve the cached file. This is the primary cost control mechanism and should be confirmed working before any scaling.
-- **Provider:** Currently AWS Polly Neural for Paid/Premium. Future optimization options include Deepgram Aura (~$10/1M chars) or PlayHT (~$5–12/1M chars) as cheaper Paid-tier alternatives. Long-term, self-hosted Piper TTS could reduce costs to near zero. No provider changes should be made until caching is confirmed solid.
+- **Caching:** TTS audio is generated once per unique page and stored in S3. Subsequent plays by any user serve the cached file. This is the primary cost control mechanism.
+- **Provider:** Azure Neural TTS (~$16/1M chars). Voice catalogue is purpose-built for narration — clear articulation, consistent pacing, no conversational filler characteristics. The same voices power Microsoft Edge Read Aloud. Polly remains as an automatic fallback if Azure is unavailable.
+- **Edge browser optimisation:** Azure Neural voices (Aria, Jenny, Ryan, Guy etc.) are available natively in Edge via `speechSynthesis`. When a Paid/Premium user on Edge has selected a cloud voice that matches an available Edge browser voice, the app routes to browser TTS instead of calling the API — same quality, zero token cost. This is transparent to the user.
+- **SSML prosody:** Azure requests use `rate="0.95"` — a slight reduction from default for reading comprehension clarity without sounding slow.
+- **Long-term:** Self-hosted Piper TTS could reduce costs to near zero but requires infrastructure work. Not a current concern.
 
 ### Skill Gate (Future Conversion Pattern)
 

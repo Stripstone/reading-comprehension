@@ -213,7 +213,7 @@ The autoplay fix works by pre-fetching the next page's Polly URL and calling `au
 
 When `appTier === 'free'`, the frontend must not call `/api/tts`. Instead it uses the browser's built-in `speechSynthesis` API at zero cost.
 
-The app should not simply accept the browser default voice. It should select the best available voice using a priority list:
+The voice picker in the volume panel shows two dropdowns (Female / Male). Each is populated from `getVoices()` filtered by a named list of known-gendered voices. "Other English" voices (gender-neutral or unrecognised names) are currently excluded from the picker — they cannot be reliably categorised by gender. A future improvement could add a third "Other" group or allow users to manually assign gender. These voices are still accessible to `browserPickVoice()` as a last-resort fallback even though they don't appear in the UI.
 
 ```js
 const PREFERRED_VOICES = ['Aria', 'Jenny', 'Guy', 'Samantha', 'Google', 'Siri'];
@@ -495,7 +495,7 @@ Generates narration audio for a page.
 - `url` — S3 pre-signed URL for Polly-generated audio
 - `sentenceMarks` — array of `{ time, start, end }` for sentence highlighting
 
-**Provider:** Amazon Polly (neural voices). Voice controlled by `POLLY_VOICE_ID` / `POLLY_ENGINE` env vars. `voiceVariant: 'male'` routes to a separate env var.
+**Provider:** Azure Neural TTS when `AZURE_SPEECH_KEY` is set. Falls back to Amazon Polly if Azure is unavailable. Uses SSML with `rate="0.95"` for narration clarity. Voice controlled by `AZURE_VOICE_FEMALE` / `AZURE_VOICE_MALE` env vars (defaults: `en-US-AriaNeural` / `en-US-RyanNeural`).
 
 **Tier routing:**
 
@@ -626,5 +626,7 @@ A running log of device and browser-specific behavior discovered at runtime. Ent
 |---|---|---|---|
 | Safari / iPadOS | Audio | `play()` blocked without synchronous user gesture | Pre-load during countdown; see `tts.js` Safari fix |
 | iOS / Android | Audio | Audio elements blocked until first gesture in session | `playSfx()` retry logic in `audio.js` |
+| Safari / macOS / iOS | Browser TTS voices | Novelty voices (Albert, Zarvox, Boing etc.) appear in `getVoices()` and can be selected by fallback logic. High-quality voices like Samantha may have `com.apple.voice.compact` prefixed names. | Filter bad voices by name before selection; prefer Daniel (best Safari voice) and Samantha explicitly by name match |
+| Safari / iOS / iPadOS | Audio element events | `loadedmetadata` may not re-fire on a reused `Audio` element after first load, making it unreliable for deferred setup. | Use `timeupdate` instead — fires reliably during playback on all platforms |
 
 *Add new entries as discovered during runtime testing.*
