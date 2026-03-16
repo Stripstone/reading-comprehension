@@ -349,7 +349,9 @@ function ttsPrepareEstimatedHighlight(key, rawText, audio) {
   } catch (_) {}
 
   // Estimate timing: distribute audio duration proportionally by character count.
-  // Refined once loadedmetadata fires; good enough for highlighting even before that.
+  // Uses a conservative placeholder first, then refines on first timeupdate
+  // (which fires reliably on all platforms including Safari/iOS during playback,
+  // unlike loadedmetadata which may not re-fire on a reused audio element).
   function buildTimings(duration) {
     const totalChars = charRanges.reduce((s, r) => s + (r.end - r.start), 0) || 1;
     let elapsed = 0;
@@ -366,13 +368,21 @@ function ttsPrepareEstimatedHighlight(key, rawText, audio) {
     );
   }
 
-  // Build with a placeholder duration first, then refine on loadedmetadata
-  buildTimings(60); // rough placeholder until we know actual duration
-  audio.addEventListener('loadedmetadata', () => {
-    if (audio.duration && isFinite(audio.duration)) {
+  // Start with placeholder — any reasonable duration works for early highlighting
+  buildTimings(60);
+
+  // Refine once on first timeupdate when we know actual duration and position.
+  // timeupdate fires during playback on all platforms including Safari/iOS.
+  let refined = false;
+  function onTimeUpdate() {
+    if (refined) return;
+    if (audio.duration && isFinite(audio.duration) && audio.duration > 0) {
+      refined = true;
       buildTimings(audio.duration);
+      audio.removeEventListener('timeupdate', onTimeUpdate);
     }
-  }, { once: true });
+  }
+  audio.addEventListener('timeupdate', onTimeUpdate);
 }
 
 function ttsStartHighlightLoop(audio) {
