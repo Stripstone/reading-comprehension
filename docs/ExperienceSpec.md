@@ -166,8 +166,8 @@ Book uploads do not cost tokens. Uploads are not a meaningful cost driver — on
 | Tier | Monthly Tokens | Daily Cap | Mode Access | TTS Source |
 |---|---|---|---|---|
 | Free | 100 | 50 | Reading only | Browser `speechSynthesis` — automatic, no tokens spent |
-| Paid | 1,000 | 500 | Reading + Comprehension | Cloud neural (Deepgram) — 1 token per page |
-| Premium | 10,000 | 2,000 | All modes incl. Research | Cloud neural (Deepgram) — 1 token per page, all voices |
+| Paid | 1,000 | 500 | Reading + Comprehension | Cloud neural (Azure) — 1 token per page |
+| Premium | 10,000 | 2,000 | All modes incl. Research | Cloud neural (Azure) — 1 token per page, all voices |
 
 Higher tiers have backwards access — Premium can use Paid-tier voices, Paid falls back to browser if the cloud endpoint is unavailable.
 
@@ -175,7 +175,7 @@ Higher tiers have backwards access — Premium can use Paid-tier voices, Paid fa
 
 **Free:** Browser `speechSynthesis` is used automatically. The app selects the best available English voice from the user's system using a prioritised name list. Free users do not see voice selection controls and spend no tokens on TTS. This is intentional — the tier boundary is the TTS source itself (browser vs cloud), not user configuration.
 
-**Paid / Premium:** Cloud neural TTS via `/api/tts` (Deepgram). Replaces browser voice entirely. Users see the voice picker in the volume panel showing available cloud voices for their tier. 1 token is spent per page read. If the cloud endpoint fails, the app falls back to browser TTS silently.
+**Paid / Premium:** Cloud neural TTS via `/api/tts` (Azure Neural). Replaces browser voice entirely. Users see the voice picker in the volume panel showing available cloud voices for their tier. 1 token is spent per page read. If the cloud endpoint fails, the app falls back to browser TTS silently.
 
 Novelty voices (Albert, Zarvox, Boing, Bells, Cellos etc.) are filtered out before any browser voice selection — Safari exposes these in `getVoices()` and they are unusable for narration.
 
