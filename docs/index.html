@@ -69,16 +69,15 @@
     <button type="button" id="toggleMusicBtn" style="flex:1; padding:8px 10px;">Mute/Unmute</button>
   </div>
 
-  <div style="display:flex; gap:10px; margin-bottom:10px; justify-content:space-between; align-items:center;">
-    <div style="font-size:13px; font-weight:900; font-family:'Karla', sans-serif;">Voice:</div>
-    <div style="display:flex; gap:8px; flex:1; justify-content:flex-end;">
-      <button type="button" id="voiceFemaleBtn" class="btn-mini" aria-pressed="true">Female</button>
-      <button type="button" id="voiceMaleBtn" class="btn-mini" aria-pressed="false">Male</button>
+  <div style="display:flex; gap:10px; margin-bottom:10px; justify-content:space-between; align-items:flex-start;">
+    <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
+      <div style="font-size:12px; font-weight:900; font-family:'Karla', sans-serif; opacity:0.75; text-transform:uppercase; letter-spacing:0.4px;">Female</div>
+      <select id="voiceFemaleSelect" style="width:100%; padding:5px 8px; font-size:13px; font-family:'Karla',sans-serif; border:2px solid var(--border); border-radius:6px; background:var(--secondary-bg); color:var(--text-primary); outline:none;"></select>
     </div>
-  </div>
-  <div id="browserVoiceRow" style="display:flex; gap:10px; margin-bottom:10px; justify-content:space-between; align-items:center;">
-    <div id="browserVoiceLabel" style="font-size:13px; font-weight:900; font-family:'Karla', sans-serif; white-space:nowrap;">Browser Voice:</div>
-    <select id="browserVoiceSelect" style="flex:1; padding:5px 8px; font-size:13px; font-family:'Karla',sans-serif; border:1px solid var(--border); border-radius:6px; background:var(--secondary-bg); color:var(--text-primary); outline:none;"></select>
+    <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
+      <div style="font-size:12px; font-weight:900; font-family:'Karla', sans-serif; opacity:0.75; text-transform:uppercase; letter-spacing:0.4px;">Male</div>
+      <select id="voiceMaleSelect" style="width:100%; padding:5px 8px; font-size:13px; font-family:'Karla',sans-serif; border:2px solid var(--border); border-radius:6px; background:var(--secondary-bg); color:var(--text-primary); outline:none;"></select>
+    </div>
   </div>
   <div style="display:flex; gap:10px; margin-bottom:10px; justify-content:space-between; align-items:center;">
     <div style="font-size:13px; font-weight:900; font-family:'Karla', sans-serif;">Autoplay:</div>
