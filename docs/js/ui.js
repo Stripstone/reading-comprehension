@@ -189,6 +189,92 @@
       if (voiceFemaleBtn) voiceFemaleBtn.addEventListener('click', () => setVoiceVariant('female'));
       if (voiceMaleBtn) voiceMaleBtn.addEventListener('click', () => setVoiceVariant('male'));
 
+      // Browser voice picker — populates from speechSynthesis.getVoices()
+      // Free tier: primary voice control (browser TTS only)
+      // Paid/Premium: fallback voice (used when Polly is unavailable)
+      const browserVoiceSelect = document.getElementById('browserVoiceSelect');
+      const browserVoiceLabel  = document.getElementById('browserVoiceLabel');
+
+      const BAD_VOICES = [
+        'Albert','Bad News','Bells','Boing','Bubbles','Cellos',
+        'Deranged','Good News','Hysterical','Jester','Organ',
+        'Superstar','Whisper','Zarvox','Trinoids'
+      ];
+
+      function populateBrowserVoicePicker() {
+        if (!browserVoiceSelect) return;
+        const voices = (window.speechSynthesis?.getVoices() || [])
+          .filter(v => !BAD_VOICES.some(b => v.name.includes(b)))
+          .filter(v => (v.lang || '').toLowerCase().startsWith('en'));
+
+        if (!voices.length) {
+          browserVoiceSelect.innerHTML = '<option value="">No voices found</option>';
+          return;
+        }
+
+        const saved = (() => { try { return localStorage.getItem('rc_browser_voice') || ''; } catch(_) { return ''; } })();
+
+        // Group: named high-quality first, then the rest
+        const QUALITY_NAMES = ['Aria','Jenny','Guy','Samantha','Daniel','Alex','Karen','Moira','Serena','Tessa','Ryan','Rishi','Google','Microsoft'];
+        const quality = voices.filter(v => QUALITY_NAMES.some(n => v.name.includes(n)));
+        const rest    = voices.filter(v => !QUALITY_NAMES.some(n => v.name.includes(n)));
+
+        browserVoiceSelect.innerHTML = '';
+
+        const autoOpt = document.createElement('option');
+        autoOpt.value = '';
+        autoOpt.textContent = 'Auto (best available)';
+        browserVoiceSelect.appendChild(autoOpt);
+
+        if (quality.length) {
+          const grp = document.createElement('optgroup');
+          grp.label = 'Recommended';
+          quality.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v.name;
+            opt.textContent = v.name;
+            if (v.name === saved) opt.selected = true;
+            grp.appendChild(opt);
+          });
+          browserVoiceSelect.appendChild(grp);
+        }
+
+        if (rest.length) {
+          const grp = document.createElement('optgroup');
+          grp.label = 'Other English voices';
+          rest.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v.name;
+            opt.textContent = v.name;
+            if (v.name === saved) opt.selected = true;
+            grp.appendChild(opt);
+          });
+          browserVoiceSelect.appendChild(grp);
+        }
+
+        // If saved value not found, ensure Auto is selected
+        if (!saved || !voices.find(v => v.name === saved)) {
+          browserVoiceSelect.value = '';
+        }
+
+        // Update label based on tier
+        if (browserVoiceLabel) {
+          const isFree = typeof appTier !== 'undefined' && appTier === 'free';
+          browserVoiceLabel.textContent = isFree ? 'Voice:' : 'Browser Voice:';
+        }
+      }
+
+      if (browserVoiceSelect) {
+        browserVoiceSelect.addEventListener('change', () => {
+          try { localStorage.setItem('rc_browser_voice', browserVoiceSelect.value); } catch(_) {}
+        });
+      }
+
+      // Repopulate when voices load asynchronously (Chrome/Edge)
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.addEventListener('voiceschanged', populateBrowserVoicePicker);
+      }
+
       Object.entries(sliders).forEach(([key, el]) => {
         if (!el) return;
         el.addEventListener('input', () => setVolume(key, el.value));
@@ -203,6 +289,7 @@
         hideAllPanels();
         if (!isOpen) {
           syncSlidersFromState();
+          populateBrowserVoicePicker();
           // Position the panel just ABOVE the music toggle so it never drops below the fold.
           // (iPad cursor can't reach off-page dropdowns.)
           try {
