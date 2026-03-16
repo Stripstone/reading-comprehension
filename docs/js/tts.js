@@ -296,6 +296,85 @@ function ttsMaybePrepareSentenceHighlight(key, rawText, marks) {
   } catch (_) {}
 }
 
+// ttsPrepareEstimatedHighlight — used when no speech marks are available (e.g. Azure).
+// Splits text into sentences client-side and estimates timing proportionally from
+// character count. Actual times are refined once audio duration is known (loadedmetadata).
+// The highlight loop (ttsStartHighlightLoop) then advances normally via audio.currentTime.
+function ttsPrepareEstimatedHighlight(key, rawText, audio) {
+  if (!optsForKeySentenceMarks(key)) return;
+  if (!rawText || !audio) return;
+
+  const pageIndex = Number(String(key).slice(5));
+  if (!Number.isFinite(pageIndex)) return;
+
+  const pageEl = document.querySelectorAll('.page')[pageIndex];
+  if (!pageEl) return;
+  const textEl = pageEl.querySelector(".page-text");
+  if (!textEl) return;
+
+  ttsClearSentenceHighlight();
+
+  const text = String(rawText || textEl.textContent || "");
+
+  // Split into sentence ranges by punctuation
+  const sentenceRegex = /[^.!?]*[.!?]+["']?\s*/g;
+  const charRanges = [];
+  let match;
+  while ((match = sentenceRegex.exec(text)) !== null) {
+    charRanges.push({ start: match.index, end: match.index + match[0].length });
+  }
+  if (!charRanges.length) charRanges.push({ start: 0, end: text.length });
+
+  // Build spans HTML
+  const spansHtml = [];
+  let cursor = 0;
+  for (let i = 0; i < charRanges.length; i++) {
+    const r = charRanges[i];
+    if (r.start > cursor) spansHtml.push(escapeHTML(text.slice(cursor, r.start)));
+    spansHtml.push(`<span class="tts-sentence" data-tts-sent="${i}">${escapeHTML(text.slice(r.start, r.end))}</span>`);
+    cursor = r.end;
+  }
+  if (cursor < text.length) spansHtml.push(escapeHTML(text.slice(cursor)));
+
+  TTS_STATE.highlightPageKey = key;
+  TTS_STATE.highlightPageEl = textEl;
+  TTS_STATE.highlightOriginalHTML = textEl.innerHTML;
+
+  textEl.innerHTML = spansHtml.join('');
+  TTS_STATE.highlightSpans = Array.from(textEl.querySelectorAll('.tts-sentence'));
+
+  try {
+    const hintBtn = pageEl.querySelector('.hint-btn');
+    if (hintBtn) hintBtn.disabled = true;
+  } catch (_) {}
+
+  // Estimate timing: distribute audio duration proportionally by character count.
+  // Refined once loadedmetadata fires; good enough for highlighting even before that.
+  function buildTimings(duration) {
+    const totalChars = charRanges.reduce((s, r) => s + (r.end - r.start), 0) || 1;
+    let elapsed = 0;
+    const marks = charRanges.map(r => {
+      const frac = (r.end - r.start) / totalChars;
+      const sentDuration = frac * duration;
+      const timeMs = elapsed * 1000;
+      elapsed += sentDuration;
+      return { time: timeMs, start: r.start, end: r.end };
+    });
+    TTS_STATE.highlightMarks = marks;
+    TTS_STATE.highlightEnds = marks.map((m, i) =>
+      i + 1 < marks.length ? marks[i + 1].time : Infinity
+    );
+  }
+
+  // Build with a placeholder duration first, then refine on loadedmetadata
+  buildTimings(60); // rough placeholder until we know actual duration
+  audio.addEventListener('loadedmetadata', () => {
+    if (audio.duration && isFinite(audio.duration)) {
+      buildTimings(audio.duration);
+    }
+  }, { once: true });
+}
+
 function ttsStartHighlightLoop(audio) {
   if (!audio || !TTS_STATE.highlightSpans || !TTS_STATE.highlightMarks) return;
 
@@ -740,7 +819,15 @@ async function ttsSpeakQueue(key, parts) {
       }
       const tts = await pollyFetchUrl(queue[i], { sentenceMarks: wantMarks });
       const url = tts.url;
-      if (wantMarks) ttsMaybePrepareSentenceHighlight(key, queue[i], tts.sentenceMarks);
+      if (wantMarks) {
+        if (tts.sentenceMarks && tts.sentenceMarks.length) {
+          // Polly path — precise speech marks available
+          ttsMaybePrepareSentenceHighlight(key, queue[i], tts.sentenceMarks);
+        } else {
+          // Azure path — no speech marks; use estimated timing from audio duration
+          ttsPrepareEstimatedHighlight(key, queue[i], TTS_AUDIO_ELEMENT);
+        }
+      }
       if (TTS_STATE.activeKey !== key) return; // cancelled mid-flight
 
       // Play URL (sequential)
