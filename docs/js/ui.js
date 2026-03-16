@@ -197,29 +197,29 @@
         const savedVariant = (() => { try { return localStorage.getItem('rc_voice_variant') || 'female'; } catch(_) { return 'female'; } })();
         const isThisVoiceActive = isActive && (savedVariant === gender);
 
-        // Collect all usable English voices — broad match so no voices are silently dropped
         const allVoices = (window.speechSynthesis?.getVoices() || [])
           .filter(v => !BAD_VOICES.some(b => v.name.includes(b)))
           .filter(v => (v.lang || '').toLowerCase().startsWith('en'));
 
-        const nameList = gender === 'female' ? FEMALE_NAMES : MALE_NAMES;
-        const otherList = gender === 'female' ? MALE_NAMES : FEMALE_NAMES;
+        const nameList  = gender === 'female' ? FEMALE_NAMES : MALE_NAMES;
+        const quality   = allVoices.filter(v => nameList.some(n => v.name.toLowerCase().includes(n.toLowerCase())));
+        // Note: "Other English" (gender-neutral voices) removed — cannot be reliably
+        // categorised by gender. See SystemResponsibilitiesMap for future consideration.
 
-        // Quality: matches this gender's name list
-        const quality = allVoices.filter(v => nameList.some(n => v.name.toLowerCase().includes(n.toLowerCase())));
-        // Other: doesn't match either gender list — shown in both dropdowns
-        const neutral = allVoices.filter(v => !nameList.some(n => v.name.toLowerCase().includes(n.toLowerCase()))
-                                           && !otherList.some(n => v.name.toLowerCase().includes(n.toLowerCase())));
+        const hasAnyVoices = quality.length > 0 || (!isFree);
 
         selectEl.innerHTML = '';
 
-        // Default placeholder — shown when this gender is not active
+        // Placeholder — label + "no voices" message if nothing is available
         const placeholder = document.createElement('option');
         placeholder.value = '';
-        placeholder.textContent = gender === 'female' ? 'Female' : 'Male';
         placeholder.disabled = true;
-        // Show placeholder selected only if this gender is not active
-        placeholder.selected = !isThisVoiceActive || (!savedBrowser && savedVariant !== gender);
+        if (!hasAnyVoices) {
+          placeholder.textContent = gender === 'female' ? 'Female — none found' : 'Male — none found';
+        } else {
+          placeholder.textContent = gender === 'female' ? 'Female' : 'Male';
+        }
+        placeholder.selected = !isThisVoiceActive || (!savedBrowser && savedVariant !== gender && isFree);
         selectEl.appendChild(placeholder);
 
         // Cloud voices for Paid/Premium
@@ -234,7 +234,7 @@
           selectEl.appendChild(cloudGrp);
         }
 
-        // Recommended browser voices
+        // Recommended browser voices for this gender
         if (quality.length) {
           const grp = document.createElement('optgroup');
           grp.label = isFree ? '⭐ Recommended' : '⭐ Browser';
@@ -246,29 +246,6 @@
             grp.appendChild(opt);
           });
           selectEl.appendChild(grp);
-        }
-
-        // Neutral voices shown in both dropdowns
-        if (neutral.length) {
-          const grp = document.createElement('optgroup');
-          grp.label = 'Other English';
-          neutral.forEach(v => {
-            const opt = document.createElement('option');
-            opt.value = v.name;
-            opt.textContent = v.name.replace(/^com\.apple\.[^.]+\./, '').replace(/-compact$/, '');
-            if (v.name === savedBrowser && savedVariant === gender) opt.selected = true;
-            grp.appendChild(opt);
-          });
-          selectEl.appendChild(grp);
-        }
-
-        // If no voices found at all, show a disabled note
-        if (!quality.length && !neutral.length && isFree) {
-          const none = document.createElement('option');
-          none.value = '';
-          none.disabled = true;
-          none.textContent = 'No system voices found';
-          selectEl.appendChild(none);
         }
 
         // Accent border on the active dropdown
@@ -439,13 +416,23 @@
           return;
         }
         const merged = {
+          tier: typeof appTier !== 'undefined' ? appTier : 'unknown',
+          tts: {
+            variant: TTS_STATE?.voiceVariant || 'female',
+            activeBrowserVoice: TTS_STATE?.activeBrowserVoiceName || null,
+            allEnglishVoices: (() => {
+              try {
+                return (window.speechSynthesis?.getVoices() || [])
+                  .filter(v => (v.lang || '').toLowerCase().startsWith('en'))
+                  .map(v => v.name);
+              } catch(_) { return []; }
+            })(),
+          },
           ai: lastAIDiagnostics || null,
           anchors: lastAnchorsDiagnostics || null,
         };
         const hasAny = Boolean(merged.ai || merged.anchors);
-        const dump = hasAny
-          ? JSON.stringify(merged, null, 2)
-          : 'No diagnostics captured yet.\n\nTip: load pages with ?debug=1 (anchors) or run an AI eval.';
+        const dump = JSON.stringify(merged, null, 2);
         diagText.value = dump;
         diagPanel.style.display = 'block';
         positionPanelAboveButton(diagBtn, diagPanel);

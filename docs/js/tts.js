@@ -13,6 +13,8 @@ const TTS_STATE = {
   volume: 1,
   // 'female' (default) or 'male' for Polly narrator selection
   voiceVariant: 'female',
+  // Name of the browser voice currently in use (set by browserSpeakQueue, cleared on stop)
+  activeBrowserVoiceName: null,
   // sentence highlight state (page read)
   highlightPageKey: null,
   highlightPageEl: null,
@@ -449,6 +451,7 @@ function ttsStop() {
   browserTtsStop();
   ttsClearSentenceHighlight();
   TTS_STATE.activeKey = null;
+  TTS_STATE.activeBrowserVoiceName = null;
 }
 
 async function pollyFetchUrl(text, opts = {}) {
@@ -537,6 +540,7 @@ function browserSpeakQueue(key, parts) {
   ttsSetHintButton(key, true);
   let idx = 0;
   const voice = browserPickVoice();
+  TTS_STATE.activeBrowserVoiceName = voice ? voice.name : '(default)';
 
   // Build sentence-level highlight spans for the first part (the page text),
   // using the same DOM structure as the Polly path so CSS styling is consistent.
