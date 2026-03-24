@@ -2,6 +2,19 @@
 // Keeps compatibility with an index.html that already points at js/app.js.
 // It loads the new role-based files in order, without requiring a bundler.
 (function () {
+  // Enable observability flags when ?debug=1 is in the URL.
+  // These are checked by tts.js, audio.js, and ui.js for console/overlay output.
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const v = (params.get('debug') || '').trim().toLowerCase();
+    const on = params.has('debug') && (v === '' || v === '1' || v === 'true' || v === 'yes' || v === 'on');
+    if (on) {
+      window.DEBUG_TTS      = true;
+      window.DEBUG_AUDIO    = true;
+      window.DEBUG_AUTOPLAY = true;
+    }
+  } catch (_) {}
+
   const ORDER = [
     'state.js',
     'tts.js',

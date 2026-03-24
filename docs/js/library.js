@@ -2064,7 +2064,7 @@
 
     openBtn.addEventListener('click', show);
     closeBtn?.addEventListener('click', hide);
-    modal.addEventListener('click', (e) => { if (e.target === modal) hide(); });
+    modal.addEventListener('click', (e) => { e.stopPropagation(); if (e.target === modal) hide(); });
   })();
 
   // ===================================

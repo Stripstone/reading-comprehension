@@ -77,9 +77,11 @@
     if (btn) btn.addEventListener('click', openModal);
     if (closeBtn) closeBtn.addEventListener('click', closeModal);
 
-    // Click outside modal closes
+    // Click outside modal closes; stop propagation so document-level panel
+    // closers (volume, menu) don't fire when clicking inside the modal.
     if (modal) {
       modal.addEventListener('click', (e) => {
+        e.stopPropagation();
         if (e.target === modal) closeModal();
       });
     }
@@ -461,7 +463,9 @@
             breakdown: sessionTokens?.spent || {},
           },
           tts: {
-            variant: TTS_STATE?.voiceVariant || 'female',
+            gen: typeof TTS_GEN !== 'undefined' ? TTS_GEN : '—',
+            activeKey: TTS_STATE?.activeKey ?? null,
+            voiceVariant: TTS_STATE?.voiceVariant || 'female',
             activeBrowserVoice: TTS_STATE?.activeBrowserVoiceName || null,
             allEnglishVoices: (() => {
               try {
@@ -471,10 +475,18 @@
               } catch(_) { return []; }
             })(),
           },
+          autoplay: {
+            enabled: AUTOPLAY_STATE?.enabled ?? false,
+            countdownPageIndex: AUTOPLAY_STATE?.countdownPageIndex ?? -1,
+            countdownSec: AUTOPLAY_STATE?.countdownSec ?? 0,
+            preloadedKey: AUTOPLAY_STATE?.preloadedKey ?? null,
+            preloadedUrl: AUTOPLAY_STATE?.preloadedUrl
+              ? AUTOPLAY_STATE.preloadedUrl.slice(0, 60) + '…'
+              : null,
+          },
           ai: lastAIDiagnostics || null,
           anchors: lastAnchorsDiagnostics || null,
         };
-        const hasAny = Boolean(merged.ai || merged.anchors);
         const dump = JSON.stringify(merged, null, 2);
         diagText.value = dump;
         diagPanel.style.display = 'block';
@@ -541,6 +553,40 @@
 
     // Build debug UI only when enabled.
     ensureDiagUI();
+
+    // ---- Live TTS status overlay (debug mode only) ----
+    // A small always-visible pill in the top-right corner that updates every
+    // animation frame. Lets testers watch TTS_GEN, activeKey, and preload state
+    // in real time during rapid book-switch and autoplay testing — no click required.
+    if (debugEnabled) {
+      const overlay = document.createElement('div');
+      overlay.id = 'ttsDebugOverlay';
+      overlay.style.cssText = [
+        'position:fixed', 'top:8px', 'right:8px', 'z-index:9990',
+        'background:rgba(0,0,0,0.72)', 'color:#e8d9c4',
+        'font:11px/1.5 ui-monospace,Menlo,monospace',
+        'padding:5px 9px', 'border-radius:7px',
+        'pointer-events:none', 'white-space:pre',
+        'opacity:0.88', 'max-width:260px',
+      ].join(';');
+      document.body.appendChild(overlay);
+
+      function tickOverlay() {
+        try {
+          const gen     = typeof TTS_GEN !== 'undefined' ? TTS_GEN : '—';
+          const key     = TTS_STATE?.activeKey ?? '—';
+          const cdIdx   = AUTOPLAY_STATE?.countdownPageIndex ?? -1;
+          const cdSec   = AUTOPLAY_STATE?.countdownSec ?? 0;
+          const pKey    = AUTOPLAY_STATE?.preloadedKey ?? '—';
+          const hasUrl  = AUTOPLAY_STATE?.preloadedUrl ? '✓' : '✗';
+          const cd      = cdIdx >= 0 ? `cd:p${cdIdx}(${cdSec}s)` : 'cd:—';
+          overlay.textContent =
+            `GEN:${gen}  key:${key}\n${cd}  pre:${pKey}(${hasUrl})`;
+        } catch (_) {}
+        requestAnimationFrame(tickOverlay);
+      }
+      tickOverlay();
+    }
 
     // Click outside closes panels (lightweight)
     document.addEventListener('click', (e) => {

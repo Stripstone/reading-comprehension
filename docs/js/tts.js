@@ -35,6 +35,26 @@ TTS_AUDIO_ELEMENT.preload = "auto";
 // Tiny silent MP3 used to prime TTS_AUDIO_ELEMENT within a user gesture.
 const TTS_SILENT_SRC = "data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAA";
 
+// ---- Generation counter ----
+// Incremented on every ttsStop(). Every queued play captures the current value
+// and bails if it changes — prevents a stale async chain (e.g. after a book
+// switch) from racing a new play session that shares the same page key.
+let TTS_GEN = 0;
+
+// ---- Stall recovery ----
+// Fires when the browser stalls mid-playback (e.g. S3 buffer underrun).
+// Only acts when TTS_AUDIO_ELEMENT is the active playback element.
+function _ttsHandleStall() {
+  if (!TTS_STATE.audio || TTS_STATE.audio !== TTS_AUDIO_ELEMENT) return;
+  if (window.DEBUG_AUDIO) console.warn('[Audio Recovery] Playback stalled, retrying in 200ms');
+  setTimeout(() => {
+    if (!TTS_STATE.audio || TTS_STATE.audio !== TTS_AUDIO_ELEMENT) return;
+    try { TTS_AUDIO_ELEMENT.play().catch(() => {}); } catch (_) {}
+  }, 200);
+}
+TTS_AUDIO_ELEMENT.addEventListener('waiting', _ttsHandleStall);
+TTS_AUDIO_ELEMENT.addEventListener('stalled', _ttsHandleStall);
+
 function ttsUnlockAudio() {
   // Prime TTS_AUDIO_ELEMENT — the actual playback element — synchronously
   // within the current user gesture. We do this on every gesture, not just
@@ -72,6 +92,13 @@ const AUTOPLAY_STATE = {
   countdownPageIndex: -1,
   countdownSec: 0,
   countdownTimerId: null,
+  // Track the 400ms launch setTimeout so book-switch can cancel it
+  launchTimerId: null,
+  // Preload: background fetch during countdown so next page starts instantly
+  preloadAbort: null,       // AbortController for the in-flight preload fetch
+  preloadedKey: null,       // 'page-N' this preload is for
+  preloadedUrl: null,       // S3 URL fetched during countdown
+  preloadedMarks: null,     // sentence marks (may be null on Azure path)
 };
 
 // Keep TTS_AUDIO_ELEMENT silently "active" between pages during an autoplay
@@ -121,8 +148,28 @@ function ttsAutoplayCancelCountdown() {
 
   if (AUTOPLAY_STATE.countdownTimerId) clearInterval(AUTOPLAY_STATE.countdownTimerId);
   AUTOPLAY_STATE.countdownTimerId = null;
+
+  // Cancel the 400ms launch timer if it's still pending
+  if (AUTOPLAY_STATE.launchTimerId) {
+    clearTimeout(AUTOPLAY_STATE.launchTimerId);
+    AUTOPLAY_STATE.launchTimerId = null;
+  }
+
+  // Abort any in-flight preload fetch
+  if (AUTOPLAY_STATE.preloadAbort) {
+    try { AUTOPLAY_STATE.preloadAbort.abort(); } catch (_) {}
+    AUTOPLAY_STATE.preloadAbort = null;
+  }
+
+  // Clear preloaded data
+  AUTOPLAY_STATE.preloadedKey = null;
+  AUTOPLAY_STATE.preloadedUrl = null;
+  AUTOPLAY_STATE.preloadedMarks = null;
+
   AUTOPLAY_STATE.countdownPageIndex = -1;
   AUTOPLAY_STATE.countdownSec = 0;
+
+  if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] Countdown cancelled for page ${idx}`);
 
   // Reset button text on the page that was counting down.
   try {
@@ -160,6 +207,31 @@ function ttsAutoplayScheduleNext(pageIndex) {
   }
   updateBtn();
 
+  // Background preload: fetch next page audio during the countdown so playback
+  // starts without latency. Uses its own AbortController so it never clobbers
+  // TTS_STATE.abort (the main playback controller).
+  const capturedGen = TTS_GEN;
+  const nextText = (typeof pages !== 'undefined' && pages[nextIndex]) ? pages[nextIndex] : '';
+  if (nextText && typeof pollyFetchUrl === 'function') {
+    const preloadController = new AbortController();
+    AUTOPLAY_STATE.preloadAbort = preloadController;
+    pollyFetchUrl(nextText, { sentenceMarks: true }, preloadController).then(tts => {
+      // Bail if the session has changed or the countdown was cancelled
+      if (TTS_GEN !== capturedGen || AUTOPLAY_STATE.countdownPageIndex !== pageIndex) return;
+      AUTOPLAY_STATE.preloadedKey  = `page-${nextIndex}`;
+      AUTOPLAY_STATE.preloadedUrl  = tts.url;
+      AUTOPLAY_STATE.preloadedMarks = Array.isArray(tts.sentenceMarks) ? tts.sentenceMarks : null;
+      // Switch audio element to the real URL now (within the still-active Safari
+      // gesture context) so play() at countdown end is treated as a resume.
+      try {
+        TTS_AUDIO_ELEMENT.loop = false;
+        TTS_AUDIO_ELEMENT.src  = tts.url;
+        TTS_AUDIO_ELEMENT.load();
+      } catch (_) {}
+      if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] Preloaded page ${nextIndex}`);
+    }).catch(() => {});
+  }
+
   AUTOPLAY_STATE.countdownTimerId = setInterval(() => {
     AUTOPLAY_STATE.countdownSec -= 1;
     if (AUTOPLAY_STATE.countdownSec <= 0) {
@@ -167,8 +239,9 @@ function ttsAutoplayScheduleNext(pageIndex) {
       // Scroll to next page
       const nextPageEl = pageEls[nextIndex];
       if (nextPageEl) nextPageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      // Start reading next page after scroll settles
-      setTimeout(() => {
+      // Start reading next page after scroll settles — track timer so it can be cancelled
+      AUTOPLAY_STATE.launchTimerId = setTimeout(() => {
+        AUTOPLAY_STATE.launchTimerId = null;
         const text = (typeof pages !== 'undefined' && pages[nextIndex]) ? pages[nextIndex] : '';
         if (text) ttsSpeakQueue(`page-${nextIndex}`, [text]);
       }, 400);
@@ -368,8 +441,12 @@ function ttsPrepareEstimatedHighlight(key, rawText, audio) {
     );
   }
 
-  // Start with placeholder — any reasonable duration works for early highlighting
-  buildTimings(60);
+  // Estimate duration from character count (~950 chars/min at normal speech rate).
+  // Much more accurate than the old 60s flat placeholder — first sentences now
+  // highlight correctly without waiting for the first timeupdate refinement.
+  const EST_MS_PER_CHAR = (60 * 1000) / 950; // ~63 ms/char
+  const estDuration = Math.max(5, (text.length * EST_MS_PER_CHAR) / 1000);
+  buildTimings(estDuration);
 
   // Refine once on first timeupdate when we know actual duration and position.
   // timeupdate fires during playback on all platforms including Safari/iOS.
@@ -508,6 +585,11 @@ function browserPickVoice() {
 }
 
 function ttsStop() {
+  // Increment generation counter — any in-flight ttsSpeakQueue that captured
+  // the previous generation will bail on its next gen check.
+  TTS_GEN++;
+  if (window.DEBUG_TTS) console.log(`[TTS_GEN] ttsStop() — new gen: ${TTS_GEN}`);
+
   // Clear active state and re-enable hint buttons on any TTS read-page button
   try {
     document.querySelectorAll('.tts-btn[data-tts="page"].tts-active')
@@ -543,9 +625,12 @@ function ttsStop() {
   TTS_STATE.activeBrowserVoiceName = null;
 }
 
-async function pollyFetchUrl(text, opts = {}) {
-  const controller = new AbortController();
-  TTS_STATE.abort = controller;
+// externalController: pass an AbortController to use instead of creating a new one
+// and overwriting TTS_STATE.abort. Used by the autoplay preloader so it can be
+// cancelled independently without disrupting the main playback abort chain.
+async function pollyFetchUrl(text, opts = {}, externalController = null) {
+  const controller = externalController || new AbortController();
+  if (!externalController) TTS_STATE.abort = controller;
 
   // IMPORTANT:
   // Do NOT hardcode voice/engine here.
@@ -819,16 +904,40 @@ async function ttsSpeakQueue(key, parts) {
   ttsSetButtonActive(key, true);
   ttsSetHintButton(key, true);
 
+  // Capture generation AFTER any ttsStop() calls above so we hold the post-stop value.
+  // Any in-flight chain from a previous session has an older gen and will bail.
+  const myGen = TTS_GEN;
+  if (window.DEBUG_TTS) console.log(`[TTS_GEN] Starting play '${key}' at gen ${myGen}`);
+
+  // Consume preloaded data if available for this key (fetched during autoplay countdown).
+  // Preloaded data has the same shape as pollyFetchUrl's return value.
+  let preloadedData = null;
+  if (AUTOPLAY_STATE.preloadedKey === key && AUTOPLAY_STATE.preloadedUrl) {
+    preloadedData = { url: AUTOPLAY_STATE.preloadedUrl, sentenceMarks: AUTOPLAY_STATE.preloadedMarks };
+    AUTOPLAY_STATE.preloadedKey   = null;
+    AUTOPLAY_STATE.preloadedUrl   = null;
+    AUTOPLAY_STATE.preloadedMarks = null;
+    if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] Consumed preloaded audio for '${key}'`);
+  }
+
   // Preferred path: Polly via /api/tts. If it fails, fall back to browser voices.
   try {
     for (let i = 0; i < queue.length; i++) {
       const wantMarks = (i === 0 && optsForKeySentenceMarks(key));
-      // Spend 1 token per page read via cloud TTS (first part only — not lead-ins or feedback)
+
+      // Use preloaded URL for first part when available; otherwise fetch now.
+      const tts = (i === 0 && preloadedData)
+        ? preloadedData
+        : await pollyFetchUrl(queue[i], { sentenceMarks: wantMarks });
+
+      const url = tts.url;
+
+      // Spend token at playback start (option B): charged when audio actually plays,
+      // not during pre-fetch — so a cancelled autoplay countdown costs nothing.
       if (i === 0 && optsForKeySentenceMarks(key)) {
         try { if (typeof tokenSpend === 'function') tokenSpend('tts'); } catch(_) {}
       }
-      const tts = await pollyFetchUrl(queue[i], { sentenceMarks: wantMarks });
-      const url = tts.url;
+
       if (wantMarks) {
         if (tts.sentenceMarks && tts.sentenceMarks.length) {
           // Polly path — precise speech marks available
@@ -838,7 +947,11 @@ async function ttsSpeakQueue(key, parts) {
           ttsPrepareEstimatedHighlight(key, queue[i], TTS_AUDIO_ELEMENT);
         }
       }
-      if (TTS_STATE.activeKey !== key) return; // cancelled mid-flight
+      // Bail if the user stopped or switched, OR if a book switch incremented TTS_GEN
+      if (TTS_STATE.activeKey !== key || TTS_GEN !== myGen) {
+        if (window.DEBUG_TTS) console.log(`[TTS_GEN] Old key cancelled for '${key}'. Current gen: ${TTS_GEN}, my gen: ${myGen}`);
+        return;
+      }
 
       // Play URL (sequential)
       await new Promise((resolve, reject) => {
@@ -874,7 +987,7 @@ async function ttsSpeakQueue(key, parts) {
   } catch (err) {
     // IMPORTANT: If the user explicitly stopped (or switched actions) while Polly
     // was fetching/playing, do NOT fall back to browser TTS.
-    if (TTS_STATE.activeKey !== key) return;
+    if (TTS_STATE.activeKey !== key || TTS_GEN !== myGen) return;
     if (err && (err.name === 'AbortError' || String(err).includes('aborted'))) return;
 
     // If Polly isn't configured yet (or otherwise fails), don't spam alerts; just fall back.

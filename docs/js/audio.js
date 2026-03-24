@@ -137,4 +137,24 @@
       playWithRetry(music, { restart: false, loop: true, retries: 1 });
     }
   };
+
+  // ---- bgMusic loop recovery ----
+  // Under weak or spotty connectivity the music element can stall mid-loop or
+  // emit an error (e.g. a failed network re-request). Without recovery the music
+  // silently dies. We restart automatically whenever the element ends unexpectedly
+  // or fires an error while music should be playing.
+  function restartBgMusic() {
+    if (!music) return;
+    if (window.allSoundsMuted) return; // user has muted — don't restart
+    if (window.DEBUG_AUDIO) console.log('[Music] Loop restarted due to network issue');
+    try {
+      music.currentTime = 0;
+      playWithRetry(music, { restart: true, loop: true, retries: 3, delayMs: 500 });
+    } catch (_) {}
+  }
+  if (music) {
+    music.addEventListener('error', restartBgMusic);
+    // 'ended' fires when loop=true unexpectedly breaks (e.g. Safari under low connectivity).
+    music.addEventListener('ended', restartBgMusic);
+  }
 })();
