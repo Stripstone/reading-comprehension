@@ -759,6 +759,26 @@ try {
     updateDiagnostics();
     // Ensure we can rehydrate per-page saved work even if the session snapshot lacked hashes.
     ensurePageHashesAndRehydrate();
+
+    // Phase 0 — scroll to last-read page.
+    // lastFocusedPageIndex was restored from the session snapshot by
+    // loadPersistedSessionIfAny(). Run after a short delay so the DOM has
+    // painted and any browser-native scroll restoration doesn't race us.
+    if (typeof lastFocusedPageIndex === 'number' && lastFocusedPageIndex > 0) {
+      const targetIdx = lastFocusedPageIndex;
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          try {
+            const pageEls = document.querySelectorAll('.page');
+            const target = pageEls[targetIdx];
+            if (target) {
+              target.scrollIntoView({ behavior: 'instant', block: 'start' });
+              if (window.DEBUG_TTS) console.log(`[Boot] Restored to page ${targetIdx}`);
+            }
+          } catch (_) {}
+        }, 80);
+      });
+    }
   }
 } catch (_) {}
 // ===================================

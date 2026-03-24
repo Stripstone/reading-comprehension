@@ -123,7 +123,12 @@ function persistSessionNow() {
       savedAt: Date.now(),
       pages: pages.slice(),
       pageHashes: pageData.map(p => p?.pageHash || ""),
-      consolidations: pageData.map(p => p?.consolidation || "")
+      consolidations: pageData.map(p => p?.consolidation || ""),
+      // Phase 0 launch gate: remember which page the reader was on so the app
+      // can scroll back to it on the next visit — no more starting at page 1.
+      lastReadPageIndex: (typeof lastFocusedPageIndex === 'number' && lastFocusedPageIndex >= 0)
+        ? lastFocusedPageIndex
+        : 0,
     };
     localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(payload));
     localStorage.setItem(STORAGE_KEY_META, JSON.stringify({ savedAt: payload.savedAt }));
@@ -210,6 +215,12 @@ function loadPersistedSessionIfAny() {
       const n = Math.min(pages.length, pageData.length);
       pages = pages.slice(0, n);
       pageData = pageData.slice(0, n);
+    }
+
+    // Restore last-read position so the boot scroll can jump there.
+    const restoredIdx = Number(parsed.lastReadPageIndex ?? 0);
+    if (Number.isFinite(restoredIdx) && restoredIdx > 0 && restoredIdx < pages.length) {
+      lastFocusedPageIndex = restoredIdx;
     }
 
     currentPageIndex = Math.min(currentPageIndex, Math.max(0, pages.length - 1));

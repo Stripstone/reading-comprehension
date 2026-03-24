@@ -99,6 +99,7 @@ const AUTOPLAY_STATE = {
   preloadedKey: null,       // 'page-N' this preload is for
   preloadedUrl: null,       // S3 URL fetched during countdown
   preloadedMarks: null,     // sentence marks (may be null on Azure path)
+  audioReady: false,        // true when TTS_AUDIO_ELEMENT.src is already armed with preloadedUrl
 };
 
 // Keep TTS_AUDIO_ELEMENT silently "active" between pages during an autoplay
@@ -165,6 +166,7 @@ function ttsAutoplayCancelCountdown() {
   AUTOPLAY_STATE.preloadedKey = null;
   AUTOPLAY_STATE.preloadedUrl = null;
   AUTOPLAY_STATE.preloadedMarks = null;
+  AUTOPLAY_STATE.audioReady = false;
 
   AUTOPLAY_STATE.countdownPageIndex = -1;
   AUTOPLAY_STATE.countdownSec = 0;
@@ -223,12 +225,16 @@ function ttsAutoplayScheduleNext(pageIndex) {
       AUTOPLAY_STATE.preloadedMarks = Array.isArray(tts.sentenceMarks) ? tts.sentenceMarks : null;
       // Switch audio element to the real URL now (within the still-active Safari
       // gesture context) so play() at countdown end is treated as a resume.
+      // audioReady=true signals that the element is already armed with this URL —
+      // the play block must NOT reassign src or it will reset the buffer.
+      AUTOPLAY_STATE.audioReady = false;
       try {
         TTS_AUDIO_ELEMENT.loop = false;
         TTS_AUDIO_ELEMENT.src  = tts.url;
         TTS_AUDIO_ELEMENT.load();
+        AUTOPLAY_STATE.audioReady = true;
       } catch (_) {}
-      if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] Preloaded page ${nextIndex}`);
+      if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] Preloaded page ${nextIndex}, audioReady: ${AUTOPLAY_STATE.audioReady}`);
     }).catch(() => {});
   }
 
@@ -559,22 +565,61 @@ function browserPickVoice() {
       }
     } catch (_) {}
 
-    // Auto-selection: named high-quality voices by gender preference.
-    // Daniel ranks first on male — best sounding Safari voice on Apple devices.
-    // Alex is macOS high-quality, sometimes exposed by Safari.
-    const femaleNames = ['Aria', 'Jenny', 'Samantha', 'Karen', 'Moira', 'Serena', 'Tessa'];
-    const maleNames   = ['Daniel', 'Rishi', 'Alex', 'Guy', 'Ryan', 'Fred'];
-    const preferred   = isMale ? maleNames : femaleNames;
-    const fallback    = isMale ? femaleNames : maleNames;
+    // Auto-selection: named high-quality voices, gender-preferred order.
+    // Names are matched as substrings so "Microsoft Aria Online (Natural)..." matches 'Aria'.
+    // Female list: Azure Neural → Apple macOS/iOS → Chrome/Windows SAPI
+    // Male list:   Apple (best for Safari) → Azure Neural → Chrome/Windows SAPI
+    const femaleNames = [
+      // Azure Neural (cloud + Edge browser)
+      'Aria', 'Jenny', 'Michelle', 'Emma',
+      // Apple (macOS / iOS)
+      'Samantha', 'Karen', 'Moira', 'Serena', 'Tessa', 'Veena',
+      // Windows SAPI (Chrome/Edge on Windows)
+      'Zira',
+      // Google TTS voices (Chrome on Android / desktop)
+      'Google UK English Female',
+    ];
+    const maleNames = [
+      // Apple (best-sounding voices on Safari — Daniel is top tier)
+      'Daniel', 'Rishi', 'Alex',
+      // Azure Neural
+      'Guy', 'Ryan', 'Roger', 'Eric',
+      // Windows SAPI (Chrome/Edge on Windows)
+      'Mark', 'David',
+      // Google TTS voices
+      'Google UK English Male',
+    ];
+    const preferred = isMale ? maleNames : femaleNames;
+    const fallback  = isMale ? femaleNames : maleNames;
 
     const findNamed = (nameList) =>
       enVoices.find(v => nameList.some(n => v.name.includes(n)));
 
+    // Gender-keyword scan: catches voices not in the named lists whose name
+    // contains "Female" or "Male" (e.g. "Google UK English Female" on Chrome).
+    const genderKeyword = isMale ? 'male' : 'female';
+    const findByKeyword = (wantMale) =>
+      enVoices.find(v => v.name.toLowerCase().includes(wantMale ? 'male' : 'female'));
+
+    // Gender-aware Microsoft/Google scan: prefer voices whose name contains the
+    // right gender keyword before falling back to any voice from those families.
+    const findBrandGender = (brand, wantMale) => {
+      const brandVoices = enVoices.filter(v => new RegExp(brand, 'i').test(v.name));
+      const keyword = wantMale ? 'male' : 'female';
+      return brandVoices.find(v => v.name.toLowerCase().includes(keyword))
+        || brandVoices[0]
+        || null;
+    };
+
     return (
-      findNamed(preferred) ||
-      findNamed(fallback)  ||
-      enVoices.find(v => /Microsoft/i.test(v.name)) ||
-      enVoices.find(v => /Google/i.test(v.name))    ||
+      findNamed(preferred)                       ||  // 1. named preferred gender
+      findByKeyword(isMale)                      ||  // 2. gender-keyword match (preferred)
+      findNamed(fallback)                        ||  // 3. named opposite gender
+      findByKeyword(!isMale)                     ||  // 4. gender-keyword match (fallback)
+      findBrandGender('Microsoft', isMale)       ||  // 5. any Microsoft voice, gender-aware
+      findBrandGender('Google', isMale)          ||  // 6. any Google voice, gender-aware
+      enVoices.find(v => /Microsoft/i.test(v.name)) ||  // 7. any Microsoft voice
+      enVoices.find(v => /Google/i.test(v.name))    ||  // 8. any Google voice
       enVoices[0]  ||
       usable[0]    ||
       null
@@ -912,12 +957,15 @@ async function ttsSpeakQueue(key, parts) {
   // Consume preloaded data if available for this key (fetched during autoplay countdown).
   // Preloaded data has the same shape as pollyFetchUrl's return value.
   let preloadedData = null;
+  let preloadedAudioReady = false;
   if (AUTOPLAY_STATE.preloadedKey === key && AUTOPLAY_STATE.preloadedUrl) {
     preloadedData = { url: AUTOPLAY_STATE.preloadedUrl, sentenceMarks: AUTOPLAY_STATE.preloadedMarks };
+    preloadedAudioReady = !!AUTOPLAY_STATE.audioReady;
     AUTOPLAY_STATE.preloadedKey   = null;
     AUTOPLAY_STATE.preloadedUrl   = null;
     AUTOPLAY_STATE.preloadedMarks = null;
-    if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] Consumed preloaded audio for '${key}'`);
+    AUTOPLAY_STATE.audioReady     = false;
+    if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] Consumed preloaded audio for '${key}', audioReady: ${preloadedAudioReady}`);
   }
 
   // Preferred path: Polly via /api/tts. If it fails, fall back to browser voices.
@@ -956,11 +1004,22 @@ async function ttsSpeakQueue(key, parts) {
       // Play URL (sequential)
       await new Promise((resolve, reject) => {
         const audio = TTS_AUDIO_ELEMENT;
-        // Stop the silent primer (or autoplay keep-warm loop) before switching
-        // to the real audio URL. Resetting loop here is critical — if we landed
-        // here from autoplay, loop=true is still set from ttsKeepWarmForAutoplay.
+        // loop=false is always required — may still be true from ttsKeepWarmForAutoplay.
         try { audio.loop = false; audio.pause(); } catch (_) {}
-        audio.src = url;
+
+        // KEY FIX: if the preloader already armed the element with this exact URL
+        // (audioReady=true), do NOT reassign audio.src. Reassigning src — even to the
+        // same URL — resets the browser's buffer and triggers a full re-fetch, which is
+        // what causes the 4-second wait despite a successful preload.
+        // Only skip reassignment for the first part (i===0) where preloadedData applies.
+        const alreadyArmed = (i === 0 && preloadedAudioReady && audio.src === url);
+        if (!alreadyArmed) {
+          audio.src = url;
+        }
+        if (window.DEBUG_AUTOPLAY && i === 0) {
+          console.log(`[Autoplay] Play block: alreadyArmed=${alreadyArmed}, readyState=${audio.readyState}`);
+        }
+
         TTS_STATE.audio = audio;
         // Polly audio volume (0..1). Persisted via the Voices slider.
         try { audio.volume = Math.max(0, Math.min(1, Number(TTS_STATE.volume ?? 1))); } catch (_) {}
