@@ -78,9 +78,22 @@
   }
 
   // Arm immediately, and re-arm after returning to the tab.
+  // Also resume bgMusic if the device woke from sleep while music was playing —
+  // the audio context suspends on screen-lock without firing 'error' or 'ended',
+  // so restartBgMusic() doesn't catch it. A direct play() on visibility return does.
   armUnlockListeners();
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) armUnlockListeners();
+    if (document.hidden) return;
+    armUnlockListeners();
+    // Resume music if it should be playing but was suspended by device sleep.
+    setTimeout(() => {
+      try {
+        if (music && music.paused && !window.allSoundsMuted) {
+          playWithRetry(music, { restart: false, loop: true, retries: 2, delayMs: 200 });
+          if (window.DEBUG_AUDIO) console.log('[Music] Resumed after device wake/tab return');
+        }
+      } catch (_) {}
+    }, 150);
   });
 
   async function playWithRetry(el, { restart = true, loop = null, retries = 2, delayMs = 120 } = {}) {

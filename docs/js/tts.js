@@ -42,18 +42,61 @@ const TTS_SILENT_SRC = "data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAA";
 let TTS_GEN = 0;
 
 // ---- Stall recovery ----
-// Fires when the browser stalls mid-playback (e.g. S3 buffer underrun).
-// Only acts when TTS_AUDIO_ELEMENT is the active playback element.
+// Fires when the browser stalls mid-playback (e.g. S3 buffer underrun or network dip).
+// A single 200ms retry is not robust enough under spotty connectivity — a second stall
+// can occur before the first retry resolves, or the buffer may need more time to refill.
+// We use a 3-attempt exponential backoff: 200ms → 600ms → 1400ms.
+// Each attempt bails early if the element resumed on its own (not paused) or is no
+// longer the active element.
 function _ttsHandleStall() {
   if (!TTS_STATE.audio || TTS_STATE.audio !== TTS_AUDIO_ELEMENT) return;
-  if (window.DEBUG_AUDIO) console.warn('[Audio Recovery] Playback stalled, retrying in 200ms');
-  setTimeout(() => {
-    if (!TTS_STATE.audio || TTS_STATE.audio !== TTS_AUDIO_ELEMENT) return;
+  if (window.DEBUG_AUDIO) console.warn('[Audio Recovery] Playback stalled — starting backoff retry');
+  const delays = [200, 600, 1400];
+  let attempt = 0;
+  function tryResume() {
+    if (!TTS_STATE.audio || TTS_STATE.audio !== TTS_AUDIO_ELEMENT) return; // cancelled
+    attempt++;
+    if (window.DEBUG_AUDIO) console.warn(`[Audio Recovery] Retry attempt ${attempt}`);
     try { TTS_AUDIO_ELEMENT.play().catch(() => {}); } catch (_) {}
-  }, 200);
+    if (attempt < delays.length) {
+      setTimeout(tryResume, delays[attempt]);
+    }
+  }
+  setTimeout(tryResume, delays[0]);
 }
 TTS_AUDIO_ELEMENT.addEventListener('waiting', _ttsHandleStall);
 TTS_AUDIO_ELEMENT.addEventListener('stalled', _ttsHandleStall);
+
+// ---- Device-sleep / tab-switch resume ----
+// When the device screen locks (or the OS suspends the audio context), the audio
+// element pauses without firing 'waiting' or 'stalled'. On wake/return, we check
+// if TTS_AUDIO_ELEMENT should still be playing and resume it.
+//
+// NOTE: visibilitychange is intentionally NOT wired to ttsStop() — audio continues
+// in background tabs. This handler is the OPPOSITE: resume on return from sleep.
+//
+// iOS exception: if audio was playing before the screen locked, iOS allows a
+// programmatic play() resume on visibilitychange without a new user gesture.
+// This is distinct from cold-start audio, which still requires a gesture.
+try {
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    // Small delay — iOS needs a tick after visibility returns before play() is reliable.
+    setTimeout(() => {
+      try {
+        if (
+          TTS_STATE.audio &&
+          TTS_STATE.audio === TTS_AUDIO_ELEMENT &&
+          TTS_AUDIO_ELEMENT.paused &&
+          TTS_STATE.activeKey
+        ) {
+          TTS_AUDIO_ELEMENT.play().catch(() => {});
+          if (window.DEBUG_AUDIO) console.log('[Audio Recovery] Resumed TTS after device wake/tab return');
+        }
+      } catch (_) {}
+    }, 150);
+  }, { passive: true });
+} catch (_) {}
 
 function ttsUnlockAudio() {
   // Prime TTS_AUDIO_ELEMENT — the actual playback element — synchronously
