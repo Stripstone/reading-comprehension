@@ -39,35 +39,12 @@ This document is the **working layer** between:
 ## 1. Bugs
 
 ### 🔴 Critical (Blocking)
-
-- **TTS book-switch bug**
-  - Repro: Play TTS on Page 1 → switch book → play Page 1 again
-  - Result: Plays previous book’s Page 1
-  - Risk: Breaks core trust and correctness
-
-- **TTS mid-page pause (intermittent)**
-  - Audio pauses during playback
-  - Risk: Core function unreliable
-
-- **Music stops under low connectivity**
-  - Fails to loop, cannot recover without reload
-  - Risk: System appears broken
-
-- **TTS highlight desync**
-  - Highlighting lags or freezes while audio continues
-  - Risk: Breaks comprehension loop
-
-- **Clicks passing through modals**
-  - UI interaction occurs behind modal
-  - Risk: UI integrity broken
+*(none — all resolved)*
 
 ---
 
 ### 🟡 High (Pre-Validation)
-
-- **TTS playback instability under weak connection**
-  - Voice becomes inconsistent or stops
-  - Likely buffering / streaming issue
+*(none — all resolved)*
 
 ---
 
@@ -76,17 +53,40 @@ This document is the **working layer** between:
 
 ---
 
+### ✅ Resolved
+
+- **TTS book-switch bug** — **Built**
+  - Repro: Play TTS on Page 1 → switch book → play Page 1 again
+  - Root cause: Playback sessions keyed by page index caused collisions across book switches
+  - Fix: Monotonic `TTS_GEN` counter incremented on every `ttsStop()`. Stale async chains bail immediately on generation mismatch.
+
+- **TTS mid-page pause (intermittent)** — **Built**
+  - Root cause: No stall recovery logic; retry timing fired before buffer filled
+  - Fix: Stall recovery with backoff (1500ms → 4000ms → 9000ms), `readyState < 2` guard to skip initial buffering, early exit if playback self-resumes
+
+- **Music stops under low connectivity** — **Built**
+  - Root cause: No handling for `error` or `ended` events on background music
+  - Fix: `restartBgMusic` wired to both events; respects mute state on recovery
+
+- **TTS highlight desync** — **Built**
+  - Root cause: Static 60-second timing placeholder before real timing applied
+  - Fix: Character-based timing estimate (~950 chars/min); Azure highlight refined on `timeupdate`
+  - Note: First-sentence timing still imperfect — Azure does not provide speech marks. Estimate only. Accepted as-is.
+
+- **Clicks passing through modals** — **Built**
+  - Root cause: Event bubbling to document-level handlers
+  - Fix: `e.stopPropagation()` added to all three modal overlays (`ui.js`, `import.js`, `library.js`)
+
+- **TTS playback instability under weak connection** — **Built**
+  - Root cause: Audio downloaded at playback time; no retry logic
+  - Fix: Binary preload during countdown, stall recovery with backoff, `readyState < 2` guard. See preload system below.
+
+---
+
 ## 2. Pre-Launch Features
 
 ### 🔴 Critical (Blocking)
-
-- **Reading progress persistence (continuous)**
-  - Persist `lastReadPageIndex` on page load / navigation
-  - Required for core “resume reading” experience
-
-- **TTS preloading for next page**
-  - Reduce latency between pages
-  - Investigate relation to mid-page pauses
+*(none — all resolved)*
 
 ---
 
@@ -100,6 +100,25 @@ This document is the **working layer** between:
 
 ### 🟢 Normal
 *(none)*
+
+---
+
+### ✅ Resolved
+
+- **Reading progress persistence** — **Built**
+  - `lastReadPageIndex` persisted in `state.js` session snapshot
+  - Restored on boot; scroll position restored after `render()`
+  - Boot scroll uses `window.load` + 300ms settle (replaced fixed timeout)
+  - Also resolved: `currentPageIndex` undeclared variable silently broke all session restore. Fixed with `typeof` guard.
+  - Also resolved: `goalTime` and `goalCharCount` now included in session snapshot — knobs survive refresh
+
+- **TTS preloading for next page** — **Built** (⚠️ S3 CORS required for full benefit — see Section 5)
+  - Full binary preload during autoplay countdown: fetches audio file as `Blob`, stores as `URL.createObjectURL`
+  - Play block consumes `preloadedBlobUrl` — plays from memory, `readyState=4` instantly
+  - Preserves preload on normal countdown completion (`clearPreload: false`)
+  - Keep-warm skips silent audio injection when preload exists
+  - Blob URL revoked on `ended`, `error`, and `ttsStop()`
+  - Without S3 CORS policy applied, `fetch()` to S3 is blocked; system falls back to `<audio src>` gracefully
 
 ---
 
@@ -157,24 +176,21 @@ This document is the **working layer** between:
 ## 4. Platform & Connectivity Issues
 
 ### 🔴 Critical (Blocking)
-
-- **Audio instability under weak/spotty connection**
-  - Music stops looping
-  - TTS becomes inconsistent
-  - Highlighting desynchronizes
-  - Risk: System fails under realistic network conditions
+*(none — all resolved)*
 
 ---
 
 ### 🟡 High (Pre-Validation)
 
-- **TTS dependency on live connection**
-  - Playback degrades after initial load
-  - Needs stronger caching strategy
+- **Preload window may be insufficient on GPRS / very slow connections**
+  - 3-second countdown may not allow full binary download before playback
+  - System falls back gracefully to `<audio src>` assignment, but delays persist
+  - Full mitigation requires S3 CORS policy (owner action — see Section 5)
 
-- **Device sleep interaction**
-  - Device-level sleep interrupts playback/session
-  - Requires mitigation or guidance
+- **Device sleep full session persistence**
+  - Wake Lock keeps screen on during cloud TTS playback
+  - Wake Lock OS revocation: 30-second cooldown before re-acquiring
+  - Full device-sleep session persistence (non-TTS context) is post-launch
 
 ---
 
@@ -183,21 +199,60 @@ This document is the **working layer** between:
 
 ---
 
-## 5. Planned Mitigations
+### ✅ Resolved
 
-- **TTS caching improvements**
-  - Ensure full-page audio is available before playback
-  - Reduce reliance on active connection
+- **Audio instability under weak/spotty connection** — **Built**
+  - Music: `restartBgMusic` wired to `error` + `ended`
+  - TTS stalls: backoff retry (1500ms → 4000ms → 9000ms) + `readyState < 2` guard
+  - Highlighting: character-based timing estimate; refined on `timeupdate`
 
-- **Audio recovery handling**
-  - Detect failure and allow restart without reload
+- **TTS dependency on live connection** — **Built** (partial — see S3 CORS in Section 5)
+  - Binary preload fetches audio into memory during countdown
+  - Stall recovery handles mid-playback drops
+  - Full pre-buffering depends on S3 CORS being configured
 
-- **Highlight synchronization robustness**
-  - Reduce dependence on fragile timing events
+- **Device sleep interrupts playback** — **Built**
+  - `visibilitychange` resume handlers in `tts.js` and `audio.js`
+  - Screen Wake Lock acquired during cloud TTS; released on `ttsStop()`
+  - Wake Lock revocation cooldown prevents acquire/release storms
 
 ---
 
-## 6. Notes
+## 5. Outstanding Infrastructure Actions (Owner)
+
+These are not code tasks — they are AWS console actions that unlock built features.
+
+- **S3 CORS policy** — unlocks binary preload for slow connections
+  - Without this, `fetch()` to S3 is CORS-blocked; binary preload silently fails; system falls back to `<audio src>`
+  - Audio plays correctly either way — this is a performance unlock, not a bug fix
+  - Set `AllowedOrigins` to production domain once confirmed
+  - See `LaunchPlan.md §11.3` for the full policy
+
+- **S3 Lifecycle policy** — 90-day expiry on `tts/` prefix
+  - S3 keeps objects forever by default; at 100k users storage costs compound
+  - Recommended: expire objects older than 90 days (popular content naturally re-caches)
+  - See `LaunchPlan.md §11.2` for cost model
+
+- **Remove Polly env vars from Vercel** — billing risk
+  - If `POLLY_VOICE_ID` etc. are present, Polly fallback in `index.js` can silently activate
+  - Confirm absent to make Azure-only billing airtight
+  - See `LaunchPlan.md §11.4`
+
+---
+
+## 6. Post-Launch Cleanup
+
+These items do not affect current behavior but should be addressed post-launch.
+
+- **Dead Polly synthesis path in `index.js`** — strip down to Azure-only with clean error on Azure failure
+- **Unused Polly env vars on Vercel** — remove after launch confirmation
+- **`speechMarks` path in `index.js`** — currently returns `null` for Azure; clean up post-launch
+- **Voice preference UI** — allow user to set and name preferred voices; consider character presentation (backlog idea)
+- **Stall recovery is reactive, not predictive** — does not anticipate drops; only reacts. Post-launch improvement.
+
+---
+
+## 7. Notes
 
 - Bugs and platform issues should also be reflected in:
   - **ExperienceSpec.md → Runtime Observations**
