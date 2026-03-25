@@ -37,12 +37,39 @@ let TTS_AUDIO_UNLOCKED = false;
 const TTS_AUDIO_ELEMENT = new Audio();
 TTS_AUDIO_ELEMENT.preload = "auto";
 
-// Tiny valid silent WAV used to prime TTS_AUDIO_ELEMENT within a user gesture.
-// WAV chosen over MP3 data URI: Firefox rejects the truncated MP3 base64 with
-// NS_ERROR_DOM_MEDIA_METADATA_ERR, flooding the console. WAV has a simple fixed
-// header that every browser parses cleanly with no decode errors.
-// This is a 0.1s mono 8kHz 8-bit WAV containing silence.
-const TTS_SILENT_SRC = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEACwAAABYAAgAEAAAAZGF0YQAAAAA=";
+// Tiny silent WAV used to prime TTS_AUDIO_ELEMENT within a user gesture.
+// Generated dynamically via Blob so every browser gets a correctly-encoded PCM
+// WAV with a valid RIFF header — avoiding the NS_ERROR_DOM_MEDIA_METADATA_ERR
+// Firefox throws on hardcoded data URIs with truncated or malformed audio.
+// 1-channel, 8000 Hz, 8-bit PCM, 2 samples of silence (0x80 = unsigned midpoint).
+const TTS_SILENT_SRC = (() => {
+  try {
+    const buf = new ArrayBuffer(46);
+    const v = new DataView(buf);
+    // RIFF header
+    [0x52,0x49,0x46,0x46].forEach((b,i) => v.setUint8(i, b));    // "RIFF"
+    v.setUint32(4,  38,   true);                                   // file size - 8
+    [0x57,0x41,0x56,0x45].forEach((b,i) => v.setUint8(8+i, b));   // "WAVE"
+    // fmt chunk
+    [0x66,0x6D,0x74,0x20].forEach((b,i) => v.setUint8(12+i, b)); // "fmt "
+    v.setUint32(16, 16,   true);  // chunk size
+    v.setUint16(20, 1,    true);  // PCM format
+    v.setUint16(22, 1,    true);  // mono
+    v.setUint32(24, 8000, true);  // sample rate
+    v.setUint32(28, 8000, true);  // byte rate
+    v.setUint16(32, 1,    true);  // block align
+    v.setUint16(34, 8,    true);  // 8-bit
+    // data chunk
+    [0x64,0x61,0x74,0x61].forEach((b,i) => v.setUint8(36+i, b)); // "data"
+    v.setUint32(40, 2,    true);  // 2 samples
+    v.setUint8(44, 0x80);          // silence (unsigned 8-bit midpoint)
+    v.setUint8(45, 0x80);
+    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+  } catch (_) {
+    // Fallback: empty src — ttsUnlockAudio will still call play() for the gesture
+    return '';
+  }
+})();
 
 // ---- Generation counter ----
 // Incremented on every ttsStop(). Every queued play captures the current value
@@ -63,16 +90,17 @@ function _ttsHandleStall() {
   if (!TTS_STATE.audio || TTS_STATE.audio !== TTS_AUDIO_ELEMENT) return;
   // Ignore stalls on the silent keep-warm / unlock primer — they are expected.
   if (!TTS_AUDIO_ELEMENT.src || TTS_AUDIO_ELEMENT.src === TTS_SILENT_SRC) return;
+  // readyState 0 (HAVE_NOTHING) or 1 (HAVE_METADATA) = initial loading, not a stall.
+  // 'waiting' fires immediately after play() when src is freshly assigned and the
+  // buffer is empty — this is normal and resolves on its own as the file downloads.
+  // Only act on readyState >= 2 (HAVE_CURRENT_DATA) where we had data and lost it.
+  if (TTS_AUDIO_ELEMENT.readyState < 2) return;
   if (window.DEBUG_AUDIO) console.warn('[Audio Recovery] Playback stalled — starting backoff retry');
-  // Delays tuned for slow connections (GPRS ~50kbps):
-  // A 12KB audio file takes ~2s to buffer at 50kbps, so short retries fire before
-  // the buffer fills and do nothing useful. Longer gaps let the buffer recover.
-  // Each attempt also checks audio.paused — if the browser self-resumed, skip.
   const delays = [1500, 4000, 9000];
   let attempt = 0;
   function tryResume() {
-    if (!TTS_STATE.audio || TTS_STATE.audio !== TTS_AUDIO_ELEMENT) return; // cancelled
-    if (!TTS_AUDIO_ELEMENT.src || TTS_AUDIO_ELEMENT.src === TTS_SILENT_SRC) return; // keep-warm took over
+    if (!TTS_STATE.audio || TTS_STATE.audio !== TTS_AUDIO_ELEMENT) return;
+    if (!TTS_AUDIO_ELEMENT.src || TTS_AUDIO_ELEMENT.src === TTS_SILENT_SRC) return;
     if (!TTS_AUDIO_ELEMENT.paused) return; // already resumed on its own — skip
     attempt++;
     if (window.DEBUG_AUDIO) console.warn(`[Audio Recovery] Retry attempt ${attempt}`);
@@ -252,7 +280,10 @@ function ttsSetHintButton(key, disabled) {
   } catch (_) {}
 }
 
-function ttsAutoplayCancelCountdown() {
+// clearPreload: true (default) when cancelled prematurely (user action, book switch,
+// ttsStop). false when called on normal countdown completion — the preloaded audio
+// must survive the 400ms window until ttsSpeakQueue consumes it.
+function ttsAutoplayCancelCountdown({ clearPreload = true } = {}) {
   // Capture index BEFORE resetting state so the button reset can find the right page.
   const idx = AUTOPLAY_STATE.countdownPageIndex;
 
@@ -265,22 +296,24 @@ function ttsAutoplayCancelCountdown() {
     AUTOPLAY_STATE.launchTimerId = null;
   }
 
-  // Abort any in-flight preload fetch
-  if (AUTOPLAY_STATE.preloadAbort) {
-    try { AUTOPLAY_STATE.preloadAbort.abort(); } catch (_) {}
-    AUTOPLAY_STATE.preloadAbort = null;
+  if (clearPreload) {
+    // Premature cancellation: abort in-flight preload and wipe all cached data.
+    if (AUTOPLAY_STATE.preloadAbort) {
+      try { AUTOPLAY_STATE.preloadAbort.abort(); } catch (_) {}
+      AUTOPLAY_STATE.preloadAbort = null;
+    }
+    AUTOPLAY_STATE.preloadedKey = null;
+    AUTOPLAY_STATE.preloadedUrl = null;
+    AUTOPLAY_STATE.preloadedMarks = null;
+    AUTOPLAY_STATE.audioReady = false;
   }
-
-  // Clear preloaded data
-  AUTOPLAY_STATE.preloadedKey = null;
-  AUTOPLAY_STATE.preloadedUrl = null;
-  AUTOPLAY_STATE.preloadedMarks = null;
-  AUTOPLAY_STATE.audioReady = false;
+  // On normal completion (clearPreload=false): leave preload data intact so
+  // ttsSpeakQueue (called 400ms later) can consume it via alreadyArmed check.
 
   AUTOPLAY_STATE.countdownPageIndex = -1;
   AUTOPLAY_STATE.countdownSec = 0;
 
-  if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] Countdown cancelled for page ${idx}`);
+  if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] Countdown cancelled for page ${idx} (clearPreload:${clearPreload})`);
 
   // Reset button text on the page that was counting down.
   try {
@@ -350,7 +383,8 @@ function ttsAutoplayScheduleNext(pageIndex) {
   AUTOPLAY_STATE.countdownTimerId = setInterval(() => {
     AUTOPLAY_STATE.countdownSec -= 1;
     if (AUTOPLAY_STATE.countdownSec <= 0) {
-      ttsAutoplayCancelCountdown();
+      // Normal completion — preserve preload data for the 400ms launch window.
+      ttsAutoplayCancelCountdown({ clearPreload: false });
       // Scroll to next page
       const nextPageEl = pageEls[nextIndex];
       if (nextPageEl) nextPageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
