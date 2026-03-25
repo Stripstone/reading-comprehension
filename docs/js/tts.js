@@ -37,8 +37,12 @@ let TTS_AUDIO_UNLOCKED = false;
 const TTS_AUDIO_ELEMENT = new Audio();
 TTS_AUDIO_ELEMENT.preload = "auto";
 
-// Tiny silent MP3 used to prime TTS_AUDIO_ELEMENT within a user gesture.
-const TTS_SILENT_SRC = "data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAA";
+// Tiny valid silent WAV used to prime TTS_AUDIO_ELEMENT within a user gesture.
+// WAV chosen over MP3 data URI: Firefox rejects the truncated MP3 base64 with
+// NS_ERROR_DOM_MEDIA_METADATA_ERR, flooding the console. WAV has a simple fixed
+// header that every browser parses cleanly with no decode errors.
+// This is a 0.1s mono 8kHz 8-bit WAV containing silence.
+const TTS_SILENT_SRC = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEACwAAABYAAgAEAAAAZGF0YQAAAAA=";
 
 // ---- Generation counter ----
 // Incremented on every ttsStop(). Every queued play captures the current value
@@ -60,11 +64,16 @@ function _ttsHandleStall() {
   // Ignore stalls on the silent keep-warm / unlock primer — they are expected.
   if (!TTS_AUDIO_ELEMENT.src || TTS_AUDIO_ELEMENT.src === TTS_SILENT_SRC) return;
   if (window.DEBUG_AUDIO) console.warn('[Audio Recovery] Playback stalled — starting backoff retry');
-  const delays = [200, 600, 1400];
+  // Delays tuned for slow connections (GPRS ~50kbps):
+  // A 12KB audio file takes ~2s to buffer at 50kbps, so short retries fire before
+  // the buffer fills and do nothing useful. Longer gaps let the buffer recover.
+  // Each attempt also checks audio.paused — if the browser self-resumed, skip.
+  const delays = [1500, 4000, 9000];
   let attempt = 0;
   function tryResume() {
     if (!TTS_STATE.audio || TTS_STATE.audio !== TTS_AUDIO_ELEMENT) return; // cancelled
     if (!TTS_AUDIO_ELEMENT.src || TTS_AUDIO_ELEMENT.src === TTS_SILENT_SRC) return; // keep-warm took over
+    if (!TTS_AUDIO_ELEMENT.paused) return; // already resumed on its own — skip
     attempt++;
     if (window.DEBUG_AUDIO) console.warn(`[Audio Recovery] Retry attempt ${attempt}`);
     try { TTS_AUDIO_ELEMENT.play().catch(() => {}); } catch (_) {}
@@ -84,14 +93,19 @@ TTS_AUDIO_ELEMENT.addEventListener('stalled', _ttsHandleStall);
 // Wake lock is acquired when cloud TTS starts playing and released in ttsStop().
 // If the OS revokes the lock (e.g. low battery), we reacquire on visibilitychange.
 let _ttsWakeLock = null;
+let _ttsWakeLockRevokedAt = 0; // timestamp of last OS revocation
+const _WAKELOCK_COOLDOWN_MS = 30000; // don't re-acquire within 30s of OS revocation
 
 async function _ttsAcquireWakeLock() {
   if (!navigator?.wakeLock) return;
   if (_ttsWakeLock && !_ttsWakeLock.released) return; // already held
+  // Respect cooldown — OS revoked it recently, don't immediately re-request.
+  if (Date.now() - _ttsWakeLockRevokedAt < _WAKELOCK_COOLDOWN_MS) return;
   try {
     _ttsWakeLock = await navigator.wakeLock.request('screen');
     _ttsWakeLock.addEventListener('release', () => {
       if (window.DEBUG_AUDIO) console.log('[WakeLock] Released by OS');
+      _ttsWakeLockRevokedAt = Date.now(); // start cooldown
       _ttsWakeLock = null;
     });
     if (window.DEBUG_AUDIO) console.log('[WakeLock] Acquired');
@@ -200,7 +214,13 @@ function ttsKeepWarmForAutoplay() {
   if (!AUTOPLAY_STATE.enabled) return;
   try {
     TTS_AUDIO_ELEMENT.loop = true;
-    TTS_AUDIO_ELEMENT.src = TTS_SILENT_SRC;
+    // If a preloaded URL is already armed in the element (audioReady=true), do NOT
+    // overwrite audio.src with the silent primer — that would destroy the buffered
+    // content and force a full re-fetch when the next page starts. The Safari gesture
+    // warmth comes from play() being called, not from the specific src content.
+    if (!AUTOPLAY_STATE.audioReady) {
+      TTS_AUDIO_ELEMENT.src = TTS_SILENT_SRC;
+    }
     TTS_AUDIO_ELEMENT.volume = 0;
     TTS_AUDIO_ELEMENT.play().catch(() => {});
   } catch (_) {}
