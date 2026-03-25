@@ -231,6 +231,11 @@ const AUTOPLAY_STATE = {
   preloadedUrl: null,       // S3 URL fetched during countdown
   preloadedMarks: null,     // sentence marks (may be null on Azure path)
   audioReady: false,        // true when TTS_AUDIO_ELEMENT.src is already armed with preloadedUrl
+  // Binary preload: the audio file downloaded into memory as a Blob URL.
+  // When set, the play block uses this instead of re-fetching over the network —
+  // critical for slow connections (GPRS ~50kbps) where the audio download alone
+  // takes 24-40 seconds.
+  preloadedBlobUrl: null,
 };
 
 // Keep TTS_AUDIO_ELEMENT silently "active" between pages during an autoplay
@@ -302,6 +307,10 @@ function ttsAutoplayCancelCountdown({ clearPreload = true } = {}) {
       try { AUTOPLAY_STATE.preloadAbort.abort(); } catch (_) {}
       AUTOPLAY_STATE.preloadAbort = null;
     }
+    if (AUTOPLAY_STATE.preloadedBlobUrl) {
+      try { URL.revokeObjectURL(AUTOPLAY_STATE.preloadedBlobUrl); } catch (_) {}
+      AUTOPLAY_STATE.preloadedBlobUrl = null;
+    }
     AUTOPLAY_STATE.preloadedKey = null;
     AUTOPLAY_STATE.preloadedUrl = null;
     AUTOPLAY_STATE.preloadedMarks = null;
@@ -351,33 +360,85 @@ function ttsAutoplayScheduleNext(pageIndex) {
   }
   updateBtn();
 
-  // Background preload: fetch next page audio during the countdown so playback
-  // starts without latency. Uses its own AbortController so it never clobbers
-  // TTS_STATE.abort (the main playback controller).
+  // Background preload: fetch the signed URL then download the audio binary as a Blob.
+  // Storing the binary in memory means the play block can assign a blob:// URL
+  // that loads instantly rather than waiting for a network download at playback time.
+  // On GPRS (~50kbps) a neural TTS page (~150KB) takes 24-40s to download —
+  // doing it during the countdown means that wait happens while the user is still
+  // reading, not after they've already moved to the next page.
   const capturedGen = TTS_GEN;
   const nextText = (typeof pages !== 'undefined' && pages[nextIndex]) ? pages[nextIndex] : '';
   if (nextText && typeof pollyFetchUrl === 'function') {
-    const preloadController = new AbortController();
-    AUTOPLAY_STATE.preloadAbort = preloadController;
-    pollyFetchUrl(nextText, { sentenceMarks: true }, preloadController).then(tts => {
-      // Bail if the session has changed or the countdown was cancelled
-      if (TTS_GEN !== capturedGen || AUTOPLAY_STATE.countdownPageIndex !== pageIndex) return;
-      AUTOPLAY_STATE.preloadedKey  = `page-${nextIndex}`;
-      AUTOPLAY_STATE.preloadedUrl  = tts.url;
-      AUTOPLAY_STATE.preloadedMarks = Array.isArray(tts.sentenceMarks) ? tts.sentenceMarks : null;
-      // Switch audio element to the real URL now (within the still-active Safari
-      // gesture context) so play() at countdown end is treated as a resume.
-      // audioReady=true signals that the element is already armed with this URL —
-      // the play block must NOT reassign src or it will reset the buffer.
-      AUTOPLAY_STATE.audioReady = false;
+    // If early preload already fetched the URL during page reading, skip pollyFetchUrl
+    // and go straight to binary download (or re-use blob if already done).
+    const alreadyHaveUrl = (AUTOPLAY_STATE.preloadedKey === `page-${nextIndex}` && AUTOPLAY_STATE.preloadedUrl);
+
+    const runPreload = async () => {
       try {
-        TTS_AUDIO_ELEMENT.loop = false;
-        TTS_AUDIO_ELEMENT.src  = tts.url;
-        TTS_AUDIO_ELEMENT.load();
-        AUTOPLAY_STATE.audioReady = true;
-      } catch (_) {}
-      if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] Preloaded page ${nextIndex}, audioReady: ${AUTOPLAY_STATE.audioReady}`);
-    }).catch(() => {});
+        // ── Step 1: get the signed URL (skip if early preload already did this) ──
+        let ttsUrl, ttsMarks;
+        if (alreadyHaveUrl) {
+          ttsUrl   = AUTOPLAY_STATE.preloadedUrl;
+          ttsMarks = AUTOPLAY_STATE.preloadedMarks;
+          if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] URL already preloaded for page ${nextIndex}, downloading binary…`);
+        } else {
+          const urlController = new AbortController();
+          AUTOPLAY_STATE.preloadAbort = urlController;
+          const tts = await pollyFetchUrl(nextText, { sentenceMarks: true }, urlController);
+          if (TTS_GEN !== capturedGen || AUTOPLAY_STATE.countdownPageIndex !== pageIndex) return;
+          ttsUrl   = tts.url;
+          ttsMarks = Array.isArray(tts.sentenceMarks) ? tts.sentenceMarks : null;
+          AUTOPLAY_STATE.preloadedKey    = `page-${nextIndex}`;
+          AUTOPLAY_STATE.preloadedUrl    = ttsUrl;
+          AUTOPLAY_STATE.preloadedMarks  = ttsMarks;
+          AUTOPLAY_STATE.preloadAbort    = null;
+        }
+
+        // If we already have the blob from an earlier download, skip the fetch
+        if (AUTOPLAY_STATE.preloadedBlobUrl) {
+          if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] Binary already in memory for page ${nextIndex}`);
+          // Arm the element with the blob URL for Safari gesture context
+          try {
+            TTS_AUDIO_ELEMENT.loop = false;
+            TTS_AUDIO_ELEMENT.src  = AUTOPLAY_STATE.preloadedBlobUrl;
+            TTS_AUDIO_ELEMENT.load();
+            AUTOPLAY_STATE.audioReady = true;
+          } catch (_) {}
+          return;
+        }
+
+        // ── Step 2: download the audio binary ──
+        if (TTS_GEN !== capturedGen || AUTOPLAY_STATE.countdownPageIndex !== pageIndex) return;
+        const binController = new AbortController();
+        AUTOPLAY_STATE.preloadAbort = binController;
+        const resp = await fetch(ttsUrl, { signal: binController.signal });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const blob = await resp.blob();
+        if (TTS_GEN !== capturedGen || AUTOPLAY_STATE.countdownPageIndex !== pageIndex) return;
+
+        const blobUrl = URL.createObjectURL(blob);
+        AUTOPLAY_STATE.preloadedBlobUrl = blobUrl;
+        AUTOPLAY_STATE.preloadAbort     = null;
+
+        // Arm the element with the blob URL so play() fires from memory.
+        // Also satisfies Safari's requirement for audio.load() within gesture context.
+        AUTOPLAY_STATE.audioReady = false;
+        try {
+          TTS_AUDIO_ELEMENT.loop = false;
+          TTS_AUDIO_ELEMENT.src  = blobUrl;
+          TTS_AUDIO_ELEMENT.load();
+          AUTOPLAY_STATE.audioReady = true;
+        } catch (_) {}
+
+        if (window.DEBUG_AUTOPLAY) {
+          console.log(`[Autoplay] Binary preloaded for page ${nextIndex} (${Math.round(blob.size/1024)}KB), audioReady: ${AUTOPLAY_STATE.audioReady}`);
+        }
+      } catch (e) {
+        AUTOPLAY_STATE.preloadAbort = null;
+        if (window.DEBUG_AUTOPLAY) console.warn(`[Autoplay] Preload failed for page ${nextIndex}:`, e.message);
+      }
+    };
+    runPreload();
   }
 
   AUTOPLAY_STATE.countdownTimerId = setInterval(() => {
@@ -814,6 +875,11 @@ function ttsStop() {
   TTS_STATE.ttsSource = null;
   // Release screen wake lock now that TTS has stopped.
   _ttsReleaseWakeLock();
+  // Revoke any unconsumed preloaded blob to free memory.
+  if (AUTOPLAY_STATE?.preloadedBlobUrl) {
+    try { URL.revokeObjectURL(AUTOPLAY_STATE.preloadedBlobUrl); } catch(_) {}
+    AUTOPLAY_STATE.preloadedBlobUrl = null;
+  }
 }
 
 // externalController: pass an AbortController to use instead of creating a new one
@@ -1071,17 +1137,20 @@ async function ttsSpeakQueue(key, parts) {
   if (window.DEBUG_TTS) console.log(`[TTS_GEN] Starting play '${key}' at gen ${myGen}`);
 
   // Consume preloaded data if available for this key (fetched during autoplay countdown).
-  // Preloaded data has the same shape as pollyFetchUrl's return value.
   let preloadedData = null;
   let preloadedAudioReady = false;
+  let preloadedBlobUrl = null;
   if (AUTOPLAY_STATE.preloadedKey === key && AUTOPLAY_STATE.preloadedUrl) {
     preloadedData = { url: AUTOPLAY_STATE.preloadedUrl, sentenceMarks: AUTOPLAY_STATE.preloadedMarks };
     preloadedAudioReady = !!AUTOPLAY_STATE.audioReady;
+    // Consume the blob URL — will be used as playback src if available.
+    preloadedBlobUrl = AUTOPLAY_STATE.preloadedBlobUrl || null;
+    AUTOPLAY_STATE.preloadedBlobUrl = null; // consumed
     AUTOPLAY_STATE.preloadedKey   = null;
     AUTOPLAY_STATE.preloadedUrl   = null;
     AUTOPLAY_STATE.preloadedMarks = null;
     AUTOPLAY_STATE.audioReady     = false;
-    if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] Consumed preloaded audio for '${key}', audioReady: ${preloadedAudioReady}`);
+    if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] Consumed preloaded audio for '${key}', audioReady: ${preloadedAudioReady}, hasBlobUrl: ${!!preloadedBlobUrl}`);
   }
 
   // Preferred path: Polly via /api/tts. If it fails, fall back to browser voices.
@@ -1126,26 +1195,45 @@ async function ttsSpeakQueue(key, parts) {
         // loop=false is always required — may still be true from ttsKeepWarmForAutoplay.
         try { audio.loop = false; audio.pause(); } catch (_) {}
 
-        // KEY FIX: if the preloader already armed the element with this exact URL
-        // (audioReady=true), do NOT reassign audio.src. Reassigning src — even to the
-        // same URL — resets the browser's buffer and triggers a full re-fetch, which is
-        // what causes the 4-second wait despite a successful preload.
-        // Only skip reassignment for the first part (i===0) where preloadedData applies.
-        const alreadyArmed = (i === 0 && preloadedAudioReady && audio.src === url);
-        if (!alreadyArmed) {
+        // Determine the actual src to use for playback:
+        // 1. Blob URL (audio binary already in memory): assign and play instantly —
+        //    no network needed, readyState reaches 4 immediately.
+        // 2. Element already armed with S3 URL (audioReady=true): skip reassignment
+        //    to preserve the buffer that load() built during countdown.
+        // 3. Fresh S3 URL: assign and let the browser download it.
+        let blobToRevoke = null;
+        if (i === 0 && preloadedBlobUrl) {
+          // Binary is in memory — this is the fast path on slow connections.
+          audio.src = preloadedBlobUrl;
+          blobToRevoke = preloadedBlobUrl;
+          if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] Playing from blob (in-memory binary)`);
+        } else if (i === 0 && preloadedAudioReady) {
+          // Element was armed with the S3 URL during countdown and not clobbered.
+          // Don't touch src — the buffer is intact.
+          if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] Playing from armed S3 URL (buffer intact)`);
+        } else {
+          // Normal path — assign URL and let browser fetch.
           audio.src = url;
         }
+
+        const alreadyArmed = (i === 0 && !preloadedBlobUrl && preloadedAudioReady);
         if (window.DEBUG_AUTOPLAY && i === 0) {
-          console.log(`[Autoplay] Play block: alreadyArmed=${alreadyArmed}, readyState=${audio.readyState}`);
+          console.log(`[Autoplay] Play block: alreadyArmed=${alreadyArmed}, hasBlobUrl=${!!preloadedBlobUrl}, readyState=${audio.readyState}`);
         }
 
         TTS_STATE.audio = audio;
-        // Polly audio volume (0..1). Persisted via the Voices slider.
         try { audio.volume = Math.max(0, Math.min(1, Number(TTS_STATE.volume ?? 1))); } catch (_) {}
-        // Start sentence highlight loop if prepared for this action.
         ttsStartHighlightLoop(audio);
-        audio.onended = () => { ttsClearSentenceHighlight(); resolve(); };
-        audio.onerror = () => reject(new Error("Audio playback failed"));
+        audio.onended = () => {
+          ttsClearSentenceHighlight();
+          // Revoke the blob URL now that playback is complete to free memory.
+          if (blobToRevoke) { try { URL.revokeObjectURL(blobToRevoke); } catch(_) {} }
+          resolve();
+        };
+        audio.onerror = () => {
+          if (blobToRevoke) { try { URL.revokeObjectURL(blobToRevoke); } catch(_) {} }
+          reject(new Error("Audio playback failed"));
+        };
         audio.play().catch(reject);
       });
     }
