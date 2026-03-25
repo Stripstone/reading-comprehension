@@ -764,11 +764,13 @@ try {
 
     // Phase 0 — scroll to last-read page.
     // lastFocusedPageIndex was restored from the session snapshot by
-    // loadPersistedSessionIfAny(). Run after a short delay so the DOM has
-    // painted and any browser-native scroll restoration doesn't race us.
+    // loadPersistedSessionIfAny(). Defer until window.load so all resources
+    // (fonts, images, scripts) have resolved and layout is stable — avoids the
+    // 4-5s delay on slow connections that a fixed timeout can't account for.
+    // A short 300ms settle after load prevents browser scroll-restoration races.
     if (typeof lastFocusedPageIndex === 'number' && lastFocusedPageIndex > 0) {
       const targetIdx = lastFocusedPageIndex;
-      requestAnimationFrame(() => {
+      const doScroll = () => {
         setTimeout(() => {
           try {
             const pageEls = document.querySelectorAll('.page');
@@ -778,8 +780,14 @@ try {
               if (window.DEBUG_TTS) console.log(`[Boot] Restored to page ${targetIdx}`);
             }
           } catch (_) {}
-        }, 1500);
-      });
+        }, 300);
+      };
+      // If load already fired (fast connection), run immediately; otherwise wait.
+      if (document.readyState === 'complete') {
+        doScroll();
+      } else {
+        window.addEventListener('load', doScroll, { once: true });
+      }
     }
   }
 } catch (_) {}

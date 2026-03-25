@@ -48,18 +48,23 @@ let TTS_GEN = 0;
 
 // ---- Stall recovery ----
 // Fires when the browser stalls mid-playback (e.g. S3 buffer underrun or network dip).
-// A single 200ms retry is not robust enough under spotty connectivity — a second stall
-// can occur before the first retry resolves, or the buffer may need more time to refill.
 // We use a 3-attempt exponential backoff: 200ms → 600ms → 1400ms.
-// Each attempt bails early if the element resumed on its own (not paused) or is no
-// longer the active element.
+//
+// GUARD: Only act on real audio URLs — never on the silent primer (TTS_SILENT_SRC)
+// used by ttsUnlockAudio() and ttsKeepWarmForAutoplay(). The silent MP3 is intentionally
+// minimal and reliably fires 'waiting' on every play. Without this guard the backoff
+// chain runs constantly during every autoplay countdown, producing log noise and
+// spurious play() calls that interfere with the real audio element state.
 function _ttsHandleStall() {
   if (!TTS_STATE.audio || TTS_STATE.audio !== TTS_AUDIO_ELEMENT) return;
+  // Ignore stalls on the silent keep-warm / unlock primer — they are expected.
+  if (!TTS_AUDIO_ELEMENT.src || TTS_AUDIO_ELEMENT.src === TTS_SILENT_SRC) return;
   if (window.DEBUG_AUDIO) console.warn('[Audio Recovery] Playback stalled — starting backoff retry');
   const delays = [200, 600, 1400];
   let attempt = 0;
   function tryResume() {
     if (!TTS_STATE.audio || TTS_STATE.audio !== TTS_AUDIO_ELEMENT) return; // cancelled
+    if (!TTS_AUDIO_ELEMENT.src || TTS_AUDIO_ELEMENT.src === TTS_SILENT_SRC) return; // keep-warm took over
     attempt++;
     if (window.DEBUG_AUDIO) console.warn(`[Audio Recovery] Retry attempt ${attempt}`);
     try { TTS_AUDIO_ELEMENT.play().catch(() => {}); } catch (_) {}
@@ -72,7 +77,43 @@ function _ttsHandleStall() {
 TTS_AUDIO_ELEMENT.addEventListener('waiting', _ttsHandleStall);
 TTS_AUDIO_ELEMENT.addEventListener('stalled', _ttsHandleStall);
 
-// ---- Device-sleep / tab-switch resume ----
+// ---- Screen Wake Lock ----
+// Prevents the device screen from sleeping while TTS is reading aloud.
+// The Screen Wake Lock API is supported in Chrome 84+, Edge 84+, and Safari 16.4+.
+// Silently no-ops on unsupported browsers.
+// Wake lock is acquired when cloud TTS starts playing and released in ttsStop().
+// If the OS revokes the lock (e.g. low battery), we reacquire on visibilitychange.
+let _ttsWakeLock = null;
+
+async function _ttsAcquireWakeLock() {
+  if (!navigator?.wakeLock) return;
+  if (_ttsWakeLock && !_ttsWakeLock.released) return; // already held
+  try {
+    _ttsWakeLock = await navigator.wakeLock.request('screen');
+    _ttsWakeLock.addEventListener('release', () => {
+      if (window.DEBUG_AUDIO) console.log('[WakeLock] Released by OS');
+      _ttsWakeLock = null;
+    });
+    if (window.DEBUG_AUDIO) console.log('[WakeLock] Acquired');
+  } catch (_) {}
+}
+
+function _ttsReleaseWakeLock() {
+  if (!_ttsWakeLock || _ttsWakeLock.released) { _ttsWakeLock = null; return; }
+  try { _ttsWakeLock.release(); } catch (_) {}
+  _ttsWakeLock = null;
+  if (window.DEBUG_AUDIO) console.log('[WakeLock] Released');
+}
+
+// Re-acquire if the OS revoked the lock while TTS was still playing
+// (e.g. tab returned to foreground after OS-level screen-off).
+try {
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && TTS_STATE.activeKey) {
+      _ttsAcquireWakeLock();
+    }
+  }, { passive: true });
+} catch (_) {}
 // When the device screen locks (or the OS suspends the audio context), the audio
 // element pauses without firing 'waiting' or 'stalled'. On wake/return, we check
 // if TTS_AUDIO_ELEMENT should still be playing and resume it.
@@ -717,6 +758,8 @@ function ttsStop() {
   TTS_STATE.activeKey = null;
   TTS_STATE.activeBrowserVoiceName = null;
   TTS_STATE.ttsSource = null;
+  // Release screen wake lock now that TTS has stopped.
+  _ttsReleaseWakeLock();
 }
 
 // externalController: pass an AbortController to use instead of creating a new one
@@ -1004,6 +1047,8 @@ async function ttsSpeakQueue(key, parts) {
       if (i === 0 && optsForKeySentenceMarks(key)) {
         try { if (typeof tokenSpend === 'function') tokenSpend('tts'); } catch(_) {}
         TTS_STATE.ttsSource = 'cloud';
+        // Keep screen on while reading — released in ttsStop().
+        _ttsAcquireWakeLock();
       }
 
       if (wantMarks) {
