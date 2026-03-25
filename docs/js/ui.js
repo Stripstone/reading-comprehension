@@ -465,6 +465,7 @@
           tts: {
             gen: typeof TTS_GEN !== 'undefined' ? TTS_GEN : '—',
             activeKey: TTS_STATE?.activeKey ?? null,
+            source: TTS_STATE?.ttsSource ?? null,
             voiceVariant: TTS_STATE?.voiceVariant || 'female',
             activeBrowserVoice: TTS_STATE?.activeBrowserVoiceName || null,
             allEnglishVoices: (() => {
@@ -575,13 +576,14 @@
         try {
           const gen     = typeof TTS_GEN !== 'undefined' ? TTS_GEN : '—';
           const key     = TTS_STATE?.activeKey ?? '—';
+          const src     = TTS_STATE?.ttsSource ?? '—';
           const cdIdx   = AUTOPLAY_STATE?.countdownPageIndex ?? -1;
           const cdSec   = AUTOPLAY_STATE?.countdownSec ?? 0;
           const pKey    = AUTOPLAY_STATE?.preloadedKey ?? '—';
           const hasUrl  = AUTOPLAY_STATE?.preloadedUrl ? '✓' : '✗';
           const cd      = cdIdx >= 0 ? `cd:p${cdIdx}(${cdSec}s)` : 'cd:—';
           overlay.textContent =
-            `GEN:${gen}  key:${key}\n${cd}  pre:${pKey}(${hasUrl})`;
+            `GEN:${gen}  key:${key}  src:${src}\n${cd}  pre:${pKey}(${hasUrl})`;
         } catch (_) {}
         requestAnimationFrame(tickOverlay);
       }
@@ -776,7 +778,7 @@ try {
               if (window.DEBUG_TTS) console.log(`[Boot] Restored to page ${targetIdx}`);
             }
           } catch (_) {}
-        }, 1000);
+        }, 1500);
       });
     }
   }

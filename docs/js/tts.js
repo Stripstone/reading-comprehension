@@ -716,6 +716,7 @@ function ttsStop() {
   ttsClearSentenceHighlight();
   TTS_STATE.activeKey = null;
   TTS_STATE.activeBrowserVoiceName = null;
+  TTS_STATE.ttsSource = null;
 }
 
 // externalController: pass an AbortController to use instead of creating a new one
@@ -942,52 +943,10 @@ async function ttsSpeakQueue(key, parts) {
   // Voice variant (male/female) is respected via browserPickVoice().
   // Sentence highlighting uses boundary events on browser TTS path.
   if (typeof appTier !== 'undefined' && appTier === 'free') {
+    TTS_STATE.ttsSource = 'browser';
     browserSpeakQueue(key, parts);
     return;
   }
-
-  // Edge browser optimisation: Azure Neural voices (Aria, Jenny, Ryan, Guy etc.) are
-  // available natively in Edge via speechSynthesis. If the user has selected a cloud
-  // voice that matches an available browser voice, route to browserSpeakQueue instead
-  // of calling /api/tts — same quality, zero API cost, zero token spend.
-  //
-  // IMPORTANT: The match must be restricted to genuine Azure Neural browser voices.
-  // Edge exposes these as e.g. "Microsoft Aria Online (Natural) - English (United States)".
-  // The keywords "Online" or "Natural" distinguish them from legacy Windows SAPI voices
-  // (e.g. "Microsoft Sara Mobile", "Microsoft Zira Desktop") which share name fragments
-  // but are low-quality and must NOT intercept cloud voice requests.
-  // Without this guard, selecting "Sara (US)" cloud voice on Windows matches
-  // "Microsoft Sara Mobile" and silently routes to SAPI — corrupting the stored
-  // selection and producing wrong-quality audio with no indication to the user.
-  try {
-    const savedVoice = localStorage.getItem('rc_browser_voice') || '';
-    if (savedVoice.startsWith('cloud:')) {
-      const azureShortName = savedVoice.slice('cloud:'.length); // e.g. "en-US-AriaNeural"
-      // Extract plain name segment before "Neural" (e.g. "Aria" from "en-US-AriaNeural")
-      const nameMatch = azureShortName.match(/en-[A-Z]{2}-([A-Za-z]+)Neural/);
-      const plainName = nameMatch ? nameMatch[1] : null;
-      if (plainName && browserTtsSupported()) {
-        const voices = window.speechSynthesis.getVoices() || [];
-        // Must match Microsoft AND contain "Online" or "Natural" — the markers
-        // Edge uses for its built-in Azure Neural voices. SAPI voices never have these.
-        const browserMatch = voices.find(v =>
-          v.name.includes(plainName) &&
-          /Microsoft/i.test(v.name) &&
-          /(Online|Natural)/i.test(v.name)
-        );
-        if (browserMatch) {
-          if (window.DEBUG_TTS) console.log(`[TTS] Edge optimisation: routing '${plainName}' to browser voice '${browserMatch.name}'`);
-          // Temporarily override voice picker to use this specific browser voice
-          const orig = localStorage.getItem('rc_browser_voice');
-          try { localStorage.setItem('rc_browser_voice', browserMatch.name); } catch(_) {}
-          browserSpeakQueue(key, parts);
-          // Restore cloud selection so the picker still shows the cloud voice
-          try { localStorage.setItem('rc_browser_voice', orig); } catch(_) {}
-          return;
-        }
-      }
-    }
-  } catch(_) {}
 
   // Unlock Safari audio during the user gesture
   ttsUnlockAudio();
@@ -1044,6 +1003,7 @@ async function ttsSpeakQueue(key, parts) {
       // not during pre-fetch — so a cancelled autoplay countdown costs nothing.
       if (i === 0 && optsForKeySentenceMarks(key)) {
         try { if (typeof tokenSpend === 'function') tokenSpend('tts'); } catch(_) {}
+        TTS_STATE.ttsSource = 'cloud';
       }
 
       if (wantMarks) {
@@ -1111,6 +1071,8 @@ async function ttsSpeakQueue(key, parts) {
 
     // If Polly isn't configured yet (or otherwise fails), don't spam alerts; just fall back.
     console.warn("Polly TTS unavailable, falling back to browser TTS:", err);
+    TTS_STATE.ttsSource = 'browser-fallback';
+    if (window.DEBUG_TTS) console.warn(`[TTS] Source: browser-fallback (cloud failed: ${err?.message || err})`);
     ttsStop();
     browserSpeakQueue(key, queue);
   }
