@@ -151,7 +151,7 @@ Two columns: **Built** (AI ships it) and **Validated** (owner confirms it works 
 
 | Item | Built | Validated | Owner |
 |---|---|---|---|
-| Reading progress position memory (`lastReadPageIndex`) | ⬜ | ⬜ | AI / Owner |
+| Reading progress position memory (`lastReadPageIndex`) | ✅ | ⬜ | AI / Owner |
 | Cold-start friction audit — 60-second new user test | — | ⬜ | Owner |
 | Cold-start friction fixes (empty state, hidden advanced controls) | ⬜ | ⬜ | AI / Owner |
 | Lightweight progress signal ("You listened for 12 minutes") | ⬜ | ⬜ | AI / Owner |
@@ -463,7 +463,66 @@ Add `manifest.json` and service worker. App becomes installable on iOS, Android,
 
 ---
 
-## 11. Open Questions
+## 11. Infrastructure Cost Model
+
+Owner actions — AWS console only, no code deployment needed.
+
+### 11.1 Architecture Overview
+
+Azure synthesizes audio. S3 stores and serves it. Every unique page is synthesized once and cached indefinitely. Subsequent plays by any user serve the cached file from S3 at ~$0.0004/request rather than calling Azure again. This is the primary cost control mechanism.
+
+AWS charges for S3 storage and GET requests only. No Polly charges are incurred as long as `AZURE_SPEECH_KEY` is set on Vercel (Polly synthesis path is dead code in that condition).
+
+### 11.2 S3 Lifecycle Policy — 90-day expiry *(Owner action)*
+
+S3 keeps objects forever by default. At 100k users, unchecked storage compounds.
+
+**Cost estimate at scale:**
+- ~250KB/page, ~150 pages/book, 1,000 unique books = ~37GB = ~$0.85/month storage
+- With 100k users generating varied content — realistic ceiling ~$3–5/month with lifecycle vs ~$29/month without
+
+**Recommended policy:**
+- Bucket: `reading-tts-audio-triston`
+- Prefix: `tts/`
+- Action: Expire objects after 90 days
+- Popular content re-caches naturally on next request. Only abandoned content disappears.
+
+*AWS console → S3 → bucket → Management → Lifecycle rules*
+
+### 11.3 S3 CORS Policy — binary preload unlock *(Owner action)*
+
+The binary preload optimization (`fetch()` to S3 during countdown) is blocked by CORS unless the bucket policy permits it. Audio plays correctly either way via `<audio src>` — this is a performance unlock for slow-connection users (eliminates 30–50s page transition delays).
+
+**Policy to apply:**
+```json
+[
+  {
+    "AllowedHeaders": ["*"],
+    "AllowedMethods": ["GET"],
+    "AllowedOrigins": [
+      "https://stripstone.github.io",
+      "http://localhost:3000",
+      "http://127.0.0.1:3000"
+    ],
+    "ExposeHeaders": [],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+Set `AllowedOrigins` to the final production domain once confirmed.
+
+*AWS console → S3 → bucket → Permissions → CORS configuration*
+
+### 11.4 Polly Billing Risk — confirm env vars absent *(Owner action)*
+
+The Polly synthesis path in `index.js` is dead code when `AZURE_SPEECH_KEY` is set. However, if `POLLY_VOICE_ID`, `POLLY_ENGINE`, `POLLY_VOICE_ID_MALE`, or `POLLY_VOICE_ID_MALE_2` are present on Vercel, the fallback can silently activate if Azure throws.
+
+**Action:** Confirm these env vars are absent from Vercel. If Azure fails and Polly vars are absent, the endpoint returns a 500 (correct behavior — billing is never triggered silently).
+
+---
+
+## 12. Open Questions
 
 | # | Question | Raised | Resolved |
 |---|---|---|---|
@@ -477,7 +536,7 @@ Add `manifest.json` and service worker. App becomes installable on iOS, Android,
 
 ---
 
-## 12. Runtime Observations
+## 13. Runtime Observations
 
 Populated from live testing. Each entry triggers a plan revision.
 
@@ -487,10 +546,12 @@ Populated from live testing. Each entry triggers a plan revision.
 
 ---
 
-## 13. Revision Log
+## 14. Revision Log
 
 | Date | Change | Reason |
 |---|---|---|
 | 2026-03-17 | Document created | Initial launch planning session |
 | 2026-03-17 | Full revision | Market research incorporated (Duolingo, Speechify). Value prop reframed to friction-removal for MVP. Target audience narrowed to students. Monetization gate changed to soft post-value prompt. Full traffic channel list added. Feedback and analytics sections added. |
 | 2026-03-17 | Checklist restructured into 7 sequential blocks with Built / Validated columns | Needed to be executable and validatable in dependency order, not just a reference list |
+| 2026-03-25 | Reading progress position memory marked Built in Block 2 | Patched: `lastReadPageIndex` persisted and restored on boot; session restore bug fixed (`currentPageIndex` ReferenceError); boot scroll timing moved to `window.load` |
+| 2026-03-25 | Section 11 added — Infrastructure Cost Model | S3 lifecycle policy, CORS config for binary preload, and Polly billing risk documented as owner actions |

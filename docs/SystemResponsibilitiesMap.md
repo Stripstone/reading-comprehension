@@ -109,6 +109,7 @@ Global application state. All other modules read from or write to these variable
 | `goalTime` | `number` | Target consolidation time in seconds |
 | `goalCharCount` | `number` | Target consolidation character count |
 | `lastFocusedPageIndex` | `number` | Tracks which page the user last interacted with |
+| `lastReadPageIndex` | `number` | Index of the last page scrolled to — persisted for session resume |
 | `timers` | `number[]` | Per-page elapsed timer values |
 | `intervals` | `id[]` | Per-page `setInterval` handles |
 
@@ -120,10 +121,12 @@ Global application state. All other modules read from or write to these variable
 - `clearPersistedSession()` — wipes session storage
 
 **Session storage keys:**
-- `rc_session_v2` — page texts + hashes + consolidations snapshot
+- `rc_session_v2` — page texts + hashes + consolidations + `lastReadPageIndex` + `goalTime` + `goalCharCount` snapshot
 - `rc_consolidation_<hash>` — per-page record (consolidation, rating, AI feedback, sandstone flag)
 - `rc_app_mode` — last selected mode
 - `rc_thesis_text` — thesis input value
+
+**Session restore fix:** `loadPersistedSessionIfAny()` previously threw `ReferenceError: currentPageIndex is not defined` silently (caught by try/catch), causing it to always return `false`. Fixed with a `typeof` guard. Session restore was non-functional prior to this patch.
 
 ---
 
@@ -149,12 +152,28 @@ TTS_STATE = {
   highlightEnds,      // precomputed end times per sentence
 }
 
+TTS_GEN = 0           // monotonic session counter — incremented on every ttsStop()
+                      // each playback request captures its generation and aborts if stale
+                      // prevents cross-book audio bleed and stale async chain interference
+
+_ttsWakeLock = null           // WakeLockSentinel — Screen Wake Lock held during cloud TTS playback
+_ttsWakeLockRevokedAt = 0     // timestamp of last OS revocation; 30s cooldown before re-acquiring
+
+TTS_SILENT_SRC        // Blob URL of a minimal valid PCM WAV (1-channel, 8kHz, 8-bit, 2 samples)
+                      // generated at startup via ArrayBuffer + DataView + URL.createObjectURL
+                      // used for keep-warm; avoids Firefox NS_ERROR_DOM_MEDIA_METADATA_ERR
+
 AUTOPLAY_STATE = {
   enabled,            // bool — from autoplay checkbox
   countdownPageIndex, // page index currently counting down (-1 = none)
   countdownSec,       // seconds remaining in countdown
-  countdownTimerId,   // setInterval handle
-  preloadedMarks,     // Polly sentence marks pre-fetched during countdown
+  countdownTimerId,   // setInterval handle for countdown tick
+  launchTimerId,      // setTimeout handle for actual playback launch — cancelable
+  preloadedMarks,     // sentence marks pre-fetched during countdown
+  preloadedUrl,       // signed S3 URL fetched during countdown
+  preloadedBlobUrl,   // blob:// URL of downloaded audio binary (URL.createObjectURL)
+                      // if set, play block assigns this to audio.src — instant readyState=4 from memory
+  audioReady,         // bool — true when preload is armed and src should not be overwritten
 }
 ```
 
@@ -162,28 +181,36 @@ AUTOPLAY_STATE = {
 
 | Function | Purpose |
 |---|---|
-| `ttsSpeakQueue(key, parts, preloadedAudio?, preloadedUrl?)` | Main TTS entry point. Polly first, browser fallback. |
-| `ttsStop()` | Stops all audio, cancels countdown, clears highlights, removes `.tts-active` from all buttons |
-| `ttsAutoplayScheduleNext(pageIndex)` | Starts 3-second countdown after page finishes, pre-fetches next page audio (Safari fix) |
-| `ttsAutoplayCancelCountdown()` | Cancels countdown, resets button text and `.tts-active` class |
+| `ttsSpeakQueue(key, parts, preloadedAudio?, preloadedUrl?)` | Main TTS entry point. Cloud first, browser fallback. Checks `preloadedBlobUrl` → `preloadedUrl` → fetch. |
+| `ttsStop()` | Stops all audio, increments `TTS_GEN`, cancels countdown, revokes blob URL, clears highlights, releases Wake Lock, removes `.tts-active` from all buttons |
+| `ttsAutoplayScheduleNext(pageIndex)` | Starts 3-second countdown; fetches signed URL then downloads full audio binary as Blob during countdown |
+| `ttsAutoplayCancelCountdown({ clearPreload })` | Cancels countdown and launch timer. `clearPreload: true` (default) revokes blob and clears preload state. `clearPreload: false` used on normal countdown completion to preserve preloaded audio for the play block. |
+| `ttsKeepWarmForAutoplay()` | Assigns `TTS_SILENT_SRC` to keep audio element warm for Safari gesture context — skips assignment when `AUTOPLAY_STATE.audioReady` is true to preserve preloaded buffer |
 | `ttsSetButtonActive(key, active)` | Adds/removes `.tts-active` class on the Read Page button for the given key |
 | `ttsSetHintButton(key, disabled)` | Disables/enables the Hint button while TTS is highlighting that page |
 | `ttsMaybePrepareSentenceHighlight(key, text, marks)` | Injects `.tts-sentence` spans and disables Hint button |
 | `ttsClearSentenceHighlight()` | Restores original innerHTML, re-enables Hint button |
+| `_ttsAcquireWakeLock()` | Acquires Screen Wake Lock; respects 30s cooldown after OS revocation |
+| `_ttsReleaseWakeLock()` | Releases Wake Lock; stamps `_ttsWakeLockRevokedAt` if released by OS |
 
-**Stop conditions:**
+**Stop / resume conditions:**
 - `pagehide` → `ttsStop()`
 - `beforeunload` → `ttsStop()`
-- Tab switching (`visibilitychange`) → **intentionally NOT wired** — audio continues in background
+- `visibilitychange` (hidden) → audio continues in background — intentionally NOT wired to `ttsStop()`
+- `visibilitychange` (visible, TTS was active) → resumes audio if paused; re-acquires Wake Lock if TTS still playing
 
 **Autoplay flow:**
 ```
 Page finishes reading
 → ttsAutoplayScheduleNext(pageIndex) called
-→ Polly URL pre-fetched for next page during countdown
-→ Button shows "⏸ Next in 3…" countdown
-→ At 0: scroll to next page, start ttsSpeakQueue with pre-loaded audio
-→ Clicking button during countdown cancels autoplay
+→ Step 1: fetch signed URL from /api/tts (~50ms, tiny JSON)
+→ Step 2: fetch full audio binary from S3 as Blob → URL.createObjectURL → preloadedBlobUrl
+  (requires S3 CORS policy; without it, step 2 silently fails, system falls back to <audio src>)
+→ Button shows "⏸ Next in 3…" countdown (launchTimerId set)
+→ At 0: ttsAutoplayCancelCountdown({ clearPreload: false }) — preserves preload
+→ Scroll to next page, ttsSpeakQueue consumes preloadedBlobUrl → plays from memory
+→ Blob URL revoked on ended / error / ttsStop()
+→ Clicking button during countdown cancels autoplay (clearPreload: true)
 ```
 
 **Safari / iOS / iPadOS — Audio Restrictions:**
@@ -206,6 +233,10 @@ The autoplay fix works by pre-fetching the next page's Polly URL and calling `au
 | iPadOS | Volume panel interaction | Tap may not establish gesture context for audio purposes |
 
 *Add new observations to this table as discovered during runtime testing.*
+
+**Stall recovery:** The `waiting` event handler fires backoff retries at 1500ms → 4000ms → 9000ms. Guards: (1) `readyState < 2` — skip if initial buffering, not a stall; (2) `audio.src === TTS_SILENT_SRC` — skip if playing silent audio; (3) `!audio.paused` — skip if browser self-resumed between retries.
+
+**TTS source tracking:** `ttsSource` state is set on every playback path — `'cloud'`, `'browser'`, or `'browser-fallback'`. Surfaced in the debug overlay and diagnostics dump.
 
 **Hint button interaction:** While sentence highlighting is active, the Hint button is disabled to prevent anchor `innerHTML` injection from destroying the TTS sentence spans. It is re-enabled in `ttsClearSentenceHighlight()` when TTS finishes.
 
@@ -377,8 +408,11 @@ if (loadPersistedSessionIfAny()) {
   render();
   updateDiagnostics();
   ensurePageHashesAndRehydrate();
+  // scroll to lastReadPageIndex after window.load + 300ms layout settle
 }
 ```
+
+Boot scroll uses `window.load` event + 300ms settle delay (replaced a fixed 1500ms timeout that fired before layout was ready on slow connections). On fast connections where `readyState === 'complete'` is already true, the 300ms fires immediately.
 
 **Volume persistence:** All volume levels saved to `localStorage` as `rc_volumes`. Voice variant saved as `rc_voice_variant`. Autoplay state saved as `rc_autoplay`.
 
@@ -624,9 +658,13 @@ A running log of device and browser-specific behavior discovered at runtime. Ent
 
 | Platform | Area | Constraint | Mitigation |
 |---|---|---|---|
-| Safari / iPadOS | Audio | `play()` blocked without synchronous user gesture | Pre-load during countdown; see `tts.js` Safari fix |
+| Safari / iPadOS | Audio | `play()` blocked without synchronous user gesture | Pre-load during countdown; keep-warm assigns `TTS_SILENT_SRC` (skipped when preload armed) |
 | iOS / Android | Audio | Audio elements blocked until first gesture in session | `playSfx()` retry logic in `audio.js` |
-| Safari / macOS / iOS | Browser TTS voices | Novelty voices (Albert, Zarvox, Boing etc.) appear in `getVoices()` and can be selected by fallback logic. High-quality voices like Samantha may have `com.apple.voice.compact` prefixed names. | Filter bad voices by name before selection; prefer Daniel (best Safari voice) and Samantha explicitly by name match |
-| Safari / iOS / iPadOS | Audio element events | `loadedmetadata` may not re-fire on a reused `Audio` element after first load, making it unreliable for deferred setup. | Use `timeupdate` instead — fires reliably during playback on all platforms |
+| Safari / macOS / iOS | Browser TTS voices | Novelty voices (Albert, Zarvox, Boing etc.) appear in `getVoices()` and can be selected by fallback logic | Filter by name; expanded named lists; gender-aware Microsoft/Google brand fallback |
+| Safari / iOS / iPadOS | Audio element events | `loadedmetadata` may not re-fire on reused `Audio` element after first load | Use `timeupdate` instead — fires reliably during playback on all platforms |
+| Firefox | Silent audio | Data URI MP3/WAV may be rejected with `NS_ERROR_DOM_MEDIA_METADATA_ERR` | `TTS_SILENT_SRC` generated as Blob WAV via `ArrayBuffer` + `DataView` + `URL.createObjectURL` |
+| All browsers | S3 binary preload | `fetch()` to S3 blocked by CORS unless bucket policy allows `stripstone.github.io` | Without CORS policy: preload silently fails, falls back to `<audio src>` — audio plays, preload does not |
+| All platforms | Device sleep | OS may revoke Screen Wake Lock under low battery or power saver | 30s cooldown after revocation; `visibilitychange` re-acquires if TTS still active |
+| All platforms | Stall recovery false positives | `waiting` event fires on every fresh `audio.src = url; play()` at `readyState=0` | Guard: bail immediately if `readyState < 2` — only retry genuine mid-playback stalls |
 
 *Add new entries as discovered during runtime testing.*
