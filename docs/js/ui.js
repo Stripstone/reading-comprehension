@@ -776,7 +776,7 @@ try {
               if (window.DEBUG_TTS) console.log(`[Boot] Restored to page ${targetIdx}`);
             }
           } catch (_) {}
-        }, 80);
+        }, 1000);
       });
     }
   }

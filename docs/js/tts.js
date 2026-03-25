@@ -15,6 +15,11 @@ const TTS_STATE = {
   voiceVariant: 'female',
   // Name of the browser voice currently in use (set by browserSpeakQueue, cleared on stop)
   activeBrowserVoiceName: null,
+  // Active audio source: 'cloud' | 'browser-fallback' | 'browser' | null
+  // 'cloud'            — Polly/Azure serving this request
+  // 'browser-fallback' — cloud failed; browser TTS standing in
+  // 'browser'          — free tier; browser TTS by design (not a fallback)
+  ttsSource: null,
   // sentence highlight state (page read)
   highlightPageKey: null,
   highlightPageEl: null,
@@ -945,21 +950,33 @@ async function ttsSpeakQueue(key, parts) {
   // available natively in Edge via speechSynthesis. If the user has selected a cloud
   // voice that matches an available browser voice, route to browserSpeakQueue instead
   // of calling /api/tts — same quality, zero API cost, zero token spend.
+  //
+  // IMPORTANT: The match must be restricted to genuine Azure Neural browser voices.
+  // Edge exposes these as e.g. "Microsoft Aria Online (Natural) - English (United States)".
+  // The keywords "Online" or "Natural" distinguish them from legacy Windows SAPI voices
+  // (e.g. "Microsoft Sara Mobile", "Microsoft Zira Desktop") which share name fragments
+  // but are low-quality and must NOT intercept cloud voice requests.
+  // Without this guard, selecting "Sara (US)" cloud voice on Windows matches
+  // "Microsoft Sara Mobile" and silently routes to SAPI — corrupting the stored
+  // selection and producing wrong-quality audio with no indication to the user.
   try {
     const savedVoice = localStorage.getItem('rc_browser_voice') || '';
     if (savedVoice.startsWith('cloud:')) {
       const azureShortName = savedVoice.slice('cloud:'.length); // e.g. "en-US-AriaNeural"
-      // Extract the plain voice name — Azure browser voices are listed as e.g.
-      // "Microsoft Aria Online (Natural) - English (United States)"
-      // Match by the first segment before "Neural" in the short name (e.g. "Aria")
+      // Extract plain name segment before "Neural" (e.g. "Aria" from "en-US-AriaNeural")
       const nameMatch = azureShortName.match(/en-[A-Z]{2}-([A-Za-z]+)Neural/);
       const plainName = nameMatch ? nameMatch[1] : null;
       if (plainName && browserTtsSupported()) {
         const voices = window.speechSynthesis.getVoices() || [];
+        // Must match Microsoft AND contain "Online" or "Natural" — the markers
+        // Edge uses for its built-in Azure Neural voices. SAPI voices never have these.
         const browserMatch = voices.find(v =>
-          v.name.includes(plainName) && /Microsoft/i.test(v.name)
+          v.name.includes(plainName) &&
+          /Microsoft/i.test(v.name) &&
+          /(Online|Natural)/i.test(v.name)
         );
         if (browserMatch) {
+          if (window.DEBUG_TTS) console.log(`[TTS] Edge optimisation: routing '${plainName}' to browser voice '${browserMatch.name}'`);
           // Temporarily override voice picker to use this specific browser voice
           const orig = localStorage.getItem('rc_browser_voice');
           try { localStorage.setItem('rc_browser_voice', browserMatch.name); } catch(_) {}
