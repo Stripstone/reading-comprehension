@@ -129,6 +129,9 @@ function persistSessionNow() {
       lastReadPageIndex: (typeof lastFocusedPageIndex === 'number' && lastFocusedPageIndex >= 0)
         ? lastFocusedPageIndex
         : 0,
+      // Persist goal settings so knobs don't reset on refresh.
+      goalTime: typeof goalTime !== 'undefined' ? goalTime : null,
+      goalCharCount: typeof goalCharCount !== 'undefined' ? goalCharCount : null,
     };
     localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(payload));
     localStorage.setItem(STORAGE_KEY_META, JSON.stringify({ savedAt: payload.savedAt }));
@@ -223,7 +226,14 @@ function loadPersistedSessionIfAny() {
       lastFocusedPageIndex = restoredIdx;
     }
 
-    currentPageIndex = Math.min(currentPageIndex, Math.max(0, pages.length - 1));
+    // currentPageIndex is referenced in legacy code — guard against ReferenceError
+    // if it hasn't been declared in the global scope.
+    try {
+      if (typeof currentPageIndex !== 'undefined') {
+        currentPageIndex = Math.min(currentPageIndex, Math.max(0, pages.length - 1));
+      }
+    } catch (_) {}
+
     return pages.length > 0;
   } catch (e) {
     return false;
