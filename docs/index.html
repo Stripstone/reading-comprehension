@@ -134,6 +134,8 @@
         .library-row { display:flex; align-items:center; padding:1rem 1.5rem; border-bottom:1px solid #f1f5f9; cursor:pointer; transition:background 0.1s; }
         .library-row:hover { background:#f8fafc; }
         .library-row:last-child { border-bottom:none; }
+        /* Disabled state — controlled by attribute, not inline style, so app.js can override */
+        button:disabled { opacity:0.45; cursor:not-allowed; }
     </style>
 </head>
 <body class="bg-white">
@@ -261,7 +263,7 @@
                 <div style="font-size:0.75rem; color:#94a3b8; margin-top:0.75rem; text-align:center;">Files are processed locally. Nothing is stored on a server.</div>
                 <div id="importUploadStatus" style="display:none; margin-top:0.75rem; font-size:0.82rem; color:#475569; padding:10px 14px; background:#f8fafc; border-radius:10px;"></div>
                 <div style="margin-top:1rem; display:flex; gap:0.5rem;">
-                    <button id="importScanBtn" type="button" class="btn-jubly" disabled style="padding:10px 20px; font-size:0.82rem; font-weight:700; border-radius:10px; opacity:0.5; cursor:not-allowed;">Scan Contents</button>
+                    <button id="importScanBtn" type="button" class="btn-jubly" disabled style="padding:10px 20px; font-size:0.82rem; font-weight:700; border-radius:10px;">Scan Contents</button>
                 </div>
             </div>
 
@@ -350,7 +352,7 @@
         </div>
         <div id="nav-user-controls" class="hidden-section flex items-center gap-3">
             <button id="howItWorksBtn" class="text-xs font-bold text-slate-400 hover:text-slate-600 transition px-2 py-1 rounded-lg hover:bg-slate-100" title="How it works">📘</button>
-            <div class="flex items-center gap-1 font-bold px-3 py-1 rounded-full text-sm text-accent bg-accent-soft">
+            <div class="flex items-center gap-1 font-bold px-3 py-1 rounded-full text-sm" style="color:var(--jubly-purple); background:var(--jubly-light);">
                 <span>✨</span> <span>100</span>
             </div>
             <div class="cursor-pointer flex items-center gap-2" onclick="showSection('profile-page')">
@@ -418,15 +420,6 @@
             <p class="text-slate-500 text-sm mt-1">Sign in to your account to continue</p>
         </div>
         <div class="section-card shadow-sm space-y-4">
-            <button onclick="login()" class="w-full flex items-center justify-center gap-3 border-2 border-slate-200 rounded-xl py-3 font-bold text-slate-700 hover:bg-slate-50 transition text-sm">
-                <svg class="w-5 h-5" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-                Continue with Google
-            </button>
-            <div class="flex items-center gap-3">
-                <div class="flex-1 h-[1px] bg-slate-200"></div>
-                <span class="text-xs font-bold text-slate-400 uppercase">or</span>
-                <div class="flex-1 h-[1px] bg-slate-200"></div>
-            </div>
             <div>
                 <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Username or Email</label>
                 <input type="text" placeholder="you@example.com" class="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:border-indigo-400 transition bg-white">
@@ -439,6 +432,15 @@
                 <a href="#" class="text-xs font-semibold text-indigo-500 hover:underline">Forgot password?</a>
             </div>
             <button onclick="login()" class="btn-jubly w-full py-3.5 rounded-xl font-bold text-sm uppercase tracking-wider">Sign In</button>
+            <div class="flex items-center gap-3">
+                <div class="flex-1 h-[1px] bg-slate-200"></div>
+                <span class="text-xs font-bold text-slate-400 uppercase">or</span>
+                <div class="flex-1 h-[1px] bg-slate-200"></div>
+            </div>
+            <button onclick="login()" class="w-full flex items-center justify-center gap-3 border-2 border-slate-200 rounded-xl py-3 font-bold text-slate-700 hover:bg-slate-50 transition text-sm">
+                <svg class="w-5 h-5" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                Continue with Google
+            </button>
         </div>
         <p class="text-center text-sm text-slate-500 mt-6">New here? <button onclick="login()" class="font-bold text-indigo-600 hover:underline">Try for free</button></p>
         <p class="text-center mt-3"><button onclick="showSection('landing-page')" class="text-xs text-slate-400 hover:text-slate-600 transition">← Back to home</button></p>
@@ -446,7 +448,7 @@
 </div>
 
 <!-- DASHBOARD -->
-<main id="dashboard" class="hidden-section max-w-5xl mx-auto py-12 px-6 with-sidebar">
+<main id="dashboard" class="hidden-section max-w-5xl mr-auto py-12 px-6 with-sidebar">
     <header class="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-4">
         <div>
             <h2 class="text-3xl font-extrabold text-slate-900 tracking-tight">Library</h2>
@@ -474,14 +476,19 @@
 
     <!-- COLD-START EMPTY STATE (shown when no documents exist) -->
     <div id="library-empty" class="hidden-section">
-        <div class="glass-card shadow-sm py-16 px-8 text-center">
+        <div id="empty-drop-target" class="glass-card shadow-sm py-16 px-8 text-center transition-all"
+             style="cursor:pointer; border:2px dashed transparent;"
+             ondragover="emptyStateDragOver(event)"
+             ondragleave="emptyStateDragLeave(event)"
+             ondrop="emptyStateDrop(event)"
+             onclick="document.getElementById('importBookBtn').click()">
             <div class="text-5xl mb-5">📭</div>
             <h3 class="text-xl font-extrabold text-slate-800 mb-2">Start here — import your first book</h3>
-            <p class="text-slate-400 text-sm mb-8 max-w-sm mx-auto leading-relaxed">Upload an EPUB, PDF, or DOCX. jubly breaks it into pages, reads it aloud, and keeps your place.</p>
-            <button onclick="document.getElementById('importBookBtn').click()" class="btn-jubly px-8 py-3 rounded-xl font-bold text-sm inline-flex items-center gap-2">
+            <p class="text-slate-400 text-sm mb-8 max-w-sm mx-auto leading-relaxed">Drop a file here, or click to browse. jubly breaks it into pages, reads it aloud, and keeps your place.</p>
+            <div class="inline-flex items-center gap-2 btn-jubly px-8 py-3 rounded-xl font-bold text-sm pointer-events-none">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 Import your first book
-            </button>
+            </div>
             <p class="text-xs text-slate-300 mt-6">EPUB, PDF, DOCX, TXT and more</p>
         </div>
     </div>
@@ -489,7 +496,7 @@
 </main>
 
 <!-- PROFILE PAGE -->
-<main id="profile-page" class="hidden-section max-w-5xl mx-auto py-12 px-6 with-sidebar">
+<main id="profile-page" class="hidden-section max-w-5xl mr-auto py-12 px-6 with-sidebar">
     <div class="flex flex-col md:flex-row gap-10">
         <aside class="w-full md:w-64 flex-shrink-0">
             <!-- Mobile only: nav shortcut (sidebar hidden on small screens) -->
@@ -1185,6 +1192,44 @@
             };
         } catch (_) {}
     });
+
+    // ── Empty state drop target ───────────────────────────────────
+    // Forwards a dropped file directly into the import modal flow.
+
+    function emptyStateDragOver(e) {
+        e.preventDefault();
+        const el = document.getElementById('empty-drop-target');
+        if (el) { el.style.borderColor = 'var(--jubly-purple)'; el.style.background = 'var(--jubly-light)'; }
+    }
+
+    function emptyStateDragLeave(e) {
+        const el = document.getElementById('empty-drop-target');
+        if (el) { el.style.borderColor = 'transparent'; el.style.background = ''; }
+    }
+
+    function emptyStateDrop(e) {
+        e.preventDefault();
+        emptyStateDragLeave(e);
+        const files = e.dataTransfer && e.dataTransfer.files;
+        if (!files || !files.length) return;
+
+        // Open the import modal
+        const importModal = document.getElementById('importBookModal');
+        if (importModal) importModal.style.display = 'flex';
+
+        // Forward the dropped file to the hidden file input
+        const fileInput = document.getElementById('importFileInput');
+        if (fileInput) {
+            try {
+                const dt = new DataTransfer();
+                dt.items.add(files[0]);
+                fileInput.files = dt.files;
+                fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+            } catch (_) {
+                // DataTransfer not supported — modal is open, user selects manually
+            }
+        }
+    }
 </script>
 
 <!-- App JS — loads config.js (already in head), then all app modules sequentially -->
