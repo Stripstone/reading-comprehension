@@ -1113,12 +1113,17 @@
 
     function startReading() {
         closeModal('preview-modal');
+        // Trigger engine's load flow — reads canonical hidden selects, calls render() internally.
+        // Fall back to render() directly only if loadBookSelection is absent.
+        const loadBtn = document.getElementById('loadBookSelection');
+        if (loadBtn) {
+            loadBtn.click();
+        } else {
+            try { if (typeof render === 'function') render(); } catch(_) {}
+        }
         showSection('reading-mode');
-        // Reset session complete signal
         const signal = document.getElementById('session-complete');
         if (signal) signal.classList.add('hidden-section');
-        // Let app's render() handle page rendering
-        try { if (typeof render === 'function') render(); } catch(_) {}
         updateProgressBar();
     }
 
@@ -1155,6 +1160,87 @@
     // The app will call showSessionComplete() directly once wired;
     // this is a fallback shim for the transition period.
     window.jublySessionComplete = showSessionComplete;
+
+    // ── Pass 2 — Functional Wiring ───────────────────────────────
+    //
+    // BOOK / CHAPTER DISPLAY MIRRORS
+    // #bookSelect and #chapterSelect are canonical engine selects, hidden in
+    // #app-hidden-controls. The visible reading-bar selects (shell-book-display,
+    // shell-chapter-display) mirror their state in both directions:
+    //   Engine → Shell: MutationObserver copies options when engine populates them.
+    //   Shell → Engine: change event copies value and re-fires engine's own handler.
+    //
+    // EXIT READING CLEANUP
+    // The Exit button's inline onclick calls showSection('dashboard'). This listener
+    // fires on the same click to stop TTS and autoplay before the view switches.
+    // ─────────────────────────────────────────────────────────────
+
+    function _mirrorSelect(src, dst) {
+        if (!src || !dst) return;
+        dst.innerHTML = src.innerHTML;
+        dst.value     = src.value;
+    }
+
+    // Called after engine boot to sync initial state into shell displays.
+    function syncShellDisplays() {
+        _mirrorSelect(
+            document.getElementById('bookSelect'),
+            document.getElementById('shell-book-display')
+        );
+        _mirrorSelect(
+            document.getElementById('chapterSelect'),
+            document.getElementById('shell-chapter-display')
+        );
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const bookSrc = document.getElementById('bookSelect');
+        const bookDst = document.getElementById('shell-book-display');
+        const chSrc   = document.getElementById('chapterSelect');
+        const chDst   = document.getElementById('shell-chapter-display');
+
+        // Shell display → engine select: user picks from visible dropdown.
+        // Copy value to hidden canonical select and fire engine's own change handler.
+        if (bookSrc && bookDst) {
+            bookDst.addEventListener('change', () => {
+                bookSrc.value = bookDst.value;
+                bookSrc.dispatchEvent(new Event('change'));
+            });
+        }
+        if (chSrc && chDst) {
+            chDst.addEventListener('change', () => {
+                chSrc.value = chDst.value;
+                chSrc.dispatchEvent(new Event('change'));
+            });
+        }
+
+        // Engine select → shell display: engine populates options asynchronously
+        // after its dynamic script chain completes. MutationObserver catches every
+        // childList mutation (option add/remove) and keeps shell in sync.
+        if (bookSrc && bookDst) {
+            new MutationObserver(() => {
+                bookDst.innerHTML = bookSrc.innerHTML;
+                bookDst.value     = bookSrc.value;
+            }).observe(bookSrc, { childList: true, subtree: true });
+        }
+        if (chSrc && chDst) {
+            new MutationObserver(() => _mirrorSelect(chSrc, chDst))
+                .observe(chSrc, { childList: true, subtree: true });
+        }
+
+        // Exit reading: stop TTS and cancel autoplay countdown before navigating away.
+        // The button's inline onclick still fires (showSection) — this just cleans up first.
+        const exitBtn = document.querySelector('.reading-top-exit');
+        if (exitBtn) {
+            exitBtn.addEventListener('click', () => {
+                try { if (typeof ttsStop === 'function') ttsStop(); } catch(_) {}
+                try { if (typeof ttsAutoplayCancelCountdown === 'function') ttsAutoplayCancelCountdown(); } catch(_) {}
+            });
+        }
+    });
+
+    // Engine scripts load dynamically after window.load; sync displays once boot settles.
+    window.addEventListener('load', () => setTimeout(syncShellDisplays, 350));
 
 </script>
 
