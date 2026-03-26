@@ -543,6 +543,38 @@ function ttsStop() {
   TTS_STATE.activeBrowserVoiceName = null;
 }
 
+function ttsPause() {
+  if (!TTS_STATE.activeKey) return;
+  // Suspend RAF highlight loop without clearing state
+  if (TTS_STATE.highlightRAF) {
+    cancelAnimationFrame(TTS_STATE.highlightRAF);
+    TTS_STATE.highlightRAF = null;
+  }
+  // Cloud TTS: pause HTML Audio element
+  if (TTS_STATE.audio) {
+    try { TTS_STATE.audio.pause(); } catch (_) {}
+  }
+  // Browser TTS: pause speechSynthesis
+  if (browserTtsSupported()) {
+    try { window.speechSynthesis.pause(); } catch (_) {}
+  }
+}
+
+function ttsResume() {
+  if (!TTS_STATE.activeKey) return;
+  // Cloud TTS: resume HTML Audio element and restart highlight loop
+  if (TTS_STATE.audio && TTS_STATE.audio.paused) {
+    try {
+      TTS_STATE.audio.play().catch(() => {});
+      ttsStartHighlightLoop(TTS_STATE.audio);
+    } catch (_) {}
+  }
+  // Browser TTS: resume speechSynthesis
+  if (browserTtsSupported()) {
+    try { window.speechSynthesis.resume(); } catch (_) {}
+  }
+}
+
 async function pollyFetchUrl(text, opts = {}) {
   const controller = new AbortController();
   TTS_STATE.abort = controller;
