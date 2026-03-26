@@ -116,7 +116,7 @@
         .reading-bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,0.97); border-top: 1px solid var(--jubly-border); backdrop-filter: blur(8px); box-shadow: 0 -4px 24px rgba(0,0,0,0.06); }
         .reading-bottom-left { display: flex; align-items: center; gap: 4px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; }
         .reading-bottom-left::-webkit-scrollbar { display: none; }
-        .reading-content { max-width: 42rem; margin: 0 auto; padding: 80px 1rem 96px; }
+        .reading-content { max-width: 42rem; margin: 0 auto; padding: 80px 1.5rem 96px; width: 100%; }
         .reading-select { font-size: 0.75rem; font-weight: 700; color: #475569; background: transparent; border: none; outline: none; cursor: pointer; padding: 4px 2px; white-space: nowrap; }
         .reading-select:hover { color: var(--jubly-purple); }
         .reading-divider { width: 1px; height: 16px; background: #e2e8f0; flex-shrink: 0; }
@@ -137,8 +137,47 @@
         /* Disabled state — controlled by attribute, not inline style, so app.js can override */
         button:disabled { opacity:0.45; cursor:not-allowed; }
     </style>
+
+    <!-- Vendor: EPUB parsing required by import.js -->
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <!-- App config — must load before app.js -->
+    <script src="js/config.js"></script>
+    <!--
+      components.css provides all app UI classes used by render(), import.js,
+      library.js: .page, .modal, .modal-overlay, .import-*, .toc-row, etc.
+      The reset block below neutralises global body/html rules it sets.
+    -->
+    <link rel="stylesheet" href="css/components.css">
+    <style>
+        /* ── components.css global reset ─────────────────────────────────────
+           components.css targets the app as a standalone page. These rules
+           restore the shell layout while keeping all component classes intact. */
+        body  { font-family:'Inter',sans-serif !important; padding:0 !important; display:block !important; background-color:#fff !important; color:var(--text-dark) !important; }
+        html  { height:unset !important; }
+        /* Paper texture + embers inactive until Explorer theme is selected */
+        body:not(.theme-explorer)::before,
+        body:not(.theme-explorer)::after { display:none !important; }
+        #fireCanvas { display:none; }
+        body.theme-explorer #fireCanvas { display:block; }
+        /* Pages container — app render() writes .page elements into #pages */
+        #pages { max-width:900px; margin:0 auto; padding:0 1rem; }
+        /* Don't let .container affect shell layout outside reading mode */
+        body:not(#reading-mode) .container { max-width:unset !important; animation:none !important; }
+        /* h1 decorative underline — reading mode only */
+        h1::after { display:none !important; }
+    </style>
 </head>
 <body class="bg-white">
+
+<!-- Explorer theme assets — hidden until body.theme-explorer activated -->
+<canvas id="fireCanvas" style="display:none;"></canvas>
+<audio id="sandSound"    loop preload="auto"><source src="assets/sand.mp3"     type="audio/mpeg"></audio>
+<audio id="stoneSound"        preload="auto"><source src="assets/sandstone.mp3" type="audio/mpeg"></audio>
+<audio id="rewardSound"       preload="auto"><source src="assets/reward.mp3"    type="audio/mpeg"></audio>
+<audio id="compassSound"      preload="auto"><source src="assets/compass.mp3"   type="audio/mpeg"></audio>
+<audio id="pageTurnSound"     preload="auto"><source src="assets/page_turn.mp3" type="audio/mpeg"></audio>
+<audio id="evaluateSound"     preload="auto"><source src="assets/evaluate.mp3"  type="audio/mpeg"></audio>
+<audio id="bgMusic"      loop preload="auto"><source src="assets/song.mp3"      type="audio/mpeg"></audio>
 
 <!--
   ═══════════════════════════════════════════════════════════════════
@@ -157,14 +196,26 @@
         <option value="premium">Premium</option>
     </select>
 
-    <!-- Book import controls — populated by library.js initBookImporter() -->
-    <div id="bookControls"></div>
-    <div id="chapterControls"></div>
-    <div id="pageControls">
-        <select id="pageStart"></select>
-        <select id="pageEnd"></select>
+    <!-- Book import controls — library.js initBookImporter() wires these -->
+    <div id="bookControls" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
+        <div class="input-group" style="min-width:220px;">
+            <select id="bookSelect"><option value="">Loading…</option></select>
+        </div>
+        <div id="chapterControls" class="input-group" style="min-width:280px;">
+            <select id="chapterSelect"><option value="">Select a book first</option></select>
+        </div>
+        <div id="pageControls" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
+            <div class="input-group" style="min-width:160px;">
+                <select id="pageStart"><option value="">Loading…</option></select>
+            </div>
+            <div class="input-group" style="min-width:160px;">
+                <select id="pageEnd"><option value="">Loading…</option></select>
+            </div>
+        </div>
     </div>
-    <div id="textControls"><textarea id="bulkInput"></textarea></div>
+    <div id="textControls" style="display:none; width:100%;">
+        <textarea id="bulkInput" placeholder="Paste your text here…" style="height:80px; width:100%;"></textarea>
+    </div>
 
     <!-- Page load actions — triggered programmatically on book select -->
     <button id="loadBookSelection" type="button">Load Pages</button>
@@ -237,90 +288,96 @@
 </div>
 
 <!--
-  IMPORT BOOK MODAL
-  Full multi-stage import UI. Wired by import.js initEpubImportModal().
-  Requires all element IDs below. Styled to match shell design language.
+  IMPORT BOOK MODAL — uses components.css classes exactly as in the app.
+  import.js wires all interactions via element IDs.
 -->
-<div id="importBookModal" style="display:none; position:fixed; inset:0; z-index:100; background:rgba(15,23,42,0.6); backdrop-filter:blur(4px); align-items:center; justify-content:center; padding:1.5rem;">
-    <div style="background:white; border-radius:20px; width:min(960px,96vw); max-height:90vh; overflow-y:auto; position:relative; box-shadow:0 24px 64px rgba(0,0,0,0.18);">
-        <div style="display:flex; align-items:center; justify-content:space-between; padding:1.5rem 1.5rem 0;">
-            <h2 style="font-size:1rem; font-weight:800; color:#1e293b;">➕ Import Book</h2>
-            <button id="importBookClose" type="button" style="background:none; border:none; cursor:pointer; color:#94a3b8; font-size:1.1rem;">✕</button>
+<div id="importBookModal" class="modal-overlay" style="display:none;" aria-hidden="true">
+    <div class="modal import-modal" role="dialog" aria-modal="true" aria-labelledby="importBookTitle">
+        <div class="modal-header">
+            <h2 id="importBookTitle">➕ Import Book (Saved to this device)</h2>
+            <button id="importBookClose" class="modal-close" type="button" aria-label="Close">✕</button>
         </div>
-        <div style="padding:1.5rem;">
+        <div class="modal-body">
 
             <!-- Stage 1: Upload -->
-            <div id="importStageUpload">
-                <div id="importDropzone" role="button" tabindex="0" aria-label="Upload book or document"
-                     style="border:2px dashed #e2e8f0; border-radius:14px; padding:2.5rem; text-align:center; cursor:pointer; transition:border-color 0.15s; background:#fafafa;">
-                    <div style="font-size:2rem; margin-bottom:0.75rem;">📄</div>
-                    <div style="font-weight:700; color:#1e293b; margin-bottom:0.5rem;">Drag &amp; drop your book here</div>
-                    <div style="font-size:0.8rem; color:#94a3b8; margin-bottom:1rem;">EPUB, PDF, DOCX, TXT and more</div>
-                    <button id="importBrowseBtn" type="button" class="btn-ghost" style="padding:8px 20px; font-size:0.8rem; font-weight:700; border-radius:10px;">Browse for File</button>
-                    <input id="importFileInput" type="file" accept=".epub,application/epub+zip,.pdf,.doc,.docx,.rtf,.odt,.txt,.html,.htm,.mobi,.fb2"
-                           style="position:absolute; left:-9999px; opacity:0; width:1px; height:1px;">
+            <div id="importStageUpload" class="import-stage">
+                <div class="import-dropzone" id="importDropzone" role="button" tabindex="0" aria-label="Upload book or document">
+                    <div class="import-dropzone-title">Drag &amp; drop a book or document here</div>
+                    <div class="import-dropzone-sub">EPUB, PDF, DOCX, TXT and more</div>
+                    <button id="importBrowseBtn" type="button" class="btn-secondary" style="margin-top:10px;">Browse for File</button>
+                    <input id="importFileInput" class="import-file-input" type="file"
+                           accept=".epub,application/epub+zip,.pdf,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.rtf,.odt,.txt,.text,.html,.htm,.mobi,.fb2" />
                 </div>
-                <div style="font-size:0.75rem; color:#94a3b8; margin-top:0.75rem; text-align:center;">Files are processed locally. Nothing is stored on a server.</div>
-                <div id="importUploadStatus" style="display:none; margin-top:0.75rem; font-size:0.82rem; color:#475569; padding:10px 14px; background:#f8fafc; border-radius:10px;"></div>
-                <div style="margin-top:1rem; display:flex; gap:0.5rem;">
-                    <button id="importScanBtn" type="button" class="btn-jubly" disabled style="padding:10px 20px; font-size:0.82rem; font-weight:700; border-radius:10px;">Scan Contents</button>
+                <div class="import-hint">Files are converted to EPUB via FreeConvert before importing. Nothing is stored permanently on a server.</div>
+                <div id="importUploadStatus" class="import-status" style="display:none;"></div>
+                <div class="import-actions" style="margin-top:12px; display:flex; gap:10px;">
+                    <button id="importScanBtn" type="button" class="btn-primary" disabled>Scan Contents</button>
                 </div>
             </div>
 
             <!-- Stage 2: Chapter picker -->
-            <div id="importStagePick" style="display:none;">
-                <div style="display:flex; gap:1rem; height:400px;">
-                    <div style="flex:1; display:flex; flex-direction:column; min-width:0;">
-                        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.5rem;">
-                            <span style="font-size:0.75rem; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; color:#94a3b8;">Contents</span>
-                            <div style="display:flex; gap:4px;">
-                                <button id="importSelectAll"  type="button" style="font-size:0.68rem; font-weight:700; padding:3px 8px; border:1.5px solid #e2e8f0; border-radius:6px; cursor:pointer; background:white; color:#475569;">All</button>
-                                <button id="importSelectNone" type="button" style="font-size:0.68rem; font-weight:700; padding:3px 8px; border:1.5px solid #e2e8f0; border-radius:6px; cursor:pointer; background:white; color:#475569;">None</button>
-                                <button id="importSelectMain" type="button" style="font-size:0.68rem; font-weight:700; padding:3px 8px; border:1.5px solid #e2e8f0; border-radius:6px; cursor:pointer; background:white; color:#475569;">Main</button>
+            <div id="importStagePick" class="import-stage" style="display:none;">
+                <div class="import-picker">
+                    <div class="import-picker-left">
+                        <div class="import-picker-head">
+                            <div class="import-picker-title">Contents</div>
+                            <div class="import-picker-tools">
+                                <button id="importSelectAll"  type="button" class="btn-mini">Select all</button>
+                                <button id="importSelectNone" type="button" class="btn-mini">Select none</button>
+                                <button id="importSelectMain" type="button" class="btn-mini">Main chapters</button>
                             </div>
                         </div>
-                        <input id="importFilter" type="text" placeholder="Filter sections…"
-                               style="font-size:0.8rem; border:1.5px solid #e2e8f0; border-radius:8px; padding:7px 10px; margin-bottom:0.5rem; outline:none; width:100%; box-sizing:border-box;">
-                        <div id="importTocList" style="flex:1; overflow-y:auto; border:1.5px solid #e2e8f0; border-radius:10px; padding:6px;"></div>
-                        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:0.5rem;">
-                            <span id="importSelectionMeta" style="font-size:0.75rem; color:#94a3b8;">Selected: 0</span>
-                            <div style="display:flex; gap:6px; align-items:center;">
-                                <button id="importBackBtn"       type="button" style="font-size:0.75rem; font-weight:700; padding:5px 12px; border:1.5px solid #e2e8f0; border-radius:8px; cursor:pointer; background:white; color:#475569;">Back</button>
-                                <button id="importAdvancedToggle" type="button" style="font-size:0.75rem; font-weight:700; padding:5px 12px; border:1.5px solid #e2e8f0; border-radius:8px; cursor:pointer; background:white; color:#475569;">Advanced</button>
-                                <button id="importDoImport"      type="button" class="btn-jubly" style="font-size:0.78rem; font-weight:700; padding:6px 16px; border-radius:8px;">Import selected</button>
+                        <input id="importFilter" class="import-filter" type="text" placeholder="Filter sections…" />
+                        <div id="importTocList" class="import-toc"></div>
+                        <div id="importAdvancedPanel" class="import-advanced" style="display:none;">
+                            <div class="import-advanced-title">Advanced</div>
+                            <div class="import-advanced-body">
+                                <div class="import-adv-row">
+                                    <label for="importPageSize">Page size</label>
+                                    <select id="importPageSize">
+                                        <option value="1200">Small (~1200 chars)</option>
+                                        <option value="1600" selected>Medium (~1600 chars)</option>
+                                        <option value="2000">Large (~2000 chars)</option>
+                                    </select>
+                                </div>
+                                <div class="import-adv-row">
+                                    <label class="import-adv-check"><input id="importKeepParagraphs" type="checkbox" checked> Keep paragraphs together</label>
+                                </div>
+                                <div class="import-adv-row">
+                                    <label class="import-adv-check"><input id="importCleanupHeadings" type="checkbox" checked> Cleanup headings</label>
+                                </div>
                             </div>
                         </div>
-                        <div id="importAdvancedPanel" style="display:none; margin-top:0.75rem; padding:10px; background:#f8fafc; border-radius:10px; font-size:0.78rem;">
-                            <div style="font-weight:700; color:#475569; margin-bottom:8px;">Advanced</div>
-                            <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                                <label style="color:#64748b;">Page size</label>
-                                <select id="importPageSize" style="font-size:0.78rem; border:1.5px solid #e2e8f0; border-radius:6px; padding:3px 6px;">
-                                    <option value="1200">Small (~1200 chars)</option>
-                                    <option value="1600" selected>Medium (~1600 chars)</option>
-                                    <option value="2000">Large (~2000 chars)</option>
-                                </select>
+                        <div class="import-footerbar">
+                            <div id="importSelectionMeta" class="import-selection-meta">Selected: 0</div>
+                            <div style="display:flex; gap:8px; align-items:center;">
+                                <button id="importBackBtn"        type="button" class="btn-mini">Back</button>
+                                <button id="importAdvancedToggle" type="button" class="btn-mini">Advanced</button>
+                                <button id="importDoImport"       type="button" class="btn-primary">Import selected</button>
                             </div>
-                            <label style="display:flex; align-items:center; gap:6px; color:#64748b; margin-bottom:4px;"><input id="importKeepParagraphs"  type="checkbox" checked> Keep paragraphs together</label>
-                            <label style="display:flex; align-items:center; gap:6px; color:#64748b;"><input id="importCleanupHeadings"  type="checkbox" checked> Cleanup decorative headings</label>
                         </div>
                     </div>
-                    <div style="flex:1; display:flex; flex-direction:column; min-width:0; border-left:1px solid #f1f5f9; padding-left:1rem;">
-                        <div style="font-size:0.75rem; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; color:#94a3b8; margin-bottom:0.5rem;">Preview</div>
-                        <div id="importPreviewTitle" style="font-size:0.85rem; font-weight:700; color:#1e293b; margin-bottom:0.5rem;">Select a section</div>
-                        <div id="importPreviewBody"  style="font-size:0.8rem; color:#64748b; line-height:1.6; overflow-y:auto; flex:1;">You'll see a short preview here.</div>
+                    <div class="import-picker-right">
+                        <div class="import-preview-head">Preview</div>
+                        <div id="importPreviewTitle" class="import-preview-title">Select a section</div>
+                        <div id="importPreviewBody"  class="import-preview-body">You'll see a short preview here.</div>
                     </div>
                 </div>
             </div>
 
             <!-- Stage 3: Progress -->
-            <div id="importStageProgress" style="display:none; text-align:center; padding:2rem 0;">
-                <div style="font-size:0.9rem; font-weight:700; color:#1e293b; margin-bottom:0.5rem;">Importing…</div>
-                <div id="importProgressMeta"   style="font-size:0.78rem; color:#94a3b8; margin-bottom:0.75rem;">Preparing</div>
-                <div style="background:#f1f5f9; border-radius:999px; height:6px; overflow:hidden; margin-bottom:0.5rem;">
-                    <div id="importProgressFill" style="background:var(--jubly-purple); height:100%; width:0%; transition:width 0.3s ease; border-radius:999px;"></div>
+            <div id="importStageProgress" class="import-stage" style="display:none;">
+                <div class="import-progress">
+                    <div class="import-progress-title">Importing…</div>
+                    <div id="importProgressMeta"   class="import-progress-meta">Preparing</div>
+                    <div class="import-progress-bar">
+                        <div id="importProgressFill" class="import-progress-fill" style="width:0%;"></div>
+                    </div>
+                    <div id="importProgressDetail" class="import-progress-detail">0 pages created</div>
                 </div>
-                <div id="importProgressDetail" style="font-size:0.75rem; color:#94a3b8;">0 pages created</div>
-                <button id="importDoneBtn" type="button" class="btn-jubly" style="display:none; margin-top:1rem; padding:10px 24px; font-size:0.82rem; font-weight:700; border-radius:10px;">Done — View Library</button>
+                <div class="import-actions" style="margin-top:12px; display:flex; gap:10px; justify-content:flex-end;">
+                    <button id="importDoneBtn" type="button" class="btn-primary" style="display:none;">Done</button>
+                </div>
             </div>
 
         </div>
@@ -328,17 +385,18 @@
 </div>
 
 <!--
-  MANAGE LIBRARY MODAL
-  Wired by library.js initManageLibraryModal(). Requires #manageLibraryList, #manageLibraryClose.
+  MANAGE LIBRARY MODAL — uses components.css classes exactly as in the app.
 -->
-<div id="manageLibraryModal" style="display:none; position:fixed; inset:0; z-index:100; background:rgba(15,23,42,0.6); backdrop-filter:blur(4px); align-items:center; justify-content:center; padding:1.5rem;">
-    <div style="background:white; border-radius:20px; max-width:540px; width:100%; padding:2rem; position:relative; box-shadow:0 24px 64px rgba(0,0,0,0.18); max-height:80vh; overflow-y:auto;">
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.25rem;">
-            <h2 style="font-size:1rem; font-weight:800; color:#1e293b;">🗂️ Library (This device)</h2>
-            <button id="manageLibraryClose" type="button" style="background:none; border:none; cursor:pointer; color:#94a3b8; font-size:1.1rem;">✕</button>
+<div id="manageLibraryModal" class="modal-overlay" style="display:none;" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="manageLibraryTitle">
+        <div class="modal-header">
+            <h2 id="manageLibraryTitle">🗂️ Library (This device)</h2>
+            <button id="manageLibraryClose" class="modal-close" type="button" aria-label="Close">✕</button>
         </div>
-        <p style="font-size:0.78rem; color:#94a3b8; margin-bottom:1rem;">Deleting a book removes it from local storage on this device.</p>
-        <div id="manageLibraryList"></div>
+        <div class="modal-body">
+            <div class="import-hint" style="margin-top:0;">Delete removes the book from this device only. Your work is not recoverable.</div>
+            <div id="manageLibraryList" class="library-list" style="margin-top:12px;"></div>
+        </div>
     </div>
 </div>
 
@@ -465,7 +523,9 @@
         <div class="glass-card overflow-hidden shadow-sm">
             <div class="bg-slate-50 border-b border-slate-200 px-6 py-3 flex text-xs font-bold text-slate-400 uppercase tracking-wider">
                 <div class="flex-grow">Document Name</div>
-                <div class="w-32 hidden md:block">Pages</div>
+                <div class="w-24 hidden md:block">Type</div>
+                <div class="w-28 hidden md:block">Status</div>
+                <div class="w-24 hidden md:block">Pages</div>
                 <div class="w-8"></div>
             </div>
             <div id="library-rows">
@@ -659,8 +719,10 @@
                                 <div class="theme-swatch" style="background: linear-gradient(135deg, #a78bfa, #ddd6fe);"></div>
                                 <span class="text-xs font-semibold text-slate-500">Light Purple</span>
                             </button>
-                            <button onclick="promptExplorerUpgrade()" class="flex flex-col items-center gap-2 explorer-locked" title="Upgrade to Pro+ to unlock Explorer theme">
-                                <div class="theme-swatch flex items-center justify-center text-xl" style="background: linear-gradient(135deg, #c17d4a, #e8d9c4); opacity: 0.6;">🧭</div>
+                            <!-- Explorer: locked on Basic, active on Pro/Premium.
+                                 promptExplorerUpgrade() checks current tier before acting. -->
+                            <button id="explorer-swatch-btn" onclick="promptExplorerUpgrade()" class="flex flex-col items-center gap-2 explorer-locked" title="Explorer theme — Pro+ only">
+                                <div class="theme-swatch flex items-center justify-center text-xl" style="background: linear-gradient(135deg, #c17d4a, #e8d9c4); opacity:0.6;">🧭</div>
                                 <span class="text-xs font-semibold text-slate-400">Explorer</span>
                             </button>
                         </div>
@@ -938,8 +1000,17 @@
             tierSelect.dispatchEvent(new Event('change'));
         }
 
-        // Update tier pill in reading mode
         setTierDisplay(btn.textContent.trim());
+
+        // Unlock Explorer swatch visually for Pro/Premium
+        const explorerBtn   = document.getElementById('explorer-swatch-btn');
+        const explorerSwatch = explorerBtn && explorerBtn.querySelector('.theme-swatch');
+        const isPro = tierValue === 'paid' || tierValue === 'premium';
+        if (explorerBtn)   explorerBtn.classList.toggle('explorer-locked', !isPro);
+        if (explorerSwatch) explorerSwatch.style.opacity = isPro ? '1' : '0.6';
+        if (explorerBtn) {
+            explorerBtn.title = isPro ? 'Explorer theme' : 'Explorer theme — Pro+ only';
+        }
     }
 
     function setTierDisplay(label) {
@@ -949,15 +1020,46 @@
 
     // ── Theme ────────────────────────────────────────────────────
 
+    let explorerLoaded = false;
+
     function setTheme(theme, btn) {
         document.body.classList.remove('theme-green', 'theme-purple', 'theme-explorer');
         if (theme !== 'default') document.body.classList.add('theme-' + theme);
         document.querySelectorAll('#theme-swatches .theme-swatch').forEach(s => s.classList.remove('selected'));
         btn.querySelector('.theme-swatch').classList.add('selected');
+
+        if (theme === 'explorer') {
+            // Load theme.css and embers.js once
+            if (!explorerLoaded) {
+                const link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = 'css/theme.css';
+                link.id = 'explorer-theme-css';
+                document.head.appendChild(link);
+
+                const script = document.createElement('script');
+                script.src = 'js/embers.js';
+                script.id = 'explorer-embers-js';
+                document.body.appendChild(script);
+
+                explorerLoaded = true;
+            }
+        }
         // TODO: persist to Supabase user preferences
     }
 
-    function promptExplorerUpgrade() { openModal('pricing-modal'); }
+    function promptExplorerUpgrade() {
+        // Explorer unlocked — call setTheme directly on Pro/Premium
+        const tierSelect = document.getElementById('tierSelect');
+        const currentTier = tierSelect ? tierSelect.value : 'free';
+        if (currentTier === 'paid' || currentTier === 'premium') {
+            // Find the Explorer button and activate it
+            const explorerBtn = document.querySelector('.explorer-locked');
+            if (explorerBtn) setTheme('explorer', explorerBtn);
+        } else {
+            openModal('pricing-modal');
+        }
+    }
 
     // ── Library ──────────────────────────────────────────────────
     // Renders real books from IndexedDB via library.js localBooksGetAll().
@@ -987,23 +1089,35 @@
 
         if (!hasBooks) return;
 
-        // Sort newest first
         books.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
         rowsEl.innerHTML = books.map(book => {
-            const pageCount = (String(book.markdown || '').match(/^\s*##\s+/gm) || []).length;
-            const kb        = Math.round((book.byteSize || 0) / 1024);
-            const date      = new Date(book.createdAt || Date.now()).toLocaleDateString();
+            const pageCount  = (String(book.markdown || '').match(/^\s*##\s+/gm) || []).length;
+            const date       = new Date(book.createdAt || Date.now()).toLocaleDateString();
+            const docType    = escapeHtml(book.docType || 'Book');
+            // Check if this book has any saved progress
+            const hasProgress = (() => {
+                try {
+                    const session = JSON.parse(localStorage.getItem('rc_session_v2') || '{}');
+                    return session.pages && session.pages.length > 0;
+                } catch(_) { return false; }
+            })();
+            const statusBadge = hasProgress
+                ? `<span class="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">In Progress</span>`
+                : `<span class="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-bold">Unread</span>`;
+
             return `
                 <div class="library-row" onclick="openBookPreview('${book.id}', '${escapeAttr(book.title || 'Untitled')}', ${pageCount})">
                     <div class="flex-grow flex items-center gap-3">
                         <div class="w-8 h-8 rounded flex items-center justify-center text-lg bg-accent-soft text-accent flex-shrink-0">📄</div>
                         <div>
                             <p class="font-semibold text-slate-800 text-sm">${escapeHtml(book.title || 'Untitled')}</p>
-                            <p class="text-xs text-slate-400">Added ${date} · ${kb}KB</p>
+                            <p class="text-xs text-slate-400">Added ${date}</p>
                         </div>
                     </div>
-                    <div class="w-32 hidden md:block text-sm text-slate-400">${pageCount} pages</div>
+                    <div class="w-24 hidden md:block text-xs text-slate-400 font-medium">${docType}</div>
+                    <div class="w-28 hidden md:block">${statusBadge}</div>
+                    <div class="w-24 hidden md:block text-sm text-slate-400">${pageCount} pages</div>
                     <div class="text-slate-300 text-sm">→</div>
                 </div>`;
         }).join('');
@@ -1173,24 +1287,32 @@
                 const valueToLabel = { free: 'Basic', paid: 'Pro', premium: 'Premium' };
                 const label = valueToLabel[tierSelect.value] || 'Basic';
                 setTierDisplay(label);
-                // Sync profile tier buttons
                 document.querySelectorAll('.tier-btn').forEach(b => {
                     b.classList.toggle('active', b.textContent.trim() === label);
                 });
             }
         } catch (_) {}
 
-        // Refresh library now that app is ready
-        renderLibraryRows();
+        // Hook importDoneBtn — refresh library when import completes
+        const doneBtn = document.getElementById('importDoneBtn');
+        if (doneBtn) {
+            doneBtn.addEventListener('click', () => {
+                // Close modal and refresh
+                const modal = document.getElementById('importBookModal');
+                if (modal) modal.style.display = 'none';
+                showSection('dashboard');
+            });
+        }
 
-        // Sync #bookSelect refresh hook so library rows update after import
-        try {
-            const original = window.__rcRefreshBookSelect;
-            window.__rcRefreshBookSelect = async function() {
-                if (typeof original === 'function') await original();
-                renderLibraryRows();
-            };
-        } catch (_) {}
+        // Patch __rcRefreshBookSelect so library refreshes after any import/delete
+        const original = window.__rcRefreshBookSelect;
+        window.__rcRefreshBookSelect = async function() {
+            if (typeof original === 'function') await original();
+            renderLibraryRows();
+        };
+
+        // Initial library render
+        renderLibraryRows();
     });
 
     // ── Empty state drop target ───────────────────────────────────
