@@ -77,11 +77,9 @@
     if (btn) btn.addEventListener('click', openModal);
     if (closeBtn) closeBtn.addEventListener('click', closeModal);
 
-    // Click outside modal closes; stop propagation so document-level panel
-    // closers (volume, menu) don't fire when clicking inside the modal.
+    // Click outside modal closes
     if (modal) {
       modal.addEventListener('click', (e) => {
-        e.stopPropagation();
         if (e.target === modal) closeModal();
       });
     }
@@ -463,10 +461,7 @@
             breakdown: sessionTokens?.spent || {},
           },
           tts: {
-            gen: typeof TTS_GEN !== 'undefined' ? TTS_GEN : '—',
-            activeKey: TTS_STATE?.activeKey ?? null,
-            source: TTS_STATE?.ttsSource ?? null,
-            voiceVariant: TTS_STATE?.voiceVariant || 'female',
+            variant: TTS_STATE?.voiceVariant || 'female',
             activeBrowserVoice: TTS_STATE?.activeBrowserVoiceName || null,
             allEnglishVoices: (() => {
               try {
@@ -476,18 +471,10 @@
               } catch(_) { return []; }
             })(),
           },
-          autoplay: {
-            enabled: AUTOPLAY_STATE?.enabled ?? false,
-            countdownPageIndex: AUTOPLAY_STATE?.countdownPageIndex ?? -1,
-            countdownSec: AUTOPLAY_STATE?.countdownSec ?? 0,
-            preloadedKey: AUTOPLAY_STATE?.preloadedKey ?? null,
-            preloadedUrl: AUTOPLAY_STATE?.preloadedUrl
-              ? AUTOPLAY_STATE.preloadedUrl.slice(0, 60) + '…'
-              : null,
-          },
           ai: lastAIDiagnostics || null,
           anchors: lastAnchorsDiagnostics || null,
         };
+        const hasAny = Boolean(merged.ai || merged.anchors);
         const dump = JSON.stringify(merged, null, 2);
         diagText.value = dump;
         diagPanel.style.display = 'block';
@@ -554,41 +541,6 @@
 
     // Build debug UI only when enabled.
     ensureDiagUI();
-
-    // ---- Live TTS status overlay (debug mode only) ----
-    // A small always-visible pill in the top-right corner that updates every
-    // animation frame. Lets testers watch TTS_GEN, activeKey, and preload state
-    // in real time during rapid book-switch and autoplay testing — no click required.
-    if (debugEnabled) {
-      const overlay = document.createElement('div');
-      overlay.id = 'ttsDebugOverlay';
-      overlay.style.cssText = [
-        'position:fixed', 'top:8px', 'right:8px', 'z-index:9990',
-        'background:rgba(0,0,0,0.72)', 'color:#e8d9c4',
-        'font:11px/1.5 ui-monospace,Menlo,monospace',
-        'padding:5px 9px', 'border-radius:7px',
-        'pointer-events:none', 'white-space:pre',
-        'opacity:0.88', 'max-width:260px',
-      ].join(';');
-      document.body.appendChild(overlay);
-
-      function tickOverlay() {
-        try {
-          const gen     = typeof TTS_GEN !== 'undefined' ? TTS_GEN : '—';
-          const key     = TTS_STATE?.activeKey ?? '—';
-          const src     = TTS_STATE?.ttsSource ?? '—';
-          const cdIdx   = AUTOPLAY_STATE?.countdownPageIndex ?? -1;
-          const cdSec   = AUTOPLAY_STATE?.countdownSec ?? 0;
-          const pKey    = AUTOPLAY_STATE?.preloadedKey ?? '—';
-          const hasUrl  = AUTOPLAY_STATE?.preloadedUrl ? '✓' : '✗';
-          const cd      = cdIdx >= 0 ? `cd:p${cdIdx}(${cdSec}s)` : 'cd:—';
-          overlay.textContent =
-            `GEN:${gen}  key:${key}  src:${src}\n${cd}  pre:${pKey}(${hasUrl})`;
-        } catch (_) {}
-        requestAnimationFrame(tickOverlay);
-      }
-      tickOverlay();
-    }
 
     // Click outside closes panels (lightweight)
     document.addEventListener('click', (e) => {
@@ -761,34 +713,6 @@ try {
     updateDiagnostics();
     // Ensure we can rehydrate per-page saved work even if the session snapshot lacked hashes.
     ensurePageHashesAndRehydrate();
-
-    // Phase 0 — scroll to last-read page.
-    // lastFocusedPageIndex was restored from the session snapshot by
-    // loadPersistedSessionIfAny(). Defer until window.load so all resources
-    // (fonts, images, scripts) have resolved and layout is stable — avoids the
-    // 4-5s delay on slow connections that a fixed timeout can't account for.
-    // A short 300ms settle after load prevents browser scroll-restoration races.
-    if (typeof lastFocusedPageIndex === 'number' && lastFocusedPageIndex > 0) {
-      const targetIdx = lastFocusedPageIndex;
-      const doScroll = () => {
-        setTimeout(() => {
-          try {
-            const pageEls = document.querySelectorAll('.page');
-            const target = pageEls[targetIdx];
-            if (target) {
-              target.scrollIntoView({ behavior: 'instant', block: 'start' });
-              if (window.DEBUG_TTS) console.log(`[Boot] Restored to page ${targetIdx}`);
-            }
-          } catch (_) {}
-        }, 300);
-      };
-      // If load already fired (fast connection), run immediately; otherwise wait.
-      if (document.readyState === 'complete') {
-        doScroll();
-      } else {
-        window.addEventListener('load', doScroll, { once: true });
-      }
-    }
   }
 } catch (_) {}
 // ===================================
@@ -853,30 +777,4 @@ try {
     const mo = new MutationObserver(scheduleUpdate);
     mo.observe(pagesEl, { childList: true, subtree: true, characterData: true });
   }
-})();
-
-// ===================================
-// Shell integration hooks
-// ===================================
-
-// Expose ttsIsActive() so the shell Pause button can read TTS state without
-// reimplementing the check. TTS_STATE.activeKey is non-null while speaking.
-function ttsIsActive() {
-  try { return !!(TTS_STATE && TTS_STATE.activeKey); } catch(_) { return false; }
-}
-
-// Stop TTS when #reading-mode is hidden — covers Exit, session complete,
-// and any future dismiss path. Does NOT use visibilitychange (intentional
-// per SRM §9 — audio continues on tab switch).
-(function initReadingModeHideObserver() {
-  const rm = document.getElementById('reading-mode');
-  if (!rm || !window.MutationObserver) return;
-  new MutationObserver(function(mutations) {
-    for (var i = 0; i < mutations.length; i++) {
-      if (mutations[i].attributeName === 'class' && rm.classList.contains('hidden-section')) {
-        try { ttsStop(); } catch(_) {}
-        break;
-      }
-    }
-  }).observe(rm, { attributes: true, attributeFilter: ['class'] });
 })();

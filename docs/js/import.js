@@ -669,7 +669,7 @@
     // Open/close
     openBtn.addEventListener('click', showModal);
     closeBtn?.addEventListener('click', hideModal);
-    modal.addEventListener('click', (e) => { e.stopPropagation(); if (e.target === modal) hideModal(); });
+    modal.addEventListener('click', (e) => { if (e.target === modal) hideModal(); });
 
     // Upload
     // Keep behavior consistent: desktop supports click-to-browse + drag/drop.

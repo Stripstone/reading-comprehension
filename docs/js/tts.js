@@ -15,11 +15,6 @@ const TTS_STATE = {
   voiceVariant: 'female',
   // Name of the browser voice currently in use (set by browserSpeakQueue, cleared on stop)
   activeBrowserVoiceName: null,
-  // Active audio source: 'cloud' | 'browser-fallback' | 'browser' | null
-  // 'cloud'            — Polly/Azure serving this request
-  // 'browser-fallback' — cloud failed; browser TTS standing in
-  // 'browser'          — free tier; browser TTS by design (not a fallback)
-  ttsSource: null,
   // sentence highlight state (page read)
   highlightPageKey: null,
   highlightPageEl: null,
@@ -37,154 +32,8 @@ let TTS_AUDIO_UNLOCKED = false;
 const TTS_AUDIO_ELEMENT = new Audio();
 TTS_AUDIO_ELEMENT.preload = "auto";
 
-// Tiny silent WAV used to prime TTS_AUDIO_ELEMENT within a user gesture.
-// Generated dynamically via Blob so every browser gets a correctly-encoded PCM
-// WAV with a valid RIFF header — avoiding the NS_ERROR_DOM_MEDIA_METADATA_ERR
-// Firefox throws on hardcoded data URIs with truncated or malformed audio.
-// 1-channel, 8000 Hz, 8-bit PCM, 2 samples of silence (0x80 = unsigned midpoint).
-const TTS_SILENT_SRC = (() => {
-  try {
-    const buf = new ArrayBuffer(46);
-    const v = new DataView(buf);
-    // RIFF header
-    [0x52,0x49,0x46,0x46].forEach((b,i) => v.setUint8(i, b));    // "RIFF"
-    v.setUint32(4,  38,   true);                                   // file size - 8
-    [0x57,0x41,0x56,0x45].forEach((b,i) => v.setUint8(8+i, b));   // "WAVE"
-    // fmt chunk
-    [0x66,0x6D,0x74,0x20].forEach((b,i) => v.setUint8(12+i, b)); // "fmt "
-    v.setUint32(16, 16,   true);  // chunk size
-    v.setUint16(20, 1,    true);  // PCM format
-    v.setUint16(22, 1,    true);  // mono
-    v.setUint32(24, 8000, true);  // sample rate
-    v.setUint32(28, 8000, true);  // byte rate
-    v.setUint16(32, 1,    true);  // block align
-    v.setUint16(34, 8,    true);  // 8-bit
-    // data chunk
-    [0x64,0x61,0x74,0x61].forEach((b,i) => v.setUint8(36+i, b)); // "data"
-    v.setUint32(40, 2,    true);  // 2 samples
-    v.setUint8(44, 0x80);          // silence (unsigned 8-bit midpoint)
-    v.setUint8(45, 0x80);
-    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
-  } catch (_) {
-    // Fallback: empty src — ttsUnlockAudio will still call play() for the gesture
-    return '';
-  }
-})();
-
-// ---- Generation counter ----
-// Incremented on every ttsStop(). Every queued play captures the current value
-// and bails if it changes — prevents a stale async chain (e.g. after a book
-// switch) from racing a new play session that shares the same page key.
-let TTS_GEN = 0;
-
-// ---- Stall recovery ----
-// Fires when the browser stalls mid-playback (e.g. S3 buffer underrun or network dip).
-// We use a 3-attempt exponential backoff: 200ms → 600ms → 1400ms.
-//
-// GUARD: Only act on real audio URLs — never on the silent primer (TTS_SILENT_SRC)
-// used by ttsUnlockAudio() and ttsKeepWarmForAutoplay(). The silent MP3 is intentionally
-// minimal and reliably fires 'waiting' on every play. Without this guard the backoff
-// chain runs constantly during every autoplay countdown, producing log noise and
-// spurious play() calls that interfere with the real audio element state.
-function _ttsHandleStall() {
-  if (!TTS_STATE.audio || TTS_STATE.audio !== TTS_AUDIO_ELEMENT) return;
-  // Ignore stalls on the silent keep-warm / unlock primer — they are expected.
-  if (!TTS_AUDIO_ELEMENT.src || TTS_AUDIO_ELEMENT.src === TTS_SILENT_SRC) return;
-  // readyState 0 (HAVE_NOTHING) or 1 (HAVE_METADATA) = initial loading, not a stall.
-  // 'waiting' fires immediately after play() when src is freshly assigned and the
-  // buffer is empty — this is normal and resolves on its own as the file downloads.
-  // Only act on readyState >= 2 (HAVE_CURRENT_DATA) where we had data and lost it.
-  if (TTS_AUDIO_ELEMENT.readyState < 2) return;
-  if (window.DEBUG_AUDIO) console.warn('[Audio Recovery] Playback stalled — starting backoff retry');
-  const delays = [1500, 4000, 9000];
-  let attempt = 0;
-  function tryResume() {
-    if (!TTS_STATE.audio || TTS_STATE.audio !== TTS_AUDIO_ELEMENT) return;
-    if (!TTS_AUDIO_ELEMENT.src || TTS_AUDIO_ELEMENT.src === TTS_SILENT_SRC) return;
-    if (!TTS_AUDIO_ELEMENT.paused) return; // already resumed on its own — skip
-    attempt++;
-    if (window.DEBUG_AUDIO) console.warn(`[Audio Recovery] Retry attempt ${attempt}`);
-    try { TTS_AUDIO_ELEMENT.play().catch(() => {}); } catch (_) {}
-    if (attempt < delays.length) {
-      setTimeout(tryResume, delays[attempt]);
-    }
-  }
-  setTimeout(tryResume, delays[0]);
-}
-TTS_AUDIO_ELEMENT.addEventListener('waiting', _ttsHandleStall);
-TTS_AUDIO_ELEMENT.addEventListener('stalled', _ttsHandleStall);
-
-// ---- Screen Wake Lock ----
-// Prevents the device screen from sleeping while TTS is reading aloud.
-// The Screen Wake Lock API is supported in Chrome 84+, Edge 84+, and Safari 16.4+.
-// Silently no-ops on unsupported browsers.
-// Wake lock is acquired when cloud TTS starts playing and released in ttsStop().
-// If the OS revokes the lock (e.g. low battery), we reacquire on visibilitychange.
-let _ttsWakeLock = null;
-let _ttsWakeLockRevokedAt = 0; // timestamp of last OS revocation
-const _WAKELOCK_COOLDOWN_MS = 30000; // don't re-acquire within 30s of OS revocation
-
-async function _ttsAcquireWakeLock() {
-  if (!navigator?.wakeLock) return;
-  if (_ttsWakeLock && !_ttsWakeLock.released) return; // already held
-  // Respect cooldown — OS revoked it recently, don't immediately re-request.
-  if (Date.now() - _ttsWakeLockRevokedAt < _WAKELOCK_COOLDOWN_MS) return;
-  try {
-    _ttsWakeLock = await navigator.wakeLock.request('screen');
-    _ttsWakeLock.addEventListener('release', () => {
-      if (window.DEBUG_AUDIO) console.log('[WakeLock] Released by OS');
-      _ttsWakeLockRevokedAt = Date.now(); // start cooldown
-      _ttsWakeLock = null;
-    });
-    if (window.DEBUG_AUDIO) console.log('[WakeLock] Acquired');
-  } catch (_) {}
-}
-
-function _ttsReleaseWakeLock() {
-  if (!_ttsWakeLock || _ttsWakeLock.released) { _ttsWakeLock = null; return; }
-  try { _ttsWakeLock.release(); } catch (_) {}
-  _ttsWakeLock = null;
-  if (window.DEBUG_AUDIO) console.log('[WakeLock] Released');
-}
-
-// Re-acquire if the OS revoked the lock while TTS was still playing
-// (e.g. tab returned to foreground after OS-level screen-off).
-try {
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && TTS_STATE.activeKey) {
-      _ttsAcquireWakeLock();
-    }
-  }, { passive: true });
-} catch (_) {}
-// When the device screen locks (or the OS suspends the audio context), the audio
-// element pauses without firing 'waiting' or 'stalled'. On wake/return, we check
-// if TTS_AUDIO_ELEMENT should still be playing and resume it.
-//
-// NOTE: visibilitychange is intentionally NOT wired to ttsStop() — audio continues
-// in background tabs. This handler is the OPPOSITE: resume on return from sleep.
-//
-// iOS exception: if audio was playing before the screen locked, iOS allows a
-// programmatic play() resume on visibilitychange without a new user gesture.
-// This is distinct from cold-start audio, which still requires a gesture.
-try {
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) return;
-    // Small delay — iOS needs a tick after visibility returns before play() is reliable.
-    setTimeout(() => {
-      try {
-        if (
-          TTS_STATE.audio &&
-          TTS_STATE.audio === TTS_AUDIO_ELEMENT &&
-          TTS_AUDIO_ELEMENT.paused &&
-          TTS_STATE.activeKey
-        ) {
-          TTS_AUDIO_ELEMENT.play().catch(() => {});
-          if (window.DEBUG_AUDIO) console.log('[Audio Recovery] Resumed TTS after device wake/tab return');
-        }
-      } catch (_) {}
-    }, 150);
-  }, { passive: true });
-} catch (_) {}
+// Tiny silent MP3 used to prime TTS_AUDIO_ELEMENT within a user gesture.
+const TTS_SILENT_SRC = "data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAA";
 
 function ttsUnlockAudio() {
   // Prime TTS_AUDIO_ELEMENT — the actual playback element — synchronously
@@ -223,19 +72,6 @@ const AUTOPLAY_STATE = {
   countdownPageIndex: -1,
   countdownSec: 0,
   countdownTimerId: null,
-  // Track the 400ms launch setTimeout so book-switch can cancel it
-  launchTimerId: null,
-  // Preload: background fetch during countdown so next page starts instantly
-  preloadAbort: null,       // AbortController for the in-flight preload fetch
-  preloadedKey: null,       // 'page-N' this preload is for
-  preloadedUrl: null,       // S3 URL fetched during countdown
-  preloadedMarks: null,     // sentence marks (may be null on Azure path)
-  audioReady: false,        // true when TTS_AUDIO_ELEMENT.src is already armed with preloadedUrl
-  // Binary preload: the audio file downloaded into memory as a Blob URL.
-  // When set, the play block uses this instead of re-fetching over the network —
-  // critical for slow connections (GPRS ~50kbps) where the audio download alone
-  // takes 24-40 seconds.
-  preloadedBlobUrl: null,
 };
 
 // Keep TTS_AUDIO_ELEMENT silently "active" between pages during an autoplay
@@ -247,13 +83,7 @@ function ttsKeepWarmForAutoplay() {
   if (!AUTOPLAY_STATE.enabled) return;
   try {
     TTS_AUDIO_ELEMENT.loop = true;
-    // If a preloaded URL is already armed in the element (audioReady=true), do NOT
-    // overwrite audio.src with the silent primer — that would destroy the buffered
-    // content and force a full re-fetch when the next page starts. The Safari gesture
-    // warmth comes from play() being called, not from the specific src content.
-    if (!AUTOPLAY_STATE.audioReady) {
-      TTS_AUDIO_ELEMENT.src = TTS_SILENT_SRC;
-    }
+    TTS_AUDIO_ELEMENT.src = TTS_SILENT_SRC;
     TTS_AUDIO_ELEMENT.volume = 0;
     TTS_AUDIO_ELEMENT.play().catch(() => {});
   } catch (_) {}
@@ -285,44 +115,14 @@ function ttsSetHintButton(key, disabled) {
   } catch (_) {}
 }
 
-// clearPreload: true (default) when cancelled prematurely (user action, book switch,
-// ttsStop). false when called on normal countdown completion — the preloaded audio
-// must survive the 400ms window until ttsSpeakQueue consumes it.
-function ttsAutoplayCancelCountdown({ clearPreload = true } = {}) {
+function ttsAutoplayCancelCountdown() {
   // Capture index BEFORE resetting state so the button reset can find the right page.
   const idx = AUTOPLAY_STATE.countdownPageIndex;
 
   if (AUTOPLAY_STATE.countdownTimerId) clearInterval(AUTOPLAY_STATE.countdownTimerId);
   AUTOPLAY_STATE.countdownTimerId = null;
-
-  // Cancel the 400ms launch timer if it's still pending
-  if (AUTOPLAY_STATE.launchTimerId) {
-    clearTimeout(AUTOPLAY_STATE.launchTimerId);
-    AUTOPLAY_STATE.launchTimerId = null;
-  }
-
-  if (clearPreload) {
-    // Premature cancellation: abort in-flight preload and wipe all cached data.
-    if (AUTOPLAY_STATE.preloadAbort) {
-      try { AUTOPLAY_STATE.preloadAbort.abort(); } catch (_) {}
-      AUTOPLAY_STATE.preloadAbort = null;
-    }
-    if (AUTOPLAY_STATE.preloadedBlobUrl) {
-      try { URL.revokeObjectURL(AUTOPLAY_STATE.preloadedBlobUrl); } catch (_) {}
-      AUTOPLAY_STATE.preloadedBlobUrl = null;
-    }
-    AUTOPLAY_STATE.preloadedKey = null;
-    AUTOPLAY_STATE.preloadedUrl = null;
-    AUTOPLAY_STATE.preloadedMarks = null;
-    AUTOPLAY_STATE.audioReady = false;
-  }
-  // On normal completion (clearPreload=false): leave preload data intact so
-  // ttsSpeakQueue (called 400ms later) can consume it via alreadyArmed check.
-
   AUTOPLAY_STATE.countdownPageIndex = -1;
   AUTOPLAY_STATE.countdownSec = 0;
-
-  if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] Countdown cancelled for page ${idx} (clearPreload:${clearPreload})`);
 
   // Reset button text on the page that was counting down.
   try {
@@ -360,98 +160,15 @@ function ttsAutoplayScheduleNext(pageIndex) {
   }
   updateBtn();
 
-  // Background preload: fetch the signed URL then download the audio binary as a Blob.
-  // Storing the binary in memory means the play block can assign a blob:// URL
-  // that loads instantly rather than waiting for a network download at playback time.
-  // On GPRS (~50kbps) a neural TTS page (~150KB) takes 24-40s to download —
-  // doing it during the countdown means that wait happens while the user is still
-  // reading, not after they've already moved to the next page.
-  const capturedGen = TTS_GEN;
-  const nextText = (typeof pages !== 'undefined' && pages[nextIndex]) ? pages[nextIndex] : '';
-  if (nextText && typeof pollyFetchUrl === 'function') {
-    // If early preload already fetched the URL during page reading, skip pollyFetchUrl
-    // and go straight to binary download (or re-use blob if already done).
-    const alreadyHaveUrl = (AUTOPLAY_STATE.preloadedKey === `page-${nextIndex}` && AUTOPLAY_STATE.preloadedUrl);
-
-    const runPreload = async () => {
-      try {
-        // ── Step 1: get the signed URL (skip if early preload already did this) ──
-        let ttsUrl, ttsMarks;
-        if (alreadyHaveUrl) {
-          ttsUrl   = AUTOPLAY_STATE.preloadedUrl;
-          ttsMarks = AUTOPLAY_STATE.preloadedMarks;
-          if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] URL already preloaded for page ${nextIndex}, downloading binary…`);
-        } else {
-          const urlController = new AbortController();
-          AUTOPLAY_STATE.preloadAbort = urlController;
-          const tts = await pollyFetchUrl(nextText, { sentenceMarks: true }, urlController);
-          if (TTS_GEN !== capturedGen || AUTOPLAY_STATE.countdownPageIndex !== pageIndex) return;
-          ttsUrl   = tts.url;
-          ttsMarks = Array.isArray(tts.sentenceMarks) ? tts.sentenceMarks : null;
-          AUTOPLAY_STATE.preloadedKey    = `page-${nextIndex}`;
-          AUTOPLAY_STATE.preloadedUrl    = ttsUrl;
-          AUTOPLAY_STATE.preloadedMarks  = ttsMarks;
-          AUTOPLAY_STATE.preloadAbort    = null;
-        }
-
-        // If we already have the blob from an earlier download, skip the fetch
-        if (AUTOPLAY_STATE.preloadedBlobUrl) {
-          if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] Binary already in memory for page ${nextIndex}`);
-          // Arm the element with the blob URL for Safari gesture context
-          try {
-            TTS_AUDIO_ELEMENT.loop = false;
-            TTS_AUDIO_ELEMENT.src  = AUTOPLAY_STATE.preloadedBlobUrl;
-            TTS_AUDIO_ELEMENT.load();
-            AUTOPLAY_STATE.audioReady = true;
-          } catch (_) {}
-          return;
-        }
-
-        // ── Step 2: download the audio binary ──
-        if (TTS_GEN !== capturedGen || AUTOPLAY_STATE.countdownPageIndex !== pageIndex) return;
-        const binController = new AbortController();
-        AUTOPLAY_STATE.preloadAbort = binController;
-        const resp = await fetch(ttsUrl, { signal: binController.signal });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const blob = await resp.blob();
-        if (TTS_GEN !== capturedGen || AUTOPLAY_STATE.countdownPageIndex !== pageIndex) return;
-
-        const blobUrl = URL.createObjectURL(blob);
-        AUTOPLAY_STATE.preloadedBlobUrl = blobUrl;
-        AUTOPLAY_STATE.preloadAbort     = null;
-
-        // Arm the element with the blob URL so play() fires from memory.
-        // Also satisfies Safari's requirement for audio.load() within gesture context.
-        AUTOPLAY_STATE.audioReady = false;
-        try {
-          TTS_AUDIO_ELEMENT.loop = false;
-          TTS_AUDIO_ELEMENT.src  = blobUrl;
-          TTS_AUDIO_ELEMENT.load();
-          AUTOPLAY_STATE.audioReady = true;
-        } catch (_) {}
-
-        if (window.DEBUG_AUTOPLAY) {
-          console.log(`[Autoplay] Binary preloaded for page ${nextIndex} (${Math.round(blob.size/1024)}KB), audioReady: ${AUTOPLAY_STATE.audioReady}`);
-        }
-      } catch (e) {
-        AUTOPLAY_STATE.preloadAbort = null;
-        if (window.DEBUG_AUTOPLAY) console.warn(`[Autoplay] Preload failed for page ${nextIndex}:`, e.message);
-      }
-    };
-    runPreload();
-  }
-
   AUTOPLAY_STATE.countdownTimerId = setInterval(() => {
     AUTOPLAY_STATE.countdownSec -= 1;
     if (AUTOPLAY_STATE.countdownSec <= 0) {
-      // Normal completion — preserve preload data for the 400ms launch window.
-      ttsAutoplayCancelCountdown({ clearPreload: false });
+      ttsAutoplayCancelCountdown();
       // Scroll to next page
       const nextPageEl = pageEls[nextIndex];
       if (nextPageEl) nextPageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      // Start reading next page after scroll settles — track timer so it can be cancelled
-      AUTOPLAY_STATE.launchTimerId = setTimeout(() => {
-        AUTOPLAY_STATE.launchTimerId = null;
+      // Start reading next page after scroll settles
+      setTimeout(() => {
         const text = (typeof pages !== 'undefined' && pages[nextIndex]) ? pages[nextIndex] : '';
         if (text) ttsSpeakQueue(`page-${nextIndex}`, [text]);
       }, 400);
@@ -651,12 +368,8 @@ function ttsPrepareEstimatedHighlight(key, rawText, audio) {
     );
   }
 
-  // Estimate duration from character count (~950 chars/min at normal speech rate).
-  // Much more accurate than the old 60s flat placeholder — first sentences now
-  // highlight correctly without waiting for the first timeupdate refinement.
-  const EST_MS_PER_CHAR = (60 * 1000) / 950; // ~63 ms/char
-  const estDuration = Math.max(5, (text.length * EST_MS_PER_CHAR) / 1000);
-  buildTimings(estDuration);
+  // Start with placeholder — any reasonable duration works for early highlighting
+  buildTimings(60);
 
   // Refine once on first timeupdate when we know actual duration and position.
   // timeupdate fires during playback on all platforms including Safari/iOS.
@@ -769,61 +482,22 @@ function browserPickVoice() {
       }
     } catch (_) {}
 
-    // Auto-selection: named high-quality voices, gender-preferred order.
-    // Names are matched as substrings so "Microsoft Aria Online (Natural)..." matches 'Aria'.
-    // Female list: Azure Neural → Apple macOS/iOS → Chrome/Windows SAPI
-    // Male list:   Apple (best for Safari) → Azure Neural → Chrome/Windows SAPI
-    const femaleNames = [
-      // Azure Neural (cloud + Edge browser)
-      'Aria', 'Jenny', 'Michelle', 'Emma',
-      // Apple (macOS / iOS)
-      'Samantha', 'Karen', 'Moira', 'Serena', 'Tessa', 'Veena',
-      // Windows SAPI (Chrome/Edge on Windows)
-      'Zira',
-      // Google TTS voices (Chrome on Android / desktop)
-      'Google UK English Female',
-    ];
-    const maleNames = [
-      // Apple (best-sounding voices on Safari — Daniel is top tier)
-      'Daniel', 'Rishi', 'Alex',
-      // Azure Neural
-      'Guy', 'Ryan', 'Roger', 'Eric',
-      // Windows SAPI (Chrome/Edge on Windows)
-      'Mark', 'David',
-      // Google TTS voices
-      'Google UK English Male',
-    ];
-    const preferred = isMale ? maleNames : femaleNames;
-    const fallback  = isMale ? femaleNames : maleNames;
+    // Auto-selection: named high-quality voices by gender preference.
+    // Daniel ranks first on male — best sounding Safari voice on Apple devices.
+    // Alex is macOS high-quality, sometimes exposed by Safari.
+    const femaleNames = ['Aria', 'Jenny', 'Samantha', 'Karen', 'Moira', 'Serena', 'Tessa'];
+    const maleNames   = ['Daniel', 'Rishi', 'Alex', 'Guy', 'Ryan', 'Fred'];
+    const preferred   = isMale ? maleNames : femaleNames;
+    const fallback    = isMale ? femaleNames : maleNames;
 
     const findNamed = (nameList) =>
       enVoices.find(v => nameList.some(n => v.name.includes(n)));
 
-    // Gender-keyword scan: catches voices not in the named lists whose name
-    // contains "Female" or "Male" (e.g. "Google UK English Female" on Chrome).
-    const genderKeyword = isMale ? 'male' : 'female';
-    const findByKeyword = (wantMale) =>
-      enVoices.find(v => v.name.toLowerCase().includes(wantMale ? 'male' : 'female'));
-
-    // Gender-aware Microsoft/Google scan: prefer voices whose name contains the
-    // right gender keyword before falling back to any voice from those families.
-    const findBrandGender = (brand, wantMale) => {
-      const brandVoices = enVoices.filter(v => new RegExp(brand, 'i').test(v.name));
-      const keyword = wantMale ? 'male' : 'female';
-      return brandVoices.find(v => v.name.toLowerCase().includes(keyword))
-        || brandVoices[0]
-        || null;
-    };
-
     return (
-      findNamed(preferred)                       ||  // 1. named preferred gender
-      findByKeyword(isMale)                      ||  // 2. gender-keyword match (preferred)
-      findNamed(fallback)                        ||  // 3. named opposite gender
-      findByKeyword(!isMale)                     ||  // 4. gender-keyword match (fallback)
-      findBrandGender('Microsoft', isMale)       ||  // 5. any Microsoft voice, gender-aware
-      findBrandGender('Google', isMale)          ||  // 6. any Google voice, gender-aware
-      enVoices.find(v => /Microsoft/i.test(v.name)) ||  // 7. any Microsoft voice
-      enVoices.find(v => /Google/i.test(v.name))    ||  // 8. any Google voice
+      findNamed(preferred) ||
+      findNamed(fallback)  ||
+      enVoices.find(v => /Microsoft/i.test(v.name)) ||
+      enVoices.find(v => /Google/i.test(v.name))    ||
       enVoices[0]  ||
       usable[0]    ||
       null
@@ -834,11 +508,6 @@ function browserPickVoice() {
 }
 
 function ttsStop() {
-  // Increment generation counter — any in-flight ttsSpeakQueue that captured
-  // the previous generation will bail on its next gen check.
-  TTS_GEN++;
-  if (window.DEBUG_TTS) console.log(`[TTS_GEN] ttsStop() — new gen: ${TTS_GEN}`);
-
   // Clear active state and re-enable hint buttons on any TTS read-page button
   try {
     document.querySelectorAll('.tts-btn[data-tts="page"].tts-active')
@@ -872,22 +541,11 @@ function ttsStop() {
   ttsClearSentenceHighlight();
   TTS_STATE.activeKey = null;
   TTS_STATE.activeBrowserVoiceName = null;
-  TTS_STATE.ttsSource = null;
-  // Release screen wake lock now that TTS has stopped.
-  _ttsReleaseWakeLock();
-  // Revoke any unconsumed preloaded blob to free memory.
-  if (AUTOPLAY_STATE?.preloadedBlobUrl) {
-    try { URL.revokeObjectURL(AUTOPLAY_STATE.preloadedBlobUrl); } catch(_) {}
-    AUTOPLAY_STATE.preloadedBlobUrl = null;
-  }
 }
 
-// externalController: pass an AbortController to use instead of creating a new one
-// and overwriting TTS_STATE.abort. Used by the autoplay preloader so it can be
-// cancelled independently without disrupting the main playback abort chain.
-async function pollyFetchUrl(text, opts = {}, externalController = null) {
-  const controller = externalController || new AbortController();
-  if (!externalController) TTS_STATE.abort = controller;
+async function pollyFetchUrl(text, opts = {}) {
+  const controller = new AbortController();
+  TTS_STATE.abort = controller;
 
   // IMPORTANT:
   // Do NOT hardcode voice/engine here.
@@ -1106,10 +764,40 @@ async function ttsSpeakQueue(key, parts) {
   // Voice variant (male/female) is respected via browserPickVoice().
   // Sentence highlighting uses boundary events on browser TTS path.
   if (typeof appTier !== 'undefined' && appTier === 'free') {
-    TTS_STATE.ttsSource = 'browser';
     browserSpeakQueue(key, parts);
     return;
   }
+
+  // Edge browser optimisation: Azure Neural voices (Aria, Jenny, Ryan, Guy etc.) are
+  // available natively in Edge via speechSynthesis. If the user has selected a cloud
+  // voice that matches an available browser voice, route to browserSpeakQueue instead
+  // of calling /api/tts — same quality, zero API cost, zero token spend.
+  try {
+    const savedVoice = localStorage.getItem('rc_browser_voice') || '';
+    if (savedVoice.startsWith('cloud:')) {
+      const azureShortName = savedVoice.slice('cloud:'.length); // e.g. "en-US-AriaNeural"
+      // Extract the plain voice name — Azure browser voices are listed as e.g.
+      // "Microsoft Aria Online (Natural) - English (United States)"
+      // Match by the first segment before "Neural" in the short name (e.g. "Aria")
+      const nameMatch = azureShortName.match(/en-[A-Z]{2}-([A-Za-z]+)Neural/);
+      const plainName = nameMatch ? nameMatch[1] : null;
+      if (plainName && browserTtsSupported()) {
+        const voices = window.speechSynthesis.getVoices() || [];
+        const browserMatch = voices.find(v =>
+          v.name.includes(plainName) && /Microsoft/i.test(v.name)
+        );
+        if (browserMatch) {
+          // Temporarily override voice picker to use this specific browser voice
+          const orig = localStorage.getItem('rc_browser_voice');
+          try { localStorage.setItem('rc_browser_voice', browserMatch.name); } catch(_) {}
+          browserSpeakQueue(key, parts);
+          // Restore cloud selection so the picker still shows the cloud voice
+          try { localStorage.setItem('rc_browser_voice', orig); } catch(_) {}
+          return;
+        }
+      }
+    }
+  } catch(_) {}
 
   // Unlock Safari audio during the user gesture
   ttsUnlockAudio();
@@ -1131,49 +819,16 @@ async function ttsSpeakQueue(key, parts) {
   ttsSetButtonActive(key, true);
   ttsSetHintButton(key, true);
 
-  // Capture generation AFTER any ttsStop() calls above so we hold the post-stop value.
-  // Any in-flight chain from a previous session has an older gen and will bail.
-  const myGen = TTS_GEN;
-  if (window.DEBUG_TTS) console.log(`[TTS_GEN] Starting play '${key}' at gen ${myGen}`);
-
-  // Consume preloaded data if available for this key (fetched during autoplay countdown).
-  let preloadedData = null;
-  let preloadedAudioReady = false;
-  let preloadedBlobUrl = null;
-  if (AUTOPLAY_STATE.preloadedKey === key && AUTOPLAY_STATE.preloadedUrl) {
-    preloadedData = { url: AUTOPLAY_STATE.preloadedUrl, sentenceMarks: AUTOPLAY_STATE.preloadedMarks };
-    preloadedAudioReady = !!AUTOPLAY_STATE.audioReady;
-    // Consume the blob URL — will be used as playback src if available.
-    preloadedBlobUrl = AUTOPLAY_STATE.preloadedBlobUrl || null;
-    AUTOPLAY_STATE.preloadedBlobUrl = null; // consumed
-    AUTOPLAY_STATE.preloadedKey   = null;
-    AUTOPLAY_STATE.preloadedUrl   = null;
-    AUTOPLAY_STATE.preloadedMarks = null;
-    AUTOPLAY_STATE.audioReady     = false;
-    if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] Consumed preloaded audio for '${key}', audioReady: ${preloadedAudioReady}, hasBlobUrl: ${!!preloadedBlobUrl}`);
-  }
-
   // Preferred path: Polly via /api/tts. If it fails, fall back to browser voices.
   try {
     for (let i = 0; i < queue.length; i++) {
       const wantMarks = (i === 0 && optsForKeySentenceMarks(key));
-
-      // Use preloaded URL for first part when available; otherwise fetch now.
-      const tts = (i === 0 && preloadedData)
-        ? preloadedData
-        : await pollyFetchUrl(queue[i], { sentenceMarks: wantMarks });
-
-      const url = tts.url;
-
-      // Spend token at playback start (option B): charged when audio actually plays,
-      // not during pre-fetch — so a cancelled autoplay countdown costs nothing.
+      // Spend 1 token per page read via cloud TTS (first part only — not lead-ins or feedback)
       if (i === 0 && optsForKeySentenceMarks(key)) {
         try { if (typeof tokenSpend === 'function') tokenSpend('tts'); } catch(_) {}
-        TTS_STATE.ttsSource = 'cloud';
-        // Keep screen on while reading — released in ttsStop().
-        _ttsAcquireWakeLock();
       }
-
+      const tts = await pollyFetchUrl(queue[i], { sentenceMarks: wantMarks });
+      const url = tts.url;
       if (wantMarks) {
         if (tts.sentenceMarks && tts.sentenceMarks.length) {
           // Polly path — precise speech marks available
@@ -1183,57 +838,23 @@ async function ttsSpeakQueue(key, parts) {
           ttsPrepareEstimatedHighlight(key, queue[i], TTS_AUDIO_ELEMENT);
         }
       }
-      // Bail if the user stopped or switched, OR if a book switch incremented TTS_GEN
-      if (TTS_STATE.activeKey !== key || TTS_GEN !== myGen) {
-        if (window.DEBUG_TTS) console.log(`[TTS_GEN] Old key cancelled for '${key}'. Current gen: ${TTS_GEN}, my gen: ${myGen}`);
-        return;
-      }
+      if (TTS_STATE.activeKey !== key) return; // cancelled mid-flight
 
       // Play URL (sequential)
       await new Promise((resolve, reject) => {
         const audio = TTS_AUDIO_ELEMENT;
-        // loop=false is always required — may still be true from ttsKeepWarmForAutoplay.
+        // Stop the silent primer (or autoplay keep-warm loop) before switching
+        // to the real audio URL. Resetting loop here is critical — if we landed
+        // here from autoplay, loop=true is still set from ttsKeepWarmForAutoplay.
         try { audio.loop = false; audio.pause(); } catch (_) {}
-
-        // Determine the actual src to use for playback:
-        // 1. Blob URL (audio binary already in memory): assign and play instantly —
-        //    no network needed, readyState reaches 4 immediately.
-        // 2. Element already armed with S3 URL (audioReady=true): skip reassignment
-        //    to preserve the buffer that load() built during countdown.
-        // 3. Fresh S3 URL: assign and let the browser download it.
-        let blobToRevoke = null;
-        if (i === 0 && preloadedBlobUrl) {
-          // Binary is in memory — this is the fast path on slow connections.
-          audio.src = preloadedBlobUrl;
-          blobToRevoke = preloadedBlobUrl;
-          if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] Playing from blob (in-memory binary)`);
-        } else if (i === 0 && preloadedAudioReady) {
-          // Element was armed with the S3 URL during countdown and not clobbered.
-          // Don't touch src — the buffer is intact.
-          if (window.DEBUG_AUTOPLAY) console.log(`[Autoplay] Playing from armed S3 URL (buffer intact)`);
-        } else {
-          // Normal path — assign URL and let browser fetch.
-          audio.src = url;
-        }
-
-        const alreadyArmed = (i === 0 && !preloadedBlobUrl && preloadedAudioReady);
-        if (window.DEBUG_AUTOPLAY && i === 0) {
-          console.log(`[Autoplay] Play block: alreadyArmed=${alreadyArmed}, hasBlobUrl=${!!preloadedBlobUrl}, readyState=${audio.readyState}`);
-        }
-
+        audio.src = url;
         TTS_STATE.audio = audio;
+        // Polly audio volume (0..1). Persisted via the Voices slider.
         try { audio.volume = Math.max(0, Math.min(1, Number(TTS_STATE.volume ?? 1))); } catch (_) {}
+        // Start sentence highlight loop if prepared for this action.
         ttsStartHighlightLoop(audio);
-        audio.onended = () => {
-          ttsClearSentenceHighlight();
-          // Revoke the blob URL now that playback is complete to free memory.
-          if (blobToRevoke) { try { URL.revokeObjectURL(blobToRevoke); } catch(_) {} }
-          resolve();
-        };
-        audio.onerror = () => {
-          if (blobToRevoke) { try { URL.revokeObjectURL(blobToRevoke); } catch(_) {} }
-          reject(new Error("Audio playback failed"));
-        };
+        audio.onended = () => { ttsClearSentenceHighlight(); resolve(); };
+        audio.onerror = () => reject(new Error("Audio playback failed"));
         audio.play().catch(reject);
       });
     }
@@ -1253,13 +874,11 @@ async function ttsSpeakQueue(key, parts) {
   } catch (err) {
     // IMPORTANT: If the user explicitly stopped (or switched actions) while Polly
     // was fetching/playing, do NOT fall back to browser TTS.
-    if (TTS_STATE.activeKey !== key || TTS_GEN !== myGen) return;
+    if (TTS_STATE.activeKey !== key) return;
     if (err && (err.name === 'AbortError' || String(err).includes('aborted'))) return;
 
     // If Polly isn't configured yet (or otherwise fails), don't spam alerts; just fall back.
     console.warn("Polly TTS unavailable, falling back to browser TTS:", err);
-    TTS_STATE.ttsSource = 'browser-fallback';
-    if (window.DEBUG_TTS) console.warn(`[TTS] Source: browser-fallback (cloud failed: ${err?.message || err})`);
     ttsStop();
     browserSpeakQueue(key, queue);
   }
