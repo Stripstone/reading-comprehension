@@ -105,16 +105,31 @@
         .btn-subscribe:hover { background: var(--jubly-light); transform: translateY(-1px); }
         /* ── Focus Mode reading UI ── */
         #reading-mode { background: var(--theme-accent-soft); min-height: 100vh; padding: 0; }
-        .reading-top-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,0.96); border-bottom: 1px solid #e2e8f0; backdrop-filter: blur(8px); transition: opacity 0.5s ease, transform 0.5s ease; }
+        .reading-top-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,0.96); border-bottom: 1px solid #e2e8f0; backdrop-filter: blur(8px); transition: opacity 0.5s ease, transform 0.5s ease; }
         .reading-top-bar.faded { opacity: 0; pointer-events: none; transform: translateY(-6px); }
-        /* Left controls scroll horizontally on narrow; Exit is pinned right and never clips */
-        .reading-top-left { display: flex; align-items: center; gap: 6px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; }
+        /* Controls centred; exit pinned right */
+        .reading-top-left { display: flex; align-items: center; gap: 6px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; justify-content: center; }
         .reading-top-left::-webkit-scrollbar { display: none; }
-        .reading-top-exit { flex-shrink: 0; margin-left: 8px; }
-        .reading-bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,0.97); border-top: 1px solid var(--jubly-border); backdrop-filter: blur(8px); box-shadow: 0 -4px 24px rgba(0,0,0,0.06); }
-        .reading-bottom-left { display: flex; align-items: center; gap: 4px; overflow-x: auto; flex: 1; min-width: 0; flex-shrink: 1; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+        .reading-top-exit { flex-shrink: 0; }
+        .reading-bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,0.97); border-top: 1px solid var(--jubly-border); backdrop-filter: blur(8px); box-shadow: 0 -4px 24px rgba(0,0,0,0.06); }
+        .reading-bottom-left { display: flex; align-items: center; gap: 4px; overflow-x: auto; flex: 1; min-width: 0; flex-shrink: 1; scrollbar-width: none; -webkit-overflow-scrolling: touch; justify-content: center; }
         .reading-bottom-left::-webkit-scrollbar { display: none; }
-        .reading-content { max-width: 42rem; margin: 0 auto; padding: 80px 1rem 96px; }
+        /* Reading content wrapper — unconstrained on desktop, centred column on tablet/mobile */
+        .reading-content { padding: 80px 0 96px; }
+
+        /* Pages container: breakpoint-aware width */
+        #reading-mode #pages {
+            /* Desktop (≥1025px): full natural width, unconstrained */
+            max-width: 900px; margin: 0 auto; padding: 0 2rem;
+        }
+        @media (max-width: 1024px) {
+            /* Tablet: constrained, centred */
+            #reading-mode #pages { max-width: 720px; padding: 0 1.5rem; }
+        }
+        @media (max-width: 768px) {
+            /* Mobile: tight padding */
+            #reading-mode #pages { max-width: 100%; padding: 0 1rem; }
+        }
         .reading-select { font-size: 0.75rem; font-weight: 700; color: #475569; background: transparent; border: none; outline: none; cursor: pointer; padding: 4px 2px; white-space: nowrap; }
         .reading-select:hover { color: var(--jubly-purple); }
         .reading-divider { width: 1px; height: 16px; background: #e2e8f0; flex-shrink: 0; }
@@ -252,7 +267,8 @@
            Zero effect outside reading mode.
            ═══════════════════════════════════════════════════════════ */
         #reading-mode { background:var(--rm-accent-soft); min-height:100vh; }
-        #reading-mode #pages { max-width:860px; margin:0 auto; padding:80px 1.5rem 96px; }
+        /* #pages padding handled by .reading-content breakpoint rules above */
+        #reading-mode #pages { padding-top: 0; }
 
         /* Page card */
         #reading-mode .page {
@@ -262,6 +278,12 @@
             position:relative; overflow:hidden;
             animation:rmSlideIn 0.4s ease-out backwards;
             transition:border-left-color 0.3s, box-shadow 0.3s;
+        }
+        @media (max-width: 1024px) {
+            #reading-mode .page { padding: 22px 20px; }
+        }
+        @media (max-width: 768px) {
+            #reading-mode .page { padding: 18px 16px; }
         }
         #reading-mode .page.page-active {
             border-left-width:6px;
@@ -277,16 +299,62 @@
             font-size:0.78rem; font-weight:800; text-transform:uppercase;
             letter-spacing:0.06em; color:var(--rm-accent); margin-bottom:12px;
         }
-        /* Passage text */
+
+        /* Passage text — page-size aware:
+           Desktop: unconstrained height, natural scroll.
+           Tablet/Mobile: capped height, internal scroll, Continue affordance via ::after fade. */
         #reading-mode .page-text {
             background:var(--rm-page-bg); border-radius:8px; padding:16px 18px;
             margin-bottom:14px; line-height:1.7; font-size:1rem;
             color:var(--rm-text); font-family:'Lora',serif;
             overflow-wrap:anywhere; word-break:break-word; overflow-x:hidden;
+            position:relative;
         }
+        @media (max-width: 1024px) {
+            #reading-mode .page-text {
+                max-height: 48vh; overflow-y: auto; overscroll-behavior: contain;
+                font-size: 0.97rem;
+            }
+        }
+        @media (max-width: 768px) {
+            #reading-mode .page-text {
+                max-height: 40vh; overflow-y: auto; overscroll-behavior: contain;
+                font-size: 0.93rem; line-height: 1.65;
+            }
+        }
+
+        /* "Continue" affordance — fade + chevron at bottom of scrollable text.
+           The .page-text-wrap element is injected by shellWrapPageText() on tablet/mobile.
+           On desktop the wrapper is present but the fade is hidden. */
+        .page-text-wrap { position: relative; }
+        .page-text-wrap .page-text-fade {
+            position: absolute; bottom: 0; left: 0; right: 0; height: 48px;
+            background: linear-gradient(to bottom, transparent, var(--rm-page-bg));
+            border-radius: 0 0 8px 8px; pointer-events: none;
+            display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px;
+            transition: opacity 0.2s;
+        }
+        .page-text-wrap .page-text-fade::after {
+            content: '▾';
+            font-size: 0.9rem; color: var(--rm-accent); opacity: 0.7;
+            animation: fadeChevron 1.4s ease-in-out infinite;
+        }
+        .page-text-wrap.scrolled-to-end .page-text-fade { opacity: 0; pointer-events: none; }
+        @keyframes fadeChevron { 0%,100%{transform:translateY(0)} 50%{transform:translateY(3px)} }
+        /* Desktop: no fade needed */
+        @media (min-width: 1025px) {
+            .page-text-wrap .page-text-fade { display: none; }
+        }
+
         /* TTS word highlight */
         #reading-mode .speaking-word { background-color:var(--rm-accent-soft); border-bottom:2px solid var(--rm-accent); border-radius:2px; }
-        /* Anchor highlights */
+        /* TTS sentence highlight — driven by --tts-alpha set by tts.js */
+        #reading-mode .tts-sentence {
+            --tts-alpha: 0;
+            border-radius: 6px; padding: 0 2px;
+            background-color: rgba(255, 230, 120, var(--tts-alpha));
+            transition: background-color 220ms ease;
+        }
         #reading-mode .page-text .anchor { color:inherit; background-color:rgba(255,241,118,var(--anchor-alpha,0)); border-radius:3px; padding:0 2px; transition:background-color 0.35s; }
         #reading-mode .page-text .anchor .anchor-term-found { background-color:rgba(255,241,118,0.95); border-radius:3px; padding:0 2px; }
         #reading-mode .page.anchor-hint-active .page-text .anchor { --anchor-alpha:0.9; }
@@ -303,12 +371,15 @@
         #reading-mode .top-btn.tts-active { background:var(--rm-btn-hover); box-shadow:0 0 0 2px var(--rm-accent); }
         #reading-mode .hint-btn:disabled { opacity:0.35; cursor:not-allowed; transform:none; }
 
-        /* page-actions + anchors layout */
-        #reading-mode .page-actions  { margin-bottom:4px; }
+        /* page-actions (Read Page) sits just above anchors-nav (Next) — both right-aligned,
+           matching the MVP app's exact render order: page-actions → anchors-nav */
+        #reading-mode .page-actions {
+            display:flex; justify-content:flex-end; gap:8px; margin:6px 0 4px;
+        }
         #reading-mode .anchors-row   { display:flex; justify-content:flex-end; margin:4px 0 2px; }
         #reading-mode .anchors-ui    { display:flex; gap:8px; align-items:center; font-size:0.75rem; }
         #reading-mode .anchors-counter { padding:4px 10px; border-radius:8px; background:var(--rm-btn-bg); color:var(--rm-text-2); }
-        #reading-mode .anchors-nav   { display:flex; justify-content:flex-end; margin:6px 0 14px; }
+        #reading-mode .anchors-nav   { display:flex; justify-content:flex-end; margin:4px 0 14px; }
         #reading-mode .anchors-nav .next-btn { min-height:36px; }
 
         /* Comprehension elements (hidden in reading mode by applyModeVisibility) */
@@ -1255,21 +1326,96 @@
         const signal = document.getElementById('session-complete');
         if (signal) signal.classList.add('hidden-section');
         showSection('reading-mode');
-        // Load the selected book into the app
-        if (_previewBookId) {
-            const bookSel = document.getElementById('bookSelect');
-            if (bookSel) {
-                bookSel.value = _previewBookId;
-                bookSel.dispatchEvent(new Event('change'));
-                // After chapters populate, click load
-                setTimeout(() => {
-                    const loadBtn = document.getElementById('loadBookSelection');
-                    if (loadBtn) loadBtn.click();
-                    setTimeout(shellUpdateProgress, 600);
-                }, 400);
+
+        if (!_previewBookId) return;
+
+        const bookSel = document.getElementById('bookSelect');
+        if (!bookSel) return;
+
+        // Set the book value and fire change — this triggers initBookImporter's
+        // async loadBook() which populates chapter/page selects.
+        bookSel.value = _previewBookId;
+        bookSel.dispatchEvent(new Event('change'));
+
+        // Poll until loadBook() has finished populating pageStart (max 8s).
+        // Only then click Load — avoids the race condition of a blind timeout.
+        const started = Date.now();
+        const pollLoad = setInterval(function() {
+            const ps = document.getElementById('pageStart');
+            const ready = ps && ps.options.length > 1 && ps.options[1] && ps.options[1].value !== '';
+            if (ready || Date.now() - started > 8000) {
+                clearInterval(pollLoad);
+                const loadBtn = document.getElementById('loadBookSelection');
+                if (loadBtn) loadBtn.click();
+                setTimeout(shellUpdateProgress, 600);
             }
-        }
+        }, 120);
     }
+
+    // ── TTS stop on reading mode hidden (MutationObserver) ───────
+    // Watches #reading-mode for hidden-section class being added.
+    // Fires regardless of how reading mode is dismissed — Exit button,
+    // session complete, programmatic hide, etc.
+    (function initTtsStopObserver() {
+        const rm = document.getElementById('reading-mode');
+        if (!rm) return;
+        const observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(m) {
+                if (m.type === 'attributes' && m.attributeName === 'class') {
+                    if (rm.classList.contains('hidden-section')) {
+                        try { if (typeof ttsStop === 'function') ttsStop(); } catch(_) {}
+                    }
+                }
+            });
+        });
+        observer.observe(rm, { attributes: true, attributeFilter: ['class'] });
+    })();
+
+    // ── Continue affordance — wraps .page-text in a .page-text-wrap ─
+    // Detects scrollable overflow on tablet/mobile, shows a fade + chevron,
+    // hides it once the user has scrolled to the end.
+    // Runs after render() fires (hooked via MutationObserver on #pages).
+    (function initContinueAffordance() {
+        function wrapAndBind(pageEl) {
+            const textEl = pageEl.querySelector('.page-text');
+            if (!textEl || textEl.parentElement.classList.contains('page-text-wrap')) return;
+
+            // Wrap
+            const wrap = document.createElement('div');
+            wrap.className = 'page-text-wrap';
+            textEl.parentNode.insertBefore(wrap, textEl);
+            wrap.appendChild(textEl);
+
+            // Fade overlay
+            const fade = document.createElement('div');
+            fade.className = 'page-text-fade';
+            wrap.appendChild(fade);
+
+            // Check on scroll
+            function checkScroll() {
+                const atEnd = textEl.scrollHeight - textEl.scrollTop - textEl.clientHeight < 8;
+                wrap.classList.toggle('scrolled-to-end', atEnd);
+                // Also hide if there's no overflow at all
+                if (textEl.scrollHeight <= textEl.clientHeight + 4) {
+                    wrap.classList.add('scrolled-to-end');
+                }
+            }
+            textEl.addEventListener('scroll', checkScroll, { passive: true });
+            // Run once after layout settles
+            setTimeout(checkScroll, 100);
+        }
+
+        const pagesEl = document.getElementById('pages');
+        if (!pagesEl) return;
+
+        // Observe #pages for new .page cards added by render()
+        const observer = new MutationObserver(function() {
+            pagesEl.querySelectorAll('.page').forEach(wrapAndBind);
+        });
+        observer.observe(pagesEl, { childList: true });
+        // Also run on any already-rendered cards
+        pagesEl.querySelectorAll('.page').forEach(wrapAndBind);
+    })();
 
     // ── Empty state drag/drop ─────────────────────────────────────
     // Drop a file on the empty state → open import modal with file pre-loaded
@@ -1297,7 +1443,20 @@
     // ── Bottom bar bridges ────────────────────────────────────────
 
     function shellPauseToggle(btn) {
-        try { if (typeof ttsStop === 'function') ttsStop(); } catch(_) {}
+        try {
+            // ttsIsActive / ttsStop / ttsResume are defined in tts.js
+            if (typeof ttsIsActive === 'function' && ttsIsActive()) {
+                if (typeof ttsStop === 'function') ttsStop();
+                if (btn) { btn.querySelector('svg').innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>'; if (btn.lastChild) btn.lastChild.textContent = ' Play'; }
+            } else {
+                // No active TTS — speak the current page
+                if (typeof ttsSpeakQueue === 'function' && typeof lastFocusedPageIndex !== 'undefined') {
+                    const i = lastFocusedPageIndex >= 0 ? lastFocusedPageIndex : 0;
+                    if (typeof pages !== 'undefined' && pages[i]) ttsSpeakQueue(`page-${i}`, [pages[i]]);
+                }
+                if (btn) { btn.querySelector('svg').innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>'; if (btn.lastChild) btn.lastChild.textContent = ' Pause'; }
+            }
+        } catch(_) {}
     }
 
     function shellToggleAutoplay(btn) {
