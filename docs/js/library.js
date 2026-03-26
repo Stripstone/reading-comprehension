@@ -1997,13 +1997,13 @@
     if (!openBtn || !modal || !listEl) return;
 
     function show() {
+      modal.classList.remove('hidden-section');
       modal.style.display = 'flex';
-      modal.setAttribute('aria-hidden', 'false');
       render();
     }
     function hide() {
-      modal.style.display = 'none';
-      modal.setAttribute('aria-hidden', 'true');
+      modal.classList.add('hidden-section');
+      modal.style.display = '';
     }
 
     async function render() {

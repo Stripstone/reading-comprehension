@@ -192,23 +192,26 @@
       if (filterInput) filterInput.style.display = _advancedMode ? 'none' : 'block';
 
       // Hide selection tools when in advanced mode to avoid cramped layout.
-      const tools = document.querySelector('.import-picker-tools');
+      const tools = document.getElementById('importPickerTools') || document.querySelector('.import-picker-tools');
       if (tools) tools.style.display = _advancedMode ? 'none' : '';
+
+      // Hide Back button in advanced mode — "Contents" already navigates back.
+      if (backBtn) backBtn.style.display = _advancedMode ? 'none' : '';
 
       if (advancedToggleBtn) advancedToggleBtn.textContent = _advancedMode ? 'Contents' : 'Advanced';
     }
 
     function showModal() {
+      modal.classList.remove('hidden-section');
       modal.style.display = 'flex';
-      modal.setAttribute('aria-hidden', 'false');
       // reset view
       showStage('upload');
       setAdvancedMode(false);
     }
 
     function hideModal() {
-      modal.style.display = 'none';
-      modal.setAttribute('aria-hidden', 'true');
+      modal.classList.add('hidden-section');
+      modal.style.display = '';
     }
 
     function showStage(which) {
