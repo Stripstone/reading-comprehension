@@ -794,7 +794,7 @@
                 <option value="2.0">Speed: 2.0×</option>
             </select>
             <div class="reading-divider mx-1"></div>
-            <!-- Pause/Play — calls ttsStop() / ttsResume() from app's tts.js -->
+            <!-- Pause/Play — calls ttsPause() / ttsResume() from app's tts.js -->
             <button id="shell-pause-btn" onclick="handlePausePlay()" class="pb-icon-btn" title="Pause narration">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
                 Pause
@@ -1069,7 +1069,7 @@
             // Pause
             btn.classList.add('active');
             btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Play';
-            try { if (typeof ttsStop === 'function') ttsStop(); } catch(_) {}
+            try { if (typeof ttsPause === 'function') ttsPause(); } catch(_) {}
         }
     }
 
