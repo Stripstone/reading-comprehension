@@ -1,425 +1,1203 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Reading Comprehension</title>
-  <!-- 
-    ðŸŽµ BACKGROUND MUSIC SETUP:
-    1. Save your audio file in the SAME FOLDER as this HTML file
-    2. Replace "your-song-file.mp3" with your actual filename
-    3. Supported formats: .mp3, .ogg, .wav
-    4. Click the speaker icon (top-right corner) to play/pause
-  -->
-  <link rel="stylesheet" href="css/theme.css">
-  <link rel="stylesheet" href="css/components.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>jubly | Focus-First Reading</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script src="js/config.js"></script>
+    <link rel="stylesheet" href="css/theme.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Lora:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        /*
+         * ── COLOR SYSTEM ────────────────────────────────────────────────────────
+         *
+         * Two parallel sets of CSS variables are intentional:
+         *
+         *   --jubly-*      Brand constants. Never change. Used for permanent UI
+         *                  elements (logo, buttons, borders, focus rings).
+         *
+         *   --theme-*      User-switchable. Change when the user picks a theme.
+         *                  Used for reading mode accents, active states, highlights.
+         *                  Default values match --jubly-purple so both systems look
+         *                  identical until the user selects a different theme.
+         *
+         *   --jubly-brand-blue / --jubly-brand-yellow
+         *                  Decorative illustration colors (landing hero only).
+         *                  Not theme-switchable. Do not use elsewhere.
+         *
+         * ── MERGE NOTES ─────────────────────────────────────────────────────────
+         * Search "MERGE:" throughout this file for every app handoff point.
+         * ────────────────────────────────────────────────────────────────────────
+         */
+        :root {
+            /* Brand constants */
+            --jubly-purple:      #6344F5;
+            --jubly-purple-deep: #4b32bc;
+            --jubly-light:       #F8F7FF;
+            --jubly-border:      #E2E8F0;
+            --text-dark:         #1E293B;
+            /* Decorative illustration colors — landing hero only */
+            --jubly-brand-blue:   #1cb0f6;
+            --jubly-brand-yellow: #ffc800;
+            /* Theme accent — default matches brand purple, overridden per theme */
+            --theme-accent:      #6344F5;
+            --theme-accent-deep: #4b32bc;
+            --theme-accent-soft: #ede9fe;
+        }
+        /* Theme overrides — applied as body class by setTheme() */
+        body.theme-green  { --theme-accent: #22c55e; --theme-accent-deep: #16a34a; --theme-accent-soft: #dcfce7; }
+        body.theme-purple { --theme-accent: #a78bfa; --theme-accent-deep: #7c3aed; --theme-accent-soft: #ede9fe; }
 
-  <!-- Vendor libs (client-side Document import) -->
-  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+        /* Utility classes for consistent brand/theme color usage */
+        .text-brand      { color: var(--jubly-purple); }
+        .bg-brand        { background-color: var(--jubly-purple); }
+        .text-accent     { color: var(--theme-accent); }
+        .bg-accent-soft  { background-color: var(--theme-accent-soft); }
+        .border-accent   { border-color: var(--theme-accent); }
+        body { font-family: 'Inter', sans-serif; color: var(--text-dark); background-color: #fff; }
+        .reading-font { font-family: 'Lora', serif; }
+        .hero-float { animation: float 6s ease-in-out infinite; }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
+        .btn-jubly { background: var(--jubly-purple); color: white; transition: transform 0.15s ease, box-shadow 0.15s ease; box-shadow: 0 4px 0px 0px var(--jubly-purple-deep); }
+        .btn-jubly:hover  { transform: translateY(-1px); box-shadow: 0 5px 0px 0px var(--jubly-purple-deep); }
+        .btn-jubly:active { transform: translateY(3px);  box-shadow: 0 0px 0px 0px var(--jubly-purple-deep); }
+        .btn-ghost { background: transparent; color: var(--jubly-purple); border: 2px solid var(--jubly-purple); transition: transform 0.15s ease, background 0.15s ease; }
+        .btn-ghost:hover { background: var(--jubly-light); transform: translateY(-1px); }
+        .btn-theme { background: var(--theme-accent); color: white; transition: transform 0.15s ease, box-shadow 0.15s ease; box-shadow: 0 4px 0px 0px var(--theme-accent-deep); }
+        .btn-theme:hover  { transform: translateY(-1px); box-shadow: 0 5px 0px 0px var(--theme-accent-deep); }
+        .btn-theme:active { transform: translateY(3px);  box-shadow: 0 0px 0px 0px var(--theme-accent-deep); }
+        .glass-card { background: white; border: 1px solid var(--jubly-border); border-radius: 12px; }
+        .section-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 1.5rem; }
+        .hidden-section { display: none !important; }
+        .page-card { transition: opacity 0.4s cubic-bezier(0.4,0,0.2,1), transform 0.4s cubic-bezier(0.4,0,0.2,1), border-color 0.3s ease; opacity: 0.3; transform: scale(0.96); }
+        .page-card.active { opacity: 1; transform: scale(1); border-color: var(--theme-accent); }
+        .speaking-word { background-color: var(--theme-accent-soft); border-bottom: 2px solid var(--theme-accent); border-radius: 2px; }
+        .modal-overlay { backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+        .profile-tab-btn.active { background-color: #f1f5f9; color: var(--jubly-purple); font-weight: 700; }
+        .tier-btn { padding: 3px 11px; border-radius: 999px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; border: 2px solid #e2e8f0; color: #94a3b8; cursor: pointer; transition: all 0.15s ease; background: transparent; }
+        .tier-btn.active { border-color: var(--jubly-purple); color: var(--jubly-purple); background: #f5f3ff; }
+        .toggle-switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-track { position: absolute; inset: 0; background: #cbd5e1; border-radius: 999px; cursor: pointer; transition: background 0.2s; }
+        .toggle-track::before { content: ''; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; background: white; border-radius: 50%; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+        .toggle-switch input:checked + .toggle-track { background: var(--jubly-purple); }
+        .toggle-switch input:checked + .toggle-track::before { transform: translateX(20px); }
+        .theme-swatch { width: 34px; height: 34px; border-radius: 50%; cursor: pointer; border: 3px solid transparent; transition: border-color 0.15s, transform 0.15s; box-shadow: 0 2px 6px rgba(0,0,0,0.12); }
+        .theme-swatch:hover { transform: scale(1.1); }
+        .theme-swatch.selected { border-color: #1e293b; }
+        .pricing-card { border: 2px solid #e2e8f0; border-radius: 16px; padding: 1.5rem; flex: 1; transition: border-color 0.2s, transform 0.2s; background: white; }
+        .pricing-card.featured { border-color: var(--jubly-purple); background: #f5f3ff; transform: scale(1.02); }
+        .sub-hero { background: linear-gradient(135deg, #6344F5 0%, #a78bfa 100%); border-radius: 16px; padding: 2rem; color: white; }
+        .theme-dot { background: var(--theme-accent); width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        /* ── Sidebar ── */
+        .sidebar-btn { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 6px; border-radius: 10px; color: #94a3b8; font-size: 0.58rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; transition: background 0.15s, color 0.15s; width: 52px; cursor: pointer; background: transparent; border: none; }
+        .sidebar-btn:hover { background: #f1f5f9; color: var(--jubly-purple); }
+        .sidebar-btn.active { color: var(--jubly-purple); background: #f5f3ff; }
+        /* Sidebar offset: !important overrides Tailwind's mx-auto */
+        .with-sidebar { margin-left: 68px !important; }
+        @media (max-width: 640px) { .with-sidebar { margin-left: 0 !important; } #app-sidebar { display: none !important; } }
+        /* ── Explorer theme swatch ── */
+        .explorer-locked { position: relative; }
+        .explorer-locked::after { content: 'Pro+'; position: absolute; top: -4px; right: -4px; background: var(--jubly-purple); color: white; font-size: 0.5rem; font-weight: 800; padding: 1px 4px; border-radius: 999px; letter-spacing: 0.04em; }
+        /* ── Nav subscribe ── */
+        .btn-subscribe { background: white; color: var(--jubly-purple); border: 2px solid var(--jubly-purple); padding: 6px 16px; border-radius: 8px; font-weight: 700; font-size: 0.8rem; cursor: pointer; transition: background 0.15s, transform 0.15s; }
+        .btn-subscribe:hover { background: var(--jubly-light); transform: translateY(-1px); }
+        /* ── Focus Mode reading UI ── */
+        #reading-mode { background: var(--theme-accent-soft); min-height: 100vh; padding: 0; }
+        .reading-top-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,0.96); border-bottom: 1px solid #e2e8f0; backdrop-filter: blur(8px); transition: opacity 0.5s ease, transform 0.5s ease; }
+        .reading-top-bar.faded { opacity: 0; pointer-events: none; transform: translateY(-6px); }
+        /* Left controls scroll horizontally on narrow; Exit is pinned right and never clips */
+        .reading-top-left { display: flex; align-items: center; gap: 6px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; }
+        .reading-top-left::-webkit-scrollbar { display: none; }
+        .reading-top-exit { flex-shrink: 0; margin-left: 8px; }
+        .reading-bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,0.97); border-top: 1px solid var(--jubly-border); backdrop-filter: blur(8px); box-shadow: 0 -4px 24px rgba(0,0,0,0.06); }
+        .reading-bottom-left { display: flex; align-items: center; gap: 4px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; }
+        .reading-bottom-left::-webkit-scrollbar { display: none; }
+        .reading-content { max-width: 42rem; margin: 0 auto; padding: 80px 1rem 96px; }
+        .reading-select { font-size: 0.75rem; font-weight: 700; color: #475569; background: transparent; border: none; outline: none; cursor: pointer; padding: 4px 2px; white-space: nowrap; }
+        .reading-select:hover { color: var(--jubly-purple); }
+        .reading-divider { width: 1px; height: 16px; background: #e2e8f0; flex-shrink: 0; }
+        .tier-pill { font-size: 0.6rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 8px; border-radius: 999px; background: #f5f3ff; color: var(--jubly-purple); border: 1px solid #ddd6fe; white-space: nowrap; flex-shrink: 0; }
+        .pb-icon-btn { display: flex; align-items: center; gap: 5px; padding: 6px 10px; border-radius: 8px; font-size: 0.72rem; font-weight: 700; color: #64748b; background: transparent; border: none; cursor: pointer; transition: background 0.15s, color 0.15s; white-space: nowrap; flex-shrink: 0; }
+        .pb-icon-btn:hover { background: #f1f5f9; color: #1e293b; }
+        .pb-icon-btn.active { background: var(--theme-accent-soft); color: var(--theme-accent); }
+        .page-progress { font-size: 0.7rem; font-weight: 700; color: #94a3b8; letter-spacing: 0.04em; white-space: nowrap; flex-shrink: 0; }
+
+        /* ── App modal overlay (used by howItWorksModal, importBookModal, manageLibraryModal) ── */
+        .modal-overlay { position:fixed; inset:0; background:rgba(15,23,42,0.55); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); z-index:200; display:flex; align-items:center; justify-content:center; padding:1.5rem; }
+        .modal { background:#fff; border-radius:20px; border:1px solid var(--jubly-border); box-shadow:0 24px 64px rgba(0,0,0,0.18); width:min(720px,96vw); max-height:min(88vh,860px); overflow:auto; }
+        .import-modal { width:min(980px,96vw); }
+        .modal-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:1.25rem 1.5rem 1rem; border-bottom:1px solid var(--jubly-border); }
+        .modal-header h2 { font-size:1rem; font-weight:800; color:#1e293b; }
+        .modal-close { background:#f1f5f9; border:none; border-radius:8px; width:32px; height:32px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#64748b; font-size:1rem; transition:background 0.15s; }
+        .modal-close:hover { background:#e2e8f0; color:#1e293b; }
+        .modal-body { padding:1.25rem 1.5rem 1.5rem; }
+        /* Import stages */
+        .import-stage { min-height:200px; }
+        .import-dropzone { border:2px dashed var(--jubly-border); border-radius:16px; padding:2.5rem 1.5rem; text-align:center; cursor:pointer; transition:border-color 0.15s, background 0.15s; }
+        .import-dropzone:hover { border-color:var(--jubly-purple); background:var(--jubly-light); }
+        .import-dropzone-title { font-size:0.95rem; font-weight:700; color:#1e293b; margin-bottom:0.4rem; }
+        .import-dropzone-sub { font-size:0.8rem; color:#94a3b8; }
+        .import-file-input { position:absolute; left:-9999px; width:1px; height:1px; opacity:0; pointer-events:none; }
+        .import-hint { font-size:0.75rem; color:#94a3b8; margin-top:0.75rem; }
+        .import-status { margin-top:0.75rem; padding:10px 12px; border:1.5px solid var(--jubly-border); border-radius:10px; background:#f8fafc; font-size:0.82rem; color:#475569; }
+        .import-actions { display:flex; gap:8px; }
+        /* Two-pane chapter picker */
+        .import-picker { display:grid; grid-template-columns:1.3fr 0.7fr; gap:12px; height:min(60vh,520px); }
+        @media(max-width:700px){ .import-picker { grid-template-columns:1fr; height:auto; } }
+        .import-picker-left,.import-picker-right { border:1.5px solid var(--jubly-border); border-radius:14px; background:#fafafa; display:flex; flex-direction:column; overflow:hidden; }
+        .import-picker-head { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px; border-bottom:1px solid var(--jubly-border); background:#fff; }
+        .import-picker-title { font-size:0.82rem; font-weight:800; color:#1e293b; }
+        .import-picker-tools { display:flex; gap:6px; flex-wrap:wrap; }
+        .import-filter { margin:8px 10px; padding:7px 10px; border:1.5px solid var(--jubly-border); border-radius:8px; font-size:0.8rem; outline:none; width:calc(100% - 20px); box-sizing:border-box; transition:border-color 0.15s; }
+        .import-filter:focus { border-color:var(--jubly-purple); }
+        .import-toc { flex:1; overflow-y:auto; padding:4px 8px 8px; }
+        .toc-row { display:flex; align-items:flex-start; gap:8px; padding:8px 8px; border-radius:10px; cursor:pointer; }
+        .toc-row:hover { background:rgba(99,68,245,0.05); }
+        .toc-row.is-active { background:rgba(99,68,245,0.08); }
+        .toc-row input[type=checkbox] { margin-top:2px; flex-shrink:0; accent-color:var(--jubly-purple); }
+        .toc-title { font-size:0.82rem; font-weight:700; color:#1e293b; line-height:1.3; }
+        .toc-meta { font-size:0.72rem; color:#94a3b8; margin-top:2px; }
+        .toc-pills { display:flex; gap:4px; flex-wrap:wrap; margin-top:4px; }
+        .toc-pill { font-size:0.65rem; padding:2px 7px; border-radius:999px; border:1px solid var(--jubly-border); color:#64748b; background:#fff; }
+        .import-footerbar { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px; border-top:1px solid var(--jubly-border); background:#fff; }
+        .import-selection-meta { font-size:0.75rem; color:#94a3b8; }
+        .import-preview-head { padding:10px 12px; border-bottom:1px solid var(--jubly-border); font-size:0.78rem; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.06em; background:#fff; }
+        .import-preview-title { padding:10px 12px 4px; font-size:0.88rem; font-weight:700; color:#1e293b; }
+        .import-preview-body { padding:0 12px 12px; flex:1; overflow-y:auto; font-size:0.82rem; color:#475569; line-height:1.65; white-space:pre-wrap; overflow-wrap:anywhere; }
+        /* Progress stage */
+        .import-progress { border:1.5px solid var(--jubly-border); border-radius:14px; padding:1.25rem; }
+        .import-progress-title { font-size:0.95rem; font-weight:800; color:#1e293b; margin-bottom:4px; }
+        .import-progress-meta { font-size:0.8rem; color:#64748b; margin-bottom:0.75rem; }
+        .import-progress-bar { height:8px; border-radius:999px; background:#f1f5f9; overflow:hidden; }
+        .import-progress-fill { height:100%; border-radius:999px; background:var(--jubly-purple); transition:width 0.3s ease; }
+        .import-progress-detail { font-size:0.75rem; color:#94a3b8; margin-top:6px; }
+        /* Advanced panel */
+        .import-advanced-panel { margin:8px 10px; padding:10px 12px; border:1.5px solid var(--jubly-border); border-radius:10px; background:#fff; }
+        .import-advanced-title { font-size:0.78rem; font-weight:800; color:#475569; margin-bottom:8px; }
+        .import-advanced-body { display:flex; flex-direction:column; gap:8px; }
+        .import-adv-row { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:0.8rem; color:#64748b; }
+        .import-adv-row select { font-size:0.78rem; border:1.5px solid var(--jubly-border); border-radius:8px; padding:4px 8px; outline:none; background:#fff; }
+        .import-adv-check { font-size:0.8rem; color:#64748b; display:flex; align-items:center; gap:6px; cursor:pointer; }
+        /* Library modal */
+        .library-list { display:flex; flex-direction:column; gap:8px; margin-top:8px; }
+        .library-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 14px; border:1.5px solid var(--jubly-border); border-radius:12px; background:#fafafa; }
+        .library-row-title { font-size:0.85rem; font-weight:700; color:#1e293b; }
+        .library-row-meta { font-size:0.72rem; color:#94a3b8; margin-top:2px; }
+        .library-row-actions { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+        .btn-danger { background:#ef4444; color:#fff; border:none; border-radius:8px; padding:6px 12px; font-size:0.75rem; font-weight:700; cursor:pointer; transition:background 0.15s; }
+        .btn-danger:hover { background:#dc2626; }
+        /* Shared small buttons used by import.js */
+        .btn-primary { background:var(--jubly-purple); color:#fff; border:none; border-radius:10px; padding:9px 16px; font-size:0.82rem; font-weight:700; cursor:pointer; transition:opacity 0.15s; }
+        .btn-primary:disabled { opacity:0.4; cursor:not-allowed; }
+        .btn-primary:not(:disabled):hover { opacity:0.88; }
+        .btn-secondary { background:#fff; color:var(--jubly-purple); border:2px solid var(--jubly-purple); border-radius:10px; padding:7px 14px; font-size:0.82rem; font-weight:700; cursor:pointer; transition:background 0.15s; }
+        .btn-secondary:hover { background:var(--jubly-light); }
+        .btn-mini { background:#fff; color:#475569; border:1.5px solid var(--jubly-border); border-radius:8px; padding:5px 10px; font-size:0.72rem; font-weight:700; cursor:pointer; white-space:nowrap; transition:background 0.15s, border-color 0.15s; }
+        .btn-mini:hover { background:#f1f5f9; border-color:#cbd5e1; }
+        .btn-mini.is-active { background:var(--jubly-purple); color:#fff; border-color:var(--jubly-purple); }
+        /* Volume panel */
+        #volumePanel { font-family:'Inter',sans-serif; }
+        /* Reading mode: pages rendered by app render() */
+        #pages { max-width:42rem; margin:0 auto; }
+        /* How It Works modal content */
+        .howitworks-goal-lead { font-weight:800; color:#1e293b; margin-bottom:10px; font-size:0.9rem; }
+        .howitworks-block { color:#475569; line-height:1.55; font-size:0.85rem; }
+        .howitworks-title { font-weight:700; color:#1e293b; margin-top:8px; }
+        .howitworks-list { margin:6px 0 0 18px; }
+        .howitworks-list li { margin:5px 0; }
+        .howitworks-quote { margin-top:12px; padding:12px; border:1.5px solid var(--jubly-border); border-radius:12px; background:#fafafa; font-style:italic; font-size:0.82rem; color:#64748b; }
+    </style>
 </head>
-<body>
+<body class="bg-white">
 
-<!-- Canvas for fire embers -->
-<canvas id="fireCanvas"></canvas>
-
-<!-- 🔊 Sound Effects -->
-<audio id="sandSound" loop preload="auto">
-  <source src="assets/sand.mp3" type="audio/mpeg">
-</audio>
-
-<audio id="stoneSound" preload="auto">
-  <source src="assets/sandstone.mp3" type="audio/mpeg">
-</audio>
-
-<audio id="rewardSound" preload="auto">
-  <source src="assets/reward.mp3" type="audio/mpeg">
-</audio>
-
-<audio id="compassSound" preload="auto">
-  <source src="assets/compass.mp3" type="audio/mpeg">
-</audio>
-
-<audio id="pageTurnSound" preload="auto">
-  <source src="assets/page_turn.mp3" type="audio/mpeg">
-</audio>
-
-<audio id="evaluateSound" preload="auto">
-  <source src="assets/evaluate.mp3" type="audio/mpeg">
-</audio>
-
-<!-- Background Music -->
-<audio id="bgMusic" loop preload="auto">
-  <source src="assets/song.mp3" type="audio/mpeg">
-  <!-- Alternative formats: -->
-  <!-- <source src="your-song-file.ogg" type="audio/ogg"> -->
-  <!-- <source src="your-song-file.wav" type="audio/wav"> -->
-</audio>
-
-<!-- Music Toggle Button (fixed top-right) -->
-<button id="musicToggle" class="music-button" title="Toggle background music">
-  <span id="musicIcon">🔇</span>
-</button>
-
-<!-- Volume panel (opened from the music button) -->
-<div id="volumePanel" style="display:none; position:fixed; right:14px; top:56px; z-index:1000; width: 320px; max-width: 92vw; padding: 12px; border: 2px solid var(--border); border-radius: 10px; background: var(--secondary-bg); box-shadow: 0 8px 28px rgba(0,0,0,0.22);">
-  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-    <button type="button" id="volumeCloseBtn" style="padding:6px 10px;">✕</button>
-  </div>
-  <div style="display:flex; gap:10px; margin-bottom:10px; justify-content:space-between; align-items:center;">
-    <button type="button" id="toggleMusicBtn" style="flex:1; padding:8px 10px;">Mute/Unmute</button>
-  </div>
-
-  <div style="display:flex; gap:10px; margin-bottom:10px; align-items:center;">
-    <div style="font-size:13px; font-weight:900; font-family:'Karla', sans-serif; white-space:nowrap;">Voices:</div>
-    <select id="voiceFemaleSelect" style="flex:1; min-width:0; max-width:44%; padding:5px 8px; font-size:13px; font-family:'Karla',sans-serif; border:2px solid var(--border); border-radius:6px; background:var(--secondary-bg); color:var(--text-primary); outline:none; overflow:hidden; text-overflow:ellipsis;"></select>
-    <select id="voiceMaleSelect" style="flex:1; min-width:0; max-width:44%; padding:5px 8px; font-size:13px; font-family:'Karla',sans-serif; border:2px solid var(--border); border-radius:6px; background:var(--secondary-bg); color:var(--text-primary); outline:none; overflow:hidden; text-overflow:ellipsis;"></select>
-  </div>
-  <div style="display:flex; gap:10px; margin-bottom:10px; justify-content:space-between; align-items:center;">
-    <div style="font-size:13px; font-weight:900; font-family:'Karla', sans-serif;">Autoplay:</div>
-    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; flex:1; justify-content:flex-end;">
-      <span style="opacity:0.85;">Read next page automatically</span>
-      <input type="checkbox" id="autoplayToggle" style="width:16px; height:16px; cursor:pointer; accent-color: var(--accent, #c17d4a);">
-    </label>
-  </div>
-  <div style="display:grid; grid-template-columns: 1fr 120px; gap: 8px 10px; align-items:center; font-size: 13px;">
-    <div>Voices</div><input id="vol_voice" type="range" min="0" max="1" step="0.01">
-    <div>Music</div><input id="vol_music" type="range" min="0" max="1" step="0.01">
-    <div>Sand</div><input id="vol_sand" type="range" min="0" max="1" step="0.01">
-    <div>Sandstone</div><input id="vol_stone" type="range" min="0" max="1" step="0.01">
-    <div>Reward</div><input id="vol_reward" type="range" min="0" max="1" step="0.01">
-    <div>Compass</div><input id="vol_compass" type="range" min="0" max="1" step="0.01">
-    <div>Page Turn</div><input id="vol_pageTurn" type="range" min="0" max="1" step="0.01">
-    <div>Evaluate</div><input id="vol_evaluate" type="range" min="0" max="1" step="0.01">
-  </div>
-  <div style="margin-top:10px; font-size:12px; opacity:0.7;">
-    Tip: volumes save locally on this device.
-  </div>
+<!-- ═══════════════════════════════════════════════════════════
+     APP INFRASTRUCTURE — required by app JS, not user-visible.
+     IDs must not change. Do not restyle or move.
+     ═══════════════════════════════════════════════════════════ -->
+<div id="app-infra" style="display:none;" aria-hidden="true">
+    <!-- Source/mode/tier — wired by ui.js -->
+    <select id="importSource"><option value="book" selected>Book</option><option value="text">Text</option></select>
+    <select id="tierSelect"><option value="free" selected>Free</option><option value="paid">Paid</option><option value="premium">Premium</option></select>
+    <!-- bookControls/chapterControls wrapper divs exist for app show/hide logic.
+         bookSelect and chapterSelect live in the visible reading top bar. -->
+    <div id="bookControls"></div>
+    <div id="chapterControls"></div>
+    <div id="pageControls"><select id="pageStart"></select><select id="pageEnd"></select></div>
+    <div id="textControls"><textarea id="bulkInput"></textarea></div>
+    <div id="thesisRow"><textarea id="thesisInput"></textarea></div>
+    <div class="goal-time-row"><input type="number" id="goalTimeInput"><input type="number" id="goalCharInput"><button id="difficultyEasy" type="button"></button><button id="difficultyMedium" type="button"></button><button id="difficultyHard" type="button"></button></div>
+    <div class="goal-actions"><button id="loadBookSelection" type="button">Load Pages</button><button id="appendBookSelection" type="button">Add Pages</button><button type="button" onclick="clearPages()">Clear Pages</button></div>
+    <button id="submitBtn" type="button" onclick="submitEvaluation()" disabled>Submit</button>
+    <div id="verdictSection"></div>
+    <!-- Autoplay checkbox — tts.js reads this; bottom bar button mirrors it -->
+    <input type="checkbox" id="autoplayToggle">
 </div>
 
-<div class="container">
-  <h1>Reading Comprehension</h1>
+<!-- Audio — needed by audio.js. Hidden until Explorer theme loads audio.js. -->
+<audio id="sandSound"    loop preload="auto"><source src="assets/sand.mp3"      type="audio/mpeg"></audio>
+<audio id="stoneSound"        preload="auto"><source src="assets/sandstone.mp3"  type="audio/mpeg"></audio>
+<audio id="rewardSound"       preload="auto"><source src="assets/reward.mp3"     type="audio/mpeg"></audio>
+<audio id="compassSound"      preload="auto"><source src="assets/compass.mp3"    type="audio/mpeg"></audio>
+<audio id="pageTurnSound"     preload="auto"><source src="assets/page_turn.mp3"  type="audio/mpeg"></audio>
+<audio id="evaluateSound"     preload="auto"><source src="assets/evaluate.mp3"   type="audio/mpeg"></audio>
+<audio id="bgMusic"      loop preload="auto"><source src="assets/song.mp3"       type="audio/mpeg"></audio>
+<!-- Fire canvas — used by embers.js (Explorer only) -->
+<canvas id="fireCanvas" style="display:none;position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;"></canvas>
 
-<div class="top-controls">
-
-  <!-- Top Actions -->
-  <div class="top-actions">
-
-    <!-- Desktop buttons -->
-    <div class="top-actions-desktop">
-      <button id="manageLibraryBtn" class="manage-library-btn" type="button" title="Manage books saved on this device">🗂️ Library</button>
-      <button id="importBookBtn" class="import-book-btn" type="button" title="Import an EPUB from your device">➕ Import BOOK</button>
-      <button id="howItWorksBtn" class="how-it-works-btn" type="button" title="Instructions">📘 How This Works</button>
+<!-- Volume panel — positioned by ui.js; styled with shell variables -->
+<div id="volumePanel" style="display:none;position:fixed;z-index:500;width:300px;max-width:92vw;">
+    <div class="glass-card p-4 shadow-xl">
+        <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-black uppercase tracking-wider text-slate-400">Sound &amp; Voice</span>
+            <button id="volumeCloseBtn" type="button" class="modal-close">✕</button>
+        </div>
+        <div class="flex gap-2 mb-3">
+            <select id="voiceFemaleSelect" class="flex-1 text-xs font-semibold border-2 border-slate-200 rounded-lg px-2 py-2 bg-white text-slate-600 outline-none min-w-0" style="font-size:0.72rem;"></select>
+            <select id="voiceMaleSelect"   class="flex-1 text-xs font-semibold border-2 border-slate-200 rounded-lg px-2 py-2 bg-white text-slate-600 outline-none min-w-0" style="font-size:0.72rem;"></select>
+        </div>
+        <div class="flex items-center justify-between mb-3 text-xs text-slate-500">
+            <span class="font-semibold">Autoplay</span>
+            <label class="flex items-center gap-2 cursor-pointer"><span class="text-slate-400 text-xs">Read next page automatically</span><input type="checkbox" id="autoplayTogglePanel" style="accent-color:var(--jubly-purple);width:15px;height:15px;cursor:pointer;"></label>
+        </div>
+        <div class="space-y-2 text-xs text-slate-500">
+            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Voice</span><input id="vol_voice"    type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--jubly-purple);"></div>
+            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Music</span><input id="vol_music"    type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--jubly-purple);"></div>
+            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Sand</span><input id="vol_sand"     type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--jubly-purple);"></div>
+            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Sandstone</span><input id="vol_stone"    type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--jubly-purple);"></div>
+            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Reward</span><input id="vol_reward"   type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--jubly-purple);"></div>
+            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Compass</span><input id="vol_compass"  type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--jubly-purple);"></div>
+            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Page Turn</span><input id="vol_pageTurn" type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--jubly-purple);"></div>
+            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Evaluate</span><input id="vol_evaluate" type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--jubly-purple);"></div>
+        </div>
+        <div class="mt-3 pt-3 border-t border-slate-100 flex justify-between items-center">
+            <button type="button" id="toggleMusicBtn" class="btn-ghost px-3 py-1.5 rounded-lg text-xs font-bold">Music On/Off</button>
+            <span class="text-xs text-slate-300">Volumes save locally</span>
+        </div>
     </div>
+</div>
 
-    <!-- Mobile Hamburger -->
-    <button id="topMenuBtn" class="top-menu-btn" type="button" aria-haspopup="true" aria-expanded="false" title="Menu">☰</button>
-    <div id="topMenu" class="top-menu" style="display:none;" role="menu" aria-label="Top menu">
-      <button id="topMenuLibrary" type="button" role="menuitem" class="top-menu-item">🗂️ Library</button>
-      <button id="topMenuImport" type="button" role="menuitem" class="top-menu-item">➕ Import BOOK</button>
-      <button id="topMenuHow" type="button" role="menuitem" class="top-menu-item">📘 How This Works</button>
-    </div>
-
-  </div> <!-- /top-actions -->
-
-  <!-- Import & Mode Selection Row -->
-  <div class="import-row" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin-bottom:12px; position:relative; z-index:1;">
-    <div class="input-group" style="min-width:160px;">
-      <label class="input-label">Source</label>
-      <select id="importSource" style="padding:10px 14px; font-size:15px; font-family:'Karla',sans-serif; font-weight:500; border:2px solid var(--border); border-radius:8px; background:var(--secondary-bg); color:var(--text-primary); outline:none;">
-        <option value="book" selected>Book</option>
-        <option value="text">Text</option>
-      </select>
-    </div>
-
-    <div class="input-group" style="min-width:160px;">
-      <label class="input-label">Mode</label>
-      <select id="modeSelect" style="padding:10px 14px; font-size:15px; font-family:'Karla',sans-serif; font-weight:500; border:2px solid var(--border); border-radius:8px; background:var(--secondary-bg); color:var(--text-primary); outline:none;">
-        <option value="reading" selected>Reading</option>
-        <option value="comprehension">Comprehension</option>
-        <option value="research">Research</option>
-      </select>
-    </div>
-
-    <div class="input-group" style="min-width:160px;">
-      <label class="input-label">Tier</label>
-      <select id="tierSelect" style="padding:10px 14px; font-size:15px; font-family:'Karla',sans-serif; font-weight:500; border:2px solid var(--border); border-radius:8px; background:var(--secondary-bg); color:var(--text-primary); outline:none;">
-        <option value="free" selected>Free</option>
-        <option value="paid">Paid</option>
-        <option value="premium">Premium</option>
-      </select>
-    </div>
-
-    <div id="thesisRow" style="display:none; width:100%; margin-bottom:4px;">
-      <div class="input-group" style="width:100%;">
-        <label class="input-label">Your Research Thesis</label>
-        <textarea id="thesisInput" placeholder="Enter your research thesis or argument..." style="height:64px; width:100%; padding:10px 14px; font-size:14px; font-family:'Karla',sans-serif; font-weight:500; border:2px solid var(--border); border-radius:8px; background:var(--secondary-bg); color:var(--text-primary); resize:vertical; outline:none; box-sizing:border-box;"></textarea>
-      </div>
-    </div>
-  </div> <!-- /import-row -->
-
-  <!-- Book Controls -->
-  <div id="bookControls" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
-    <div class="input-group" style="min-width:220px;">
-      <label class="input-label">Book</label>
-      <select id="bookSelect" style="padding:10px 14px; font-size:15px; font-family:'Karla',sans-serif; font-weight:500; border:2px solid var(--border); border-radius:8px; background:var(--secondary-bg); color:var(--text-primary); outline:none;">
-        <option value="">Loading…</option>
-      </select>
-    </div>
-
-    <div id="chapterControls" class="input-group" style="min-width:280px;">
-      <label class="input-label">Chapter</label>
-      <select id="chapterSelect" style="padding:10px 14px; font-size:15px; font-family:'Karla',sans-serif; font-weight:500; border:2px solid var(--border); border-radius:8px; background:var(--secondary-bg); color:var(--text-primary); outline:none;">
-        <option value="">Select a book first</option>
-      </select>
-    </div>
-
-    <div id="pageControls" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
-      <div class="input-group" style="min-width:240px;">
-        <label class="input-label">Pages</label>
-        <select id="pageStart" style="padding:10px 14px; font-size:15px; font-family:'Karla',sans-serif; font-weight:500; border:2px solid var(--border); border-radius:8px; background:var(--secondary-bg); color:var(--text-primary); outline:none;">
-          <option value="">Loading…</option>
-        </select>
-      </div>
-
-      <div class="input-group" style="min-width:240px;">
-        <label class="input-label">to</label>
-        <select id="pageEnd" style="padding:10px 14px; font-size:15px; font-family:'Karla',sans-serif; font-weight:500; border:2px solid var(--border); border-radius:8px; background:var(--secondary-bg); color:var(--text-primary); outline:none;">
-          <option value="">Loading…</option>
-        </select>
-      </div>
-    </div>
-
-  </div> <!-- /bookControls -->
-
-  <!-- Text Controls (for paste input) -->
-  <div id="textControls" style="display:none; width:100%;">
-    <textarea id="bulkInput" placeholder="Paste your full .md or text here..." style="height:80px;"></textarea>
-    <p class="descriptor">Paste text here and it will be broken into pages automatically.</p>
-  </div>
-
-  <!-- Goal-Time Row — sibling of bookControls/textControls so it stays visible
-       when Source switches to Text. applyModeVisibility() hides it in Reading mode. -->
-  <div class="goal-time-row" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; width:100%; margin-top:12px;">
-    <div class="input-group">
-      <label class="input-label">Time (sec)</label>
-      <input type="number" id="goalTimeInput" min="5">
-    </div>
-    <div class="input-group">
-      <label class="input-label">Characters</label>
-      <input type="number" id="goalCharInput" min="10">
-    </div>
-
-    <div class="difficulty-toggle" role="group" aria-label="Difficulty presets">
-      <button id="difficultyEasy" type="button" class="difficulty-btn" aria-pressed="false">Easy</button>
-      <button id="difficultyMedium" type="button" class="difficulty-btn" aria-pressed="false">Medium</button>
-      <button id="difficultyHard" type="button" class="difficulty-btn" aria-pressed="false">Hard</button>
-    </div>
-  </div> <!-- /goal-time-row -->
-
-  <!-- Page action buttons — always visible, outside bookControls/textControls -->
-  <div class="goal-actions">
-    <button id="loadBookSelection" type="button">Load Pages</button>
-    <button id="appendBookSelection" type="button" title="Add pages to the end (do not clear existing pages)">Add Pages</button>
-    <button type="button" onclick="clearPages()" title="Removes your consolidations and feedback for loaded pages.">Clear Pages</button>
-  </div>
-
-</div> <!-- /top-controls -->
-
-  <!-- How This Works Modal -->
-  <div id="howItWorksModal" class="modal-overlay" style="display:none;" aria-hidden="true">
+<!-- How It Works Modal — wired by ui.js initHowItWorksModal() -->
+<div id="howItWorksModal" class="modal-overlay" style="display:none;" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="howItWorksTitle">
-      <div class="modal-header">
-        <h2 id="howItWorksTitle">📘 How This Works</h2>
-        <button id="howItWorksClose" class="modal-close" type="button" aria-label="Close">✕</button>
-      </div>
-      <div class="modal-body">
-
-        <div class="howitworks-goal-lead"><strong>Your goal is simple:</strong></div>
-
-        <div class="howitworks-block">
-          <div class="howitworks-title">Read the passage carefully.</div>
-          <div class="howitworks-title">Write a short consolidation of what the passage actually does.</div>
-          <div class="howitworks-title" style="margin-top:10px;">Choose how you want to evaluate it:</div>
-          <ul class="howitworks-list">
-            <li>See how many core anchors you captured, or</li>
-            <li>Get AI feedback and a clarity score.</li>
-          </ul>
-
-          <div class="howitworks-quote">"If someone only read your consolidation, would they understand how the passage works?"</div>
-
-          <div class="howitworks-title" style="margin-top:12px;">💡 What Makes a Strong Consolidation?</div>
-          <ul class="howitworks-list">
-            <li>Captures the core idea</li>
-            <li>Finish within the character limit</li>
-            <li>Discover keywords and anchors in text</li>
-          </ul>
+        <div class="modal-header">
+            <h2 id="howItWorksTitle">📘 How This Works</h2>
+            <button id="howItWorksClose" class="modal-close" type="button" aria-label="Close">✕</button>
         </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Import Document Modal -->
-  <div id="importBookModal" class="modal-overlay" style="display:none;" aria-hidden="true">
-    <div class="modal import-modal" role="dialog" aria-modal="true" aria-labelledby="importBookTitle">
-      <div class="modal-header">
-        <h2 id="importBookTitle">➕ Import BOOK (Saved to this device)</h2>
-        <button id="importBookClose" class="modal-close" type="button" aria-label="Close">✕</button>
-      </div>
-      <div class="modal-body">
-
-        <div id="importStageUpload" class="import-stage">
-          <div class="import-dropzone" id="importDropzone" role="button" tabindex="0" aria-label="Upload book or document">
-            <div class="import-dropzone-title">Drag & drop a book or document here</div>
-            <button id="importBrowseBtn" type="button" class="btn-secondary" style="margin-top:10px;">Browse for File</button>
-            <!-- Keep the input in the DOM (mobile Safari can be picky), but do NOT overlay the dropzone.
-                 We trigger it via user-initiated clicks on the dropzone/button. -->
-            <input id="importFileInput" class="import-file-input" type="file" accept=".epub,application/epub+zip,.pdf,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.rtf,.odt,.txt,.text,.html,.htm,.mobi,.fb2" />
-          </div>
-          <div class="import-hint">Files are converted to EPUB via FreeConvert before importing. Nothing is stored permanently on a server.</div>
-          <div id="importUploadStatus" class="import-status" style="display:none;"></div>
-          <div class="import-actions" style="margin-top:12px; display:flex; gap:10px;">
-            <button id="importScanBtn" type="button" class="btn-primary" disabled>Scan Contents</button>
-          </div>
-        </div>
-
-        <div id="importStagePick" class="import-stage" style="display:none;">
-          <div class="import-picker">
-            <div class="import-picker-left">
-              <div class="import-picker-head">
-                <div class="import-picker-title">Contents</div>
-                <div class="import-picker-tools">
-                  <button id="importSelectAll" type="button" class="btn-mini">Select all</button>
-                  <button id="importSelectNone" type="button" class="btn-mini">Select none</button>
-                  <button id="importSelectMain" type="button" class="btn-mini">Main chapters</button>
-                </div>
-              </div>
-              <input id="importFilter" class="import-filter" type="text" placeholder="Filter sections…" />
-              <div id="importTocList" class="import-toc"></div>
-
-              <!-- Advanced (in-pane) -->
-              <div id="importAdvancedPanel" class="import-advanced-panel" style="display:none;">
-                <div class="import-advanced-title">Advanced</div>
-                <div class="import-advanced-body">
-                  <div class="import-adv-row">
-                    <label for="importPageSize">Page size</label>
-                    <select id="importPageSize">
-                      <option value="1200">Small (~1200 chars)</option>
-                      <option value="1600" selected>Medium (~1600 chars)</option>
-                      <option value="2000">Large (~2000 chars)</option>
-                    </select>
-                  </div>
-                  <div class="import-adv-row">
-                    <label class="import-adv-check"><input id="importKeepParagraphs" type="checkbox" checked> Keep paragraphs together</label>
-                  </div>
-                  <div class="import-adv-row">
-                    <label class="import-adv-check"><input id="importCleanupHeadings" type="checkbox" checked> Cleanup headings (skip decorative spaced headings)</label>
-                  </div>
-                </div>
-              </div>
-              <div class="import-footerbar">
-                <div id="importSelectionMeta" class="import-selection-meta">Selected: 0</div>
-                <div style="display:flex; gap:8px; align-items:center;">
-                  <button id="importBackBtn" type="button" class="btn-mini">Back</button>
-                  <button id="importAdvancedToggle" type="button" class="btn-mini">Advanced</button>
-                  <button id="importDoImport" type="button" class="btn-primary">Import selected</button>
-                </div>
-              </div>
+        <div class="modal-body">
+            <div class="howitworks-goal-lead">Your goal is simple:</div>
+            <div class="howitworks-block">
+                <div class="howitworks-title">Read the passage carefully.</div>
+                <div class="howitworks-title">Write a short consolidation of what the passage actually does.</div>
+                <div class="howitworks-title" style="margin-top:10px;">Choose how you want to evaluate it:</div>
+                <ul class="howitworks-list">
+                    <li>See how many core anchors you captured, or</li>
+                    <li>Get AI feedback and a clarity score.</li>
+                </ul>
+                <div class="howitworks-quote">"If someone only read your consolidation, would they understand how the passage works?"</div>
+                <div class="howitworks-title" style="margin-top:12px;">💡 What Makes a Strong Consolidation?</div>
+                <ul class="howitworks-list">
+                    <li>Captures the core idea</li>
+                    <li>Finish within the character limit</li>
+                    <li>Discover keywords and anchors in text</li>
+                </ul>
             </div>
-            <div class="import-picker-right">
-              <div class="import-preview-head">Preview</div>
-              <div id="importPreviewTitle" class="import-preview-title">Select a section</div>
-              <div id="importPreviewBody" class="import-preview-body">You’ll see a short preview here.</div>
-            </div>
-          </div>
-
-          <div class="import-actions" style="margin-top:12px; display:flex; gap:10px; justify-content:flex-end;">
-            <div class="import-hint" style="margin:0;">Tip: Dedication/Index/etc. are unchecked by default.</div>
-          </div>
         </div>
-
-        <div id="importStageProgress" class="import-stage" style="display:none;">
-          <div class="import-progress">
-            <div class="import-progress-title">Importing…</div>
-            <div id="importProgressMeta" class="import-progress-meta">Preparing</div>
-            <div class="import-progress-bar">
-              <div id="importProgressFill" class="import-progress-fill" style="width:0%;"></div>
-            </div>
-            <div id="importProgressDetail" class="import-progress-detail">0 pages created</div>
-          </div>
-          <div class="import-actions" style="margin-top:12px; display:flex; gap:10px; justify-content:flex-end;">
-            <button id="importDoneBtn" type="button" class="btn-primary" style="display:none;">Done</button>
-          </div>
-        </div>
-
-      </div>
     </div>
-  </div>
-
-  <!-- Manage Library Modal -->
-  <div id="manageLibraryModal" class="modal-overlay" style="display:none;" aria-hidden="true">
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="manageLibraryTitle">
-      <div class="modal-header">
-        <h2 id="manageLibraryTitle">🗂️ Library (This device)</h2>
-        <button id="manageLibraryClose" class="modal-close" type="button" aria-label="Close">✕</button>
-      </div>
-      <div class="modal-body">
-        <div class="import-hint" style="margin-top:0;">Delete removes the book and frees local storage. Your server books remain available.</div>
-        <div id="manageLibraryList" class="library-list"></div>
-      </div>
-    </div>
-  </div>
-
-  <div id="pages"></div>
-
-	  <div class="controls">
-	    <button class="submit-btn" id="submitBtn" onclick="submitEvaluation()" disabled>Submit for Evaluation</button>
-	  </div>
-
-  <!-- Verdict Section -->
-  <div class="verdict-section" id="verdictSection">
-    <div class="seal">ðŸ›ï¸</div>
-    <div class="tier-name" id="tierName">Masterful</div>
-    
-    <div class="score-breakdown">
-      <div class="score-item">
-        <div class="score-label">Completion</div>
-        <div class="score-value" id="completionScore">70</div>
-      </div>
-      <div class="score-item">
-        <div class="score-label">Depth</div>
-        <div class="score-value" id="depthScore">20</div>
-      </div>
-      <div class="score-item">
-        <div class="score-label">Reflection</div>
-        <div class="score-value" id="reflectionScore">10</div>
-      </div>
-    </div>
-
-    <div class="total-score">
-      <div class="score-label">Total Score</div>
-      <div class="score-value" id="totalScore">100</div>
-    </div>
-  </div>
-  
 </div>
+
+<!-- Import Book Modal — wired by import.js initEpubImportModal() -->
+<div id="importBookModal" class="modal-overlay" style="display:none;" aria-hidden="true">
+    <div class="modal import-modal" role="dialog" aria-modal="true" aria-labelledby="importBookTitle">
+        <div class="modal-header">
+            <h2 id="importBookTitle">➕ Import Book</h2>
+            <button id="importBookClose" class="modal-close" type="button" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body">
+            <!-- Stage 1: Upload -->
+            <div id="importStageUpload" class="import-stage">
+                <div class="import-dropzone" id="importDropzone" role="button" tabindex="0" aria-label="Upload book or document">
+                    <div class="text-4xl mb-3">📄</div>
+                    <div class="import-dropzone-title">Drag &amp; drop a book here</div>
+                    <div class="import-dropzone-sub">EPUB, PDF, DOCX, TXT and more</div>
+                    <button id="importBrowseBtn" type="button" class="btn-secondary mt-3">Browse for File</button>
+                    <input id="importFileInput" class="import-file-input" type="file" accept=".epub,application/epub+zip,.pdf,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.rtf,.odt,.txt,.text,.html,.htm,.mobi,.fb2" />
+                </div>
+                <div class="import-hint">Files are processed locally. Nothing is stored permanently on a server.</div>
+                <div id="importUploadStatus" class="import-status" style="display:none;"></div>
+                <div class="import-actions mt-3">
+                    <button id="importScanBtn" type="button" class="btn-primary" disabled>Scan Contents</button>
+                </div>
+            </div>
+            <!-- Stage 2: Chapter picker -->
+            <div id="importStagePick" class="import-stage" style="display:none;">
+                <div class="import-picker">
+                    <div class="import-picker-left">
+                        <div class="import-picker-head">
+                            <div class="import-picker-title">Contents</div>
+                            <div class="import-picker-tools">
+                                <button id="importSelectAll"  type="button" class="btn-mini">Select all</button>
+                                <button id="importSelectNone" type="button" class="btn-mini">Select none</button>
+                                <button id="importSelectMain" type="button" class="btn-mini">Main chapters</button>
+                            </div>
+                        </div>
+                        <input id="importFilter" class="import-filter" type="text" placeholder="Filter sections…" />
+                        <div id="importTocList" class="import-toc"></div>
+                        <div id="importAdvancedPanel" class="import-advanced-panel" style="display:none;">
+                            <div class="import-advanced-title">Advanced</div>
+                            <div class="import-advanced-body">
+                                <div class="import-adv-row">
+                                    <label for="importPageSize">Page size</label>
+                                    <select id="importPageSize"><option value="1200">Small (~1200 chars)</option><option value="1600" selected>Medium (~1600 chars)</option><option value="2000">Large (~2000 chars)</option></select>
+                                </div>
+                                <div class="import-adv-row"><label class="import-adv-check"><input id="importKeepParagraphs" type="checkbox" checked> Keep paragraphs together</label></div>
+                                <div class="import-adv-row"><label class="import-adv-check"><input id="importCleanupHeadings" type="checkbox" checked> Cleanup decorative headings</label></div>
+                            </div>
+                        </div>
+                        <div class="import-footerbar">
+                            <div id="importSelectionMeta" class="import-selection-meta">Selected: 0</div>
+                            <div style="display:flex;gap:6px;align-items:center;">
+                                <button id="importBackBtn"        type="button" class="btn-mini">Back</button>
+                                <button id="importAdvancedToggle" type="button" class="btn-mini">Advanced</button>
+                                <button id="importDoImport"       type="button" class="btn-primary">Import selected</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="import-picker-right">
+                        <div class="import-preview-head">Preview</div>
+                        <div id="importPreviewTitle" class="import-preview-title">Select a section</div>
+                        <div id="importPreviewBody"  class="import-preview-body">You'll see a short preview here.</div>
+                    </div>
+                </div>
+                <div class="import-actions mt-3" style="justify-content:flex-end;">
+                    <div class="import-hint" style="margin:0;">Tip: Dedication/Index/etc. are unchecked by default.</div>
+                </div>
+            </div>
+            <!-- Stage 3: Progress -->
+            <div id="importStageProgress" class="import-stage" style="display:none;">
+                <div class="import-progress">
+                    <div class="import-progress-title">Importing…</div>
+                    <div id="importProgressMeta"   class="import-progress-meta">Preparing</div>
+                    <div class="import-progress-bar"><div id="importProgressFill" class="import-progress-fill" style="width:0%;"></div></div>
+                    <div id="importProgressDetail" class="import-progress-detail">0 pages created</div>
+                </div>
+                <div class="import-actions mt-3" style="justify-content:flex-end;">
+                    <button id="importDoneBtn" type="button" class="btn-jubly px-6 py-2.5 rounded-xl font-bold text-sm" style="display:none;">Done</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Manage Library Modal — wired by library.js initManageLibraryModal() -->
+<div id="manageLibraryModal" class="modal-overlay" style="display:none;" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="manageLibraryTitle">
+        <div class="modal-header">
+            <h2 id="manageLibraryTitle">🗂️ Library (This device)</h2>
+            <button id="manageLibraryClose" class="modal-close" type="button" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body">
+            <p class="import-hint" style="margin-top:0; margin-bottom:12px;">Delete removes the book from this device. Your work is not recoverable.</p>
+            <div id="manageLibraryList" class="library-list"></div>
+        </div>
+    </div>
+</div>
+
+<nav class="bg-white border-b border-slate-200 sticky top-0 z-50 px-6 py-3">
+    <div class="max-w-5xl mx-auto flex justify-between items-center">
+        <div class="flex items-center gap-8">
+            <div class="flex items-center gap-2 cursor-pointer" onclick="showSection('landing-page')">
+                <div class="w-8 h-8 rounded-lg flex items-center justify-center text-white font-black bg-brand">J</div>
+                <span class="text-2xl font-extrabold tracking-tighter text-slate-900">jubly</span>
+            </div>
+        </div>
+        <div id="nav-user-controls" class="hidden-section flex items-center gap-3">
+            <div class="flex items-center gap-1 font-bold px-3 py-1 rounded-full text-sm text-accent bg-accent-soft">
+                <span>✨</span> <span>100</span>
+            </div>
+            <div class="cursor-pointer flex items-center gap-2" onclick="showSection('profile-page')">
+                <div class="w-10 h-10 bg-slate-200 rounded-full overflow-hidden">
+                    <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Jeeves" alt="avatar">
+                </div>
+            </div>
+        </div>
+        <div id="nav-landing-controls" class="flex items-center gap-3">
+            <button onclick="openModal('pricing-modal')" class="btn-subscribe">Subscribe</button>
+        </div>
+    </div>
+</nav>
+
+<!-- SIDEBAR (logged-in, non-reading views only) -->
+<aside id="app-sidebar" class="fixed left-0 z-40 flex-col items-center pt-5 gap-1 bg-white border-r border-slate-200" style="top:57px; height:calc(100vh - 57px); width:68px; display:none;">
+    <button onclick="showSection('dashboard')" id="sb-library" class="sidebar-btn" title="Library">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        Library
+    </button>
+</aside>
+<div id="landing-page" class="min-h-[88vh] flex flex-col md:flex-row items-center justify-center max-w-6xl mx-auto px-6 gap-10 py-16">
+    <div class="w-full md:w-1/2 flex justify-center order-1 md:order-1">
+        <!-- Hero illustration — decorative colors intentionally fixed (not theme-switchable) -->
+        <div class="hero-float relative">
+            <div class="w-56 h-56 md:w-64 md:h-64 rounded-3xl flex items-center justify-center shadow-2xl rotate-[5deg]" style="background:var(--jubly-brand-blue)">
+                <span class="text-7xl md:text-8xl">📖</span>
+            </div>
+            <div class="absolute -bottom-4 -right-4 w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center text-3xl md:text-4xl shadow-lg -rotate-12" style="background:var(--jubly-brand-yellow)">✨</div>
+        </div>
+    </div>
+    <div class="w-full md:w-1/2 text-center md:text-left order-2 md:order-2">
+        <h1 class="text-4xl md:text-7xl font-extrabold mb-6 tracking-tight leading-[1.1]">
+            Get through your <br>
+            <span class="text-brand">reading list faster.</span>
+        </h1>
+        <p class="text-base md:text-lg text-slate-500 mb-10 leading-relaxed">
+            Turn dense reading into manageable pages, listen with high-quality AI voices, and pick up exactly where you left off.
+        </p>
+        <div class="max-w-xs mx-auto md:mx-0 flex flex-col gap-3">
+            <button onclick="login()" class="btn-jubly w-full px-10 py-4 rounded-xl font-bold text-lg uppercase tracking-wider">Try it free</button>
+            <button onclick="showSection('login-page')" class="btn-ghost w-full px-10 py-4 rounded-xl font-bold text-lg uppercase tracking-wider">Sign In</button>
+        </div>
+    </div>
+</div>
+
+<!-- LANDING FOOTER BAR -->
+<div id="landing-footer" class="border-t-2 border-b-2 border-gray-100 py-6">
+    <div class="max-w-5xl mx-auto px-6 flex justify-center gap-12 text-gray-400 font-bold uppercase tracking-widest text-xs">
+        <span>20M+ Pages Read</span>
+        <span>AI-Powered Insights</span>
+        <span>Focus-First Design</span>
+    </div>
+</div>
+
+<!-- LOGIN PAGE -->
+<div id="login-page" class="hidden-section min-h-[88vh] flex items-center justify-center px-6 py-16">
+    <div class="w-full max-w-sm">
+        <div class="text-center mb-10">
+            <div class="flex items-center justify-center gap-2 mb-4">
+                <div class="w-10 h-10 rounded-xl flex items-center justify-center text-white font-black text-xl bg-brand">J</div>
+                <span class="text-3xl font-extrabold tracking-tighter text-slate-900">jubly</span>
+            </div>
+            <h2 class="text-2xl font-extrabold text-slate-900">Welcome back</h2>
+            <p class="text-slate-500 text-sm mt-1">Sign in to your account to continue</p>
+        </div>
+        <div class="section-card shadow-sm space-y-4">
+            <button onclick="login()" class="w-full flex items-center justify-center gap-3 border-2 border-slate-200 rounded-xl py-3 font-bold text-slate-700 hover:bg-slate-50 transition text-sm">
+                <svg class="w-5 h-5" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                Continue with Google
+            </button>
+            <div class="flex items-center gap-3">
+                <div class="flex-1 h-[1px] bg-slate-200"></div>
+                <span class="text-xs font-bold text-slate-400 uppercase">or</span>
+                <div class="flex-1 h-[1px] bg-slate-200"></div>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Username or Email</label>
+                <input type="text" placeholder="you@example.com" class="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:border-indigo-400 transition bg-white">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Password</label>
+                <input type="password" placeholder="••••••••" class="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:border-indigo-400 transition bg-white">
+            </div>
+            <div class="flex justify-end">
+                <a href="#" class="text-xs font-semibold text-indigo-500 hover:underline">Forgot password?</a>
+            </div>
+            <button onclick="login()" class="btn-jubly w-full py-3.5 rounded-xl font-bold text-sm uppercase tracking-wider">Sign In</button>
+        </div>
+        <p class="text-center text-sm text-slate-500 mt-6">New here? <button onclick="login()" class="font-bold text-indigo-600 hover:underline">Try for free</button></p>
+        <p class="text-center mt-3"><button onclick="showSection('landing-page')" class="text-xs text-slate-400 hover:text-slate-600 transition">← Back to home</button></p>
+    </div>
+</div>
+
+<!-- DASHBOARD -->
+<main id="dashboard" class="hidden-section max-w-5xl mx-auto py-12 px-6 with-sidebar">
+    <header class="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-4">
+        <div>
+            <h2 class="text-3xl font-extrabold text-slate-900 tracking-tight">Library</h2>
+            <p id="dashboard-subtitle" class="text-slate-500 text-sm mt-1">You've completed <strong>2 sessions</strong> this week. Keep the momentum going.</p>
+        </div>
+        <div class="flex items-center gap-2">
+            <button id="manageLibraryBtn" class="px-4 py-2.5 rounded-lg font-bold text-sm border-2 border-slate-200 text-slate-500 hover:bg-slate-50 transition">🗂️ Manage</button>
+            <button id="importBookBtn"    class="btn-jubly px-6 py-2.5 rounded-lg font-bold text-sm shadow-sm">+ Import Book</button>
+        </div>
+    </header>
+
+    <!-- POPULATED STATE -->
+    <div id="library-populated">
+        <div class="glass-card overflow-hidden shadow-sm">
+            <div class="bg-slate-50 border-b border-slate-200 px-6 py-3 flex text-xs font-bold text-slate-400 uppercase tracking-wider">
+                <div class="flex-grow">Document Name</div>
+                <div class="w-32">Status</div>
+                <div class="w-32">Time</div>
+                <div class="w-8"></div>
+            </div>
+            <div onclick="openPreview('Deep Work Summary')" class="px-6 py-4 flex items-center hover:bg-slate-50 cursor-pointer transition-colors border-b border-slate-100">
+                <div class="flex-grow flex items-center gap-3">
+                    <div class="w-8 h-8 rounded flex items-center justify-center text-lg bg-accent-soft text-accent">📄</div>
+                    <div>
+                        <p class="font-semibold text-slate-800 text-sm">Deep Work Summary</p>
+                        <p class="text-xs text-slate-400">Added Feb 24, 2026</p>
+                    </div>
+                </div>
+                <div class="w-32"><span class="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">In Progress</span></div>
+                <div class="w-32 text-sm text-slate-500 font-medium">12 min left</div>
+                <div class="w-8 text-slate-300">→</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- COLD-START EMPTY STATE (shown when no documents exist) -->
+    <div id="library-empty" class="hidden-section">
+        <div class="glass-card shadow-sm py-16 px-8 text-center">
+            <div class="text-5xl mb-5">📭</div>
+            <h3 class="text-xl font-extrabold text-slate-800 mb-2">Start here — add your first document</h3>
+            <p class="text-slate-400 text-sm mb-8 max-w-sm mx-auto leading-relaxed">Upload a book, article, or PDF. jubly breaks it into pages, reads it aloud, and keeps your place.</p>
+            <button onclick="openModal('upload-modal')" class="btn-jubly px-8 py-3 rounded-xl font-bold text-sm inline-flex items-center gap-2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Upload your first document
+            </button>
+            <p class="text-xs text-slate-300 mt-6">PDF, EPUB, or DOCX · Up to 50MB</p>
+        </div>
+    </div>
+
+</main>
+
+<!-- PROFILE PAGE -->
+<main id="profile-page" class="hidden-section max-w-5xl mx-auto py-12 px-6 with-sidebar">
+    <div class="flex flex-col md:flex-row gap-10">
+        <aside class="w-full md:w-64 flex-shrink-0">
+            <!-- Mobile only: nav shortcut (sidebar hidden on small screens) -->
+            <div class="flex gap-2 mb-3 sm:hidden">
+                <button onclick="showSection('dashboard')" class="flex items-center gap-2 text-xs font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-lg transition">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                    Library
+                </button>
+            </div>
+            <div class="section-card shadow-sm">
+                <div class="flex items-center gap-4 mb-4">
+                    <div class="w-14 h-14 bg-slate-200 rounded-2xl overflow-hidden flex-shrink-0">
+                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Jeeves" class="rounded-2xl">
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-base leading-tight">Triston Barker</h3>
+                        <p class="text-xs text-slate-400 mt-0.5"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="f084829983849f9eb09588919d809c95de939f9d">[email&#160;protected]</a></p>
+                    </div>
+                </div>
+                <div class="flex gap-1.5 mb-5">
+                    <button class="tier-btn" onclick="setTier(this)">Basic</button>
+                    <button class="tier-btn active" onclick="setTier(this)">Pro</button>
+                    <button class="tier-btn" onclick="setTier(this)">Premium</button>
+                </div>
+                <nav class="flex flex-col gap-1">
+                    <button data-tab="tab-profile"       onclick="switchTab('tab-profile')"       class="profile-tab-btn active text-left px-4 py-2.5 rounded-lg font-semibold text-slate-600 hover:bg-slate-100 transition text-sm">Profile</button>
+                    <button data-tab="tab-subscription"  onclick="switchTab('tab-subscription')"  class="profile-tab-btn text-left px-4 py-2.5 rounded-lg font-semibold text-slate-600 hover:bg-slate-100 transition text-sm">Subscription</button>
+                    <button data-tab="tab-settings"      onclick="switchTab('tab-settings')"      class="profile-tab-btn text-left px-4 py-2.5 rounded-lg font-semibold text-slate-600 hover:bg-slate-100 transition text-sm">Settings</button>
+                    <hr class="my-2 border-slate-200">
+                    <button onclick="location.reload()" class="text-left px-4 py-2.5 rounded-lg font-semibold text-red-500 hover:bg-red-50 transition text-sm">Logout</button>
+                </nav>
+            </div>
+        </aside>
+
+        <section class="flex-grow min-w-0">
+            <!-- Profile Tab -->
+            <div id="tab-profile" class="tab-content space-y-5">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="section-card shadow-sm">
+                        <span class="text-xs text-slate-400 font-bold uppercase tracking-wider block mb-2">Daily Goal</span>
+                        <div class="text-2xl font-black">0 <span class="text-slate-300 text-lg">/ 15 min</span></div>
+                        <div class="mt-3 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div class="h-full w-0 rounded-full" style="background:var(--jubly-purple)"></div>
+                        </div>
+                    </div>
+                    <div class="section-card shadow-sm">
+                        <span class="text-xs text-slate-400 font-bold uppercase tracking-wider block mb-2">This Week</span>
+                        <div class="text-2xl font-black text-accent">0 min</div>
+                        <p class="text-xs text-slate-400 mt-1">0 sessions completed</p>
+                    </div>
+                </div>
+                <div class="section-card shadow-sm">
+                    <h4 class="font-bold text-xs uppercase tracking-wider text-slate-400 mb-1">Discover Jubly Apps</h4>
+                    <p class="text-xs text-slate-500 mb-4">Read anything from anywhere, on mobile or desktop.</p>
+                    <div class="flex gap-3">
+                        <div class="flex-1 bg-slate-50 border border-slate-100 rounded-xl p-4 flex items-center gap-3 cursor-pointer hover:bg-accent-soft transition">
+                            <div class="text-2xl">📱</div>
+                            <div><p class="font-bold text-sm">iOS App</p><p class="text-xs text-slate-400">Read on the go</p></div>
+                        </div>
+                        <div class="flex-1 bg-slate-50 border border-slate-100 rounded-xl p-4 flex items-center gap-3 cursor-pointer hover:bg-accent-soft transition">
+                            <div class="text-2xl">💻</div>
+                            <div><p class="font-bold text-sm">Desktop</p><p class="text-xs text-slate-400">Native focus mode</p></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="section-card shadow-sm">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h4 class="font-bold text-sm">Deleted Files</h4>
+                            <p class="text-xs text-slate-400 mt-0.5">0 files in trash</p>
+                        </div>
+                        <button class="text-xs font-bold text-slate-500 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-50 transition">Manage</button>
+                    </div>
+                </div>
+                <div class="section-card shadow-sm">
+                    <h4 class="font-bold text-xs uppercase tracking-wider text-slate-400 mb-4">Get Help</h4>
+                    <div class="flex gap-3 flex-wrap">
+                        <button class="flex items-center gap-2 bg-green-50 text-green-700 font-bold text-xs px-4 py-2.5 rounded-xl hover:bg-green-100 transition border border-green-100"><span>💬</span> WhatsApp</button>
+                        <button class="flex items-center gap-2 font-bold text-xs px-4 py-2.5 rounded-xl transition border text-brand hover:bg-accent-soft border-accent-soft"><span>🗨️</span> Start Chat</button>
+                        <button class="flex items-center gap-2 bg-slate-50 text-slate-700 font-bold text-xs px-4 py-2.5 rounded-xl hover:bg-slate-100 transition border border-slate-200"><span>✉️</span> Email</button>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-4">Have an idea? <a href="#" class="text-brand font-semibold hover:underline">Share your thoughts →</a></p>
+                </div>
+            </div>
+
+            <!-- Subscription Tab -->
+            <div id="tab-subscription" class="tab-content hidden-section space-y-5">
+                <div class="sub-hero">
+                    <h3 class="text-2xl font-extrabold mb-1">Your Plan</h3>
+                    <p class="text-purple-200 text-sm mb-5">You're currently on the <strong class="text-white">Pro</strong> plan.</p>
+                    <div class="flex gap-3 flex-wrap">
+                        <button onclick="openModal('pricing-modal')" class="bg-white text-indigo-700 font-bold text-sm px-5 py-2.5 rounded-xl hover:bg-indigo-50 transition">View Pricing</button>
+                        <button class="bg-white/20 text-white font-bold text-sm px-5 py-2.5 rounded-xl hover:bg-white/30 transition border border-white/30">Manage Billing</button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-3 gap-4">
+                    <div class="section-card shadow-sm text-center">
+                        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Files</p>
+                        <p class="text-2xl font-black text-slate-800">1 <span class="text-slate-300 text-base">/ 5</span></p>
+                    </div>
+                    <div class="section-card shadow-sm text-center">
+                        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Storage</p>
+                        <p class="text-2xl font-black text-slate-800">0.2 <span class="text-slate-300 text-base">GB</span></p>
+                    </div>
+                    <div class="section-card shadow-sm text-center">
+                        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Renews</p>
+                        <p class="text-xl font-black text-slate-800 mt-1">Apr 1 <span class="text-slate-300 text-sm font-normal">2026</span></p>
+                    </div>
+                </div>
+                <div class="section-card shadow-sm">
+                    <h4 class="font-bold text-sm text-slate-700 mb-4">What's included in Pro</h4>
+                    <ul class="space-y-2.5 text-sm text-slate-600 mb-5">
+                        <li class="flex items-center gap-2.5"><span class="text-emerald-500 font-bold">✓</span> 5 active documents</li>
+                        <li class="flex items-center gap-2.5"><span class="text-emerald-500 font-bold">✓</span> High-quality AI voices</li>
+                        <li class="flex items-center gap-2.5"><span class="text-emerald-500 font-bold">✓</span> Podcast RSS feed</li>
+                        <li class="flex items-center gap-2.5"><span class="text-slate-300 font-bold">✕</span> <span class="text-slate-400">Unlimited documents (Premium)</span></li>
+                        <li class="flex items-center gap-2.5"><span class="text-slate-300 font-bold">✕</span> <span class="text-slate-400">Priority processing (Premium)</span></li>
+                    </ul>
+                    <button onclick="openModal('pricing-modal')" class="btn-jubly px-5 py-2.5 rounded-xl font-bold text-sm">Upgrade to Premium</button>
+                </div>
+            </div>
+
+            <!-- Settings Tab -->
+            <div id="tab-settings" class="tab-content hidden-section space-y-5">
+                <div class="section-card shadow-sm space-y-5">
+                    <h4 class="font-bold text-xs uppercase tracking-wider text-slate-400">Account</h4>
+                    <div class="flex items-center gap-4 pb-5 border-b border-slate-100">
+                        <div class="w-14 h-14 bg-slate-200 rounded-2xl overflow-hidden flex-shrink-0">
+                            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Jeeves" class="rounded-2xl">
+                        </div>
+                        <div class="flex-grow">
+                            <p class="font-bold text-slate-800">Triston Barker</p>
+                            <p class="text-sm text-slate-400"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="dfabadb6acabb0b19fbaa7beb2afb3baf1bcb0b2">[email&#160;protected]</a></p>
+                        </div>
+                        <button class="text-xs font-bold text-brand hover:underline">Edit</button>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <p class="font-bold text-sm">Reset Password</p>
+                            <p class="text-xs text-slate-400 mt-0.5">Receive an email to securely reset your password</p>
+                        </div>
+                        <button class="text-xs font-bold border border-slate-200 px-3 py-2 rounded-lg hover:bg-slate-50 transition text-slate-600">Send Email</button>
+                    </div>
+                </div>
+                <div class="section-card shadow-sm space-y-5">
+                    <h4 class="font-bold text-xs uppercase tracking-wider text-slate-400">Appearance</h4>
+                    <div>
+                        <p class="font-bold text-sm mb-1">App Theme</p>
+                        <p class="text-xs text-slate-400 mb-4">Applies to your reading experience. Full textures coming soon.</p>
+                        <div class="flex items-center gap-6" id="theme-swatches">
+                            <button onclick="setTheme('default', this)" class="flex flex-col items-center gap-2">
+                                <div class="theme-swatch selected" style="background: linear-gradient(135deg, #6344F5, #a78bfa);"></div>
+                                <span class="text-xs font-semibold text-slate-500">Default</span>
+                            </button>
+                            <button onclick="setTheme('green', this)" class="flex flex-col items-center gap-2">
+                                <div class="theme-swatch" style="background: linear-gradient(135deg, #22c55e, #86efac);"></div>
+                                <span class="text-xs font-semibold text-slate-500">Light Green</span>
+                            </button>
+                            <button onclick="setTheme('purple', this)" class="flex flex-col items-center gap-2">
+                                <div class="theme-swatch" style="background: linear-gradient(135deg, #a78bfa, #ddd6fe);"></div>
+                                <span class="text-xs font-semibold text-slate-500">Light Purple</span>
+                            </button>
+                            <button id="explorer-swatch-btn" onclick="promptExplorerUpgrade()" class="flex flex-col items-center gap-2 explorer-locked" title="Explorer theme — Pro+ only">
+                                <div class="theme-swatch flex items-center justify-center text-xl" style="background: linear-gradient(135deg, #c17d4a, #e8d9c4); opacity: 0.55;">🧭</div>
+                                <span class="text-xs font-semibold text-slate-400">Explorer</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center pt-1">
+                        <div><p class="font-bold text-sm">Language</p><p class="text-xs text-slate-400 mt-0.5">Interface and reading language preference</p></div>
+                        <select class="text-sm font-semibold text-slate-700 border-2 border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-400 bg-white cursor-pointer">
+                            <option>English</option><option>Spanish</option><option>French</option><option>German</option><option>Portuguese</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+</main>
+
+<!-- READING MODE — Focus UI -->
+<main id="reading-mode" class="hidden-section">
+
+    <!-- TOP BAR: session-defining — fades on idle. Left scrolls, Exit always pinned right -->
+    <div id="reading-top-bar" class="reading-top-bar">
+        <div class="reading-top-left">
+            <!-- modeSelect: wired by ui.js initModeSelector() -->
+            <select id="modeSelect" class="reading-select">
+                <option value="reading" selected>Mode: Reading</option>
+                <option value="comprehension">Mode: Comprehension</option>
+                <option value="research">Mode: Research</option>
+            </select>
+            <div class="reading-divider"></div>
+            <!-- bookSelect: populated by library.js initBookImporter() -->
+            <select id="bookSelect" class="reading-select">
+                <option value="">Book: —</option>
+            </select>
+            <div class="reading-divider"></div>
+            <!-- chapterSelect: populated by library.js initBookImporter() -->
+            <select id="chapterSelect" class="reading-select">
+                <option value="">Ch: —</option>
+            </select>
+            <div class="reading-divider"></div>
+            <!-- Tier display — updated by setTierDisplay() when profile tier changes -->
+            <span class="tier-pill" id="tier-display">Basic</span>
+        </div>
+        <button onclick="showSection('dashboard')" class="reading-top-exit text-xs font-bold text-slate-400 hover:text-slate-800 transition bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg">Exit ✕</button>
+    </div>
+
+    <!-- CONTENT — app render() writes .page elements into #pages -->
+    <div class="reading-content">
+        <div id="pages" class="space-y-8"></div>
+
+        <!-- END-OF-SESSION SIGNAL (hidden until last page completed) -->
+        <div id="session-complete" class="hidden-section mt-12 mb-4">
+            <div class="glass-card p-8 text-center" style="border-color: var(--theme-accent); border-width: 2px;">
+                <div class="text-3xl mb-3">✓</div>
+                <h3 class="font-extrabold text-lg text-slate-800 mb-1">Session complete</h3>
+                <p id="session-stats" class="text-sm text-slate-400 mb-6">You read <strong id="stat-pages">—</strong> pages · <strong id="stat-minutes">—</strong> min</p>
+                <button onclick="showSection('dashboard')" class="btn-theme px-8 py-3 rounded-xl font-bold text-sm">Back to Library →</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BOTTOM PLAYBACK BAR -->
+    <div class="reading-bottom-bar">
+        <div class="reading-bottom-left">
+            <!-- Speed — wired to TTS_STATE by shellWireControls() -->
+            <select id="shell-speed" class="reading-select" onchange="shellSetSpeed(this.value)">
+                <option value="1">Speed: 1.0×</option>
+                <option value="1.25">Speed: 1.25×</option>
+                <option value="1.5">Speed: 1.5×</option>
+                <option value="2">Speed: 2.0×</option>
+            </select>
+            <div class="reading-divider mx-1"></div>
+            <!-- Pause — calls ttsStop() / resumes TTS -->
+            <button id="shell-pause-btn" onclick="shellPauseToggle(this)" class="pb-icon-btn" title="Pause narration">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                Pause
+            </button>
+            <div class="reading-divider mx-1"></div>
+            <!-- Autoplay — mirrors hidden #autoplayToggle checkbox that tts.js reads -->
+            <button id="shell-autoplay-btn" onclick="shellToggleAutoplay(this)" class="pb-icon-btn" title="Toggle autoplay between pages">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Autoplay
+            </button>
+            <div class="reading-divider mx-1"></div>
+            <!-- Sound & Voice — id="musicToggle" so ui.js wires it to open volumePanel -->
+            <button id="musicToggle" class="pb-icon-btn" title="Sound &amp; voice settings">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                Sound &amp; Voice
+            </button>
+        </div>
+        <!-- Page progress — updated by shellUpdateProgress() -->
+        <div class="flex items-center gap-3 flex-shrink-0">
+            <span class="page-progress" id="shell-page-progress">—</span>
+            <div class="flex gap-1" id="shell-page-dots"></div>
+        </div>
+    </div>
+
+</main>
+
+<!-- UPLOAD MODAL -->
+<div id="upload-modal" class="hidden-section fixed inset-0 bg-slate-900/60 modal-overlay flex items-center justify-center z-[100] p-6">
+    <div class="bg-white w-full max-w-md rounded-3xl p-8 text-center relative shadow-2xl">
+        <button onclick="closeModal('upload-modal')" class="absolute top-6 right-6 text-slate-400 hover:text-slate-600 transition">✕</button>
+        <div class="text-5xl mb-4">☁️</div>
+        <h2 class="text-2xl font-bold mb-2">Upload your file</h2>
+        <p class="text-slate-400 mb-6">PDF, EPUB, or Docx up to 50MB</p>
+        <div class="border-2 border-dashed border-slate-200 rounded-2xl py-12 mb-6 hover:border-indigo-300 cursor-pointer transition">
+            <p class="text-sm font-semibold text-slate-400">Drag & drop or <span class="text-indigo-600">Browse</span></p>
+        </div>
+        <button onclick="closeModal('upload-modal'); showSection('dashboard')" class="w-full btn-jubly py-3 rounded-xl font-bold">Done</button>
+    </div>
+</div>
+
+<!-- PREVIEW MODAL -->
+<div id="preview-modal" class="hidden-section fixed inset-0 bg-slate-900/60 modal-overlay flex items-center justify-center z-[100] p-6">
+    <div class="bg-white w-full max-w-lg rounded-3xl overflow-hidden relative shadow-2xl">
+        <div class="h-48 bg-indigo-600 flex items-center justify-center text-6xl">📖</div>
+        <div class="p-8">
+            <h2 id="preview-title" class="text-2xl font-bold mb-2">File Title</h2>
+            <div class="flex gap-4 mb-6 text-sm font-semibold text-slate-500"><span>12 Pages</span> • <span>8 min read</span> • <span>Unread</span></div>
+            <p class="text-slate-500 mb-8 leading-relaxed">This file is ready for an atomic reading session. We've broken it down into 12 focus-cards.</p>
+            <div class="flex gap-3">
+                <button onclick="startReading()" class="flex-1 btn-jubly py-4 rounded-xl font-bold">Start Reading</button>
+                <button onclick="closeModal('preview-modal')" class="px-6 py-4 border-2 border-slate-200 rounded-xl font-bold text-slate-400">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- PRICING MODAL -->
+<div id="pricing-modal" class="hidden-section fixed inset-0 bg-slate-900/70 modal-overlay flex items-center justify-center z-[100] p-6">
+    <div class="bg-white w-full max-w-2xl rounded-3xl p-8 relative shadow-2xl">
+        <button onclick="closeModal('pricing-modal')" class="absolute top-6 right-6 text-slate-400 hover:text-slate-600 transition">✕</button>
+        <div class="text-center mb-8">
+            <h2 class="text-3xl font-extrabold text-slate-900">Simple Pricing</h2>
+            <p class="text-slate-400 mt-1 text-sm">Start free, upgrade when you're ready.</p>
+        </div>
+        <div class="flex gap-4 flex-col md:flex-row">
+            <div class="pricing-card">
+                <p class="text-xs font-black uppercase tracking-widest text-slate-400 mb-3">Basic</p>
+                <p class="text-4xl font-extrabold text-slate-900 mb-0.5">Free</p>
+                <p class="text-xs text-slate-400 mb-5">Forever</p>
+                <ul class="space-y-2 text-sm text-slate-600 mb-6">
+                    <li class="flex items-center gap-2"><span class="text-emerald-500 font-bold">✓</span> 2 active documents</li>
+                    <li class="flex items-center gap-2"><span class="text-emerald-500 font-bold">✓</span> Standard AI voices</li>
+                    <li class="flex items-center gap-2"><span class="text-slate-300">✕</span> <span class="text-slate-400">RSS feed</span></li>
+                </ul>
+                <button class="w-full border-2 border-slate-200 rounded-xl py-2.5 font-bold text-sm text-slate-400 hover:bg-slate-50 transition">Current Plan</button>
+            </div>
+            <div class="pricing-card featured">
+                <div class="flex justify-between items-center mb-3">
+                    <p class="text-xs font-black uppercase tracking-widest text-indigo-600">Pro</p>
+                    <span class="text-xs bg-indigo-600 text-white px-2 py-0.5 rounded-full font-bold">Popular</span>
+                </div>
+                <p class="text-4xl font-extrabold text-slate-900 mb-0.5">$9<span class="text-lg text-slate-400 font-normal">/mo</span></p>
+                <p class="text-xs text-slate-400 mb-5">Billed monthly</p>
+                <ul class="space-y-2 text-sm text-slate-600 mb-6">
+                    <li class="flex items-center gap-2"><span class="text-emerald-500 font-bold">✓</span> 5 active documents</li>
+                    <li class="flex items-center gap-2"><span class="text-emerald-500 font-bold">✓</span> High-quality AI voices</li>
+                    <li class="flex items-center gap-2"><span class="text-emerald-500 font-bold">✓</span> Podcast RSS feed</li>
+                </ul>
+                <button class="w-full btn-jubly rounded-xl py-2.5 font-bold text-sm">Try for Free</button>
+            </div>
+            <div class="pricing-card">
+                <p class="text-xs font-black uppercase tracking-widest text-slate-400 mb-3">Premium</p>
+                <p class="text-4xl font-extrabold text-slate-900 mb-0.5">$19<span class="text-lg text-slate-400 font-normal">/mo</span></p>
+                <p class="text-xs text-slate-400 mb-5">Billed monthly</p>
+                <ul class="space-y-2 text-sm text-slate-600 mb-6">
+                    <li class="flex items-center gap-2"><span class="text-emerald-500 font-bold">✓</span> Unlimited documents</li>
+                    <li class="flex items-center gap-2"><span class="text-emerald-500 font-bold">✓</span> Priority processing</li>
+                    <li class="flex items-center gap-2"><span class="text-emerald-500 font-bold">✓</span> All Pro features</li>
+                </ul>
+                <button class="w-full border-2 border-indigo-200 text-indigo-600 rounded-xl py-2.5 font-bold text-sm hover:bg-indigo-50 transition">Upgrade</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ─────────────────────────────────────────────────────────────
+    // jubly shell — navigation + wiring layer
+    // App logic lives in js/app.js and its dependencies.
+    // This file owns: routing, focus mode, tier/theme UI,
+    // and bottom bar control bridges only.
+    // ─────────────────────────────────────────────────────────────
+
+    const ALL_SECTIONS     = ['landing-page', 'login-page', 'dashboard', 'profile-page', 'reading-mode'];
+    const SIDEBAR_SECTIONS = ['dashboard', 'profile-page'];
+
+    // ── Section routing ───────────────────────────────────────────
+
+    function showSection(id) {
+        ALL_SECTIONS.forEach(s => document.getElementById(s).classList.add('hidden-section'));
+        document.getElementById(id).classList.remove('hidden-section');
+
+        const isPublic  = id === 'landing-page' || id === 'login-page';
+        const isLanding = id === 'landing-page';
+
+        document.getElementById('nav-user-controls').classList.toggle('hidden-section', isPublic);
+        const landingControls = document.getElementById('nav-landing-controls');
+        if (landingControls) landingControls.style.display = isLanding ? 'flex' : 'none';
+        const footer = document.getElementById('landing-footer');
+        if (footer) footer.classList.toggle('hidden-section', id !== 'landing-page');
+
+        const sidebar = document.getElementById('app-sidebar');
+        if (sidebar) sidebar.style.display = SIDEBAR_SECTIONS.includes(id) ? 'flex' : 'none';
+        const sbLibrary = document.getElementById('sb-library');
+        if (sbLibrary) sbLibrary.classList.toggle('active', id === 'dashboard');
+
+        // Reading mode: full focus — hide nav, show on exit
+        const mainNav = document.querySelector('nav');
+        if (mainNav) mainNav.style.display = id === 'reading-mode' ? 'none' : '';
+        if (id === 'reading-mode') initFocusMode();
+
+        window.scrollTo(0, 0);
+    }
+
+    // ── Focus mode: top bar fades after 3s, returns on interaction ─
+
+    let focusModeTimer   = null;
+    let focusModeHandler = null;
+
+    function initFocusMode() {
+        const bar = document.getElementById('reading-top-bar');
+        const rm  = document.getElementById('reading-mode');
+        if (!bar || !rm) return;
+
+        // Remove previous listeners to prevent stacking on re-entry
+        if (focusModeHandler) {
+            ['mousemove','scroll','touchstart','click'].forEach(ev =>
+                rm.removeEventListener(ev, focusModeHandler));
+        }
+
+        bar.classList.remove('faded');
+
+        function resetFade() {
+            bar.classList.remove('faded');
+            clearTimeout(focusModeTimer);
+            focusModeTimer = setTimeout(() => bar.classList.add('faded'), 3000);
+        }
+
+        focusModeHandler = resetFade;
+        resetFade();
+
+        ['mousemove','scroll','touchstart','click'].forEach(ev =>
+            rm.addEventListener(ev, resetFade, { passive: true }));
+        bar.addEventListener('mouseenter', () => { bar.classList.remove('faded'); clearTimeout(focusModeTimer); });
+        bar.addEventListener('mouseleave', resetFade);
+    }
+
+    // ── Modal helpers ─────────────────────────────────────────────
+
+    function openModal(id)  { document.getElementById(id).classList.remove('hidden-section'); }
+    function closeModal(id) { document.getElementById(id).classList.add('hidden-section'); }
+
+    // ── Login (scaffold — replace with Supabase) ──────────────────
+
+    function login() { showSection('profile-page'); }
+
+    // ── Profile tabs ──────────────────────────────────────────────
+
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden-section'));
+        document.getElementById(tabId).classList.remove('hidden-section');
+        document.querySelectorAll('.profile-tab-btn').forEach(btn =>
+            btn.classList.toggle('active', btn.dataset.tab === tabId));
+    }
+
+    // ── Tier ──────────────────────────────────────────────────────
+    // Profile tier buttons drive #tierSelect (hidden), which app JS
+    // reads via applyTierAccess(). Also updates the reading mode pill
+    // and unlocks/locks the Explorer swatch.
+
+    function setTier(btn) {
+        document.querySelectorAll('.tier-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        const map   = { 'Basic': 'free', 'Pro': 'paid', 'Premium': 'premium' };
+        const value = map[btn.textContent.trim()] || 'free';
+
+        // Drive the hidden tierSelect so app's applyTierAccess() fires
+        const sel = document.getElementById('tierSelect');
+        if (sel && sel.value !== value) {
+            sel.value = value;
+            sel.dispatchEvent(new Event('change'));
+        }
+
+        // Update reading mode tier pill
+        const pill = document.getElementById('tier-display');
+        if (pill) pill.textContent = btn.textContent.trim();
+
+        // Visual state of Explorer swatch
+        const isPro = value === 'paid' || value === 'premium';
+        const explorerBtn = document.getElementById('explorer-swatch-btn');
+        if (explorerBtn) {
+            explorerBtn.classList.toggle('explorer-locked', !isPro);
+            explorerBtn.title = isPro ? 'Explorer theme' : 'Explorer theme — Pro+ only';
+            const swatch = explorerBtn.querySelector('.theme-swatch');
+            if (swatch) swatch.style.opacity = isPro ? '1' : '0.55';
+        }
+    }
+
+    // ── Theme ─────────────────────────────────────────────────────
+    // Default / Green / Purple: CSS variables only, no extra files.
+    // Explorer: loads css/theme.css + js/embers.js once, Pro+ only.
+
+    let explorerAssetsLoaded = false;
+
+    function setTheme(theme, btn) {
+        document.body.classList.remove('theme-green', 'theme-purple', 'theme-explorer');
+        if (theme !== 'default') document.body.classList.add('theme-' + theme);
+
+        document.querySelectorAll('#theme-swatches .theme-swatch').forEach(s => s.classList.remove('selected'));
+        btn.querySelector('.theme-swatch').classList.add('selected');
+
+        if (theme === 'explorer' && !explorerAssetsLoaded) {
+            const link   = document.createElement('link');
+            link.rel     = 'stylesheet';
+            link.href    = 'css/theme.css';
+            document.head.appendChild(link);
+
+            const script = document.createElement('script');
+            script.src   = 'js/embers.js';
+            document.body.appendChild(script);
+
+            explorerAssetsLoaded = true;
+        }
+    }
+
+    function promptExplorerUpgrade() {
+        // If Pro+, apply. Otherwise prompt upgrade.
+        const sel   = document.getElementById('tierSelect');
+        const value = sel ? sel.value : 'free';
+        if (value === 'paid' || value === 'premium') {
+            const btn = document.getElementById('explorer-swatch-btn');
+            if (btn) setTheme('explorer', btn);
+        } else {
+            openModal('pricing-modal');
+        }
+    }
+
+    // ── Dashboard empty/populated state ──────────────────────────
+
+    function renderDashboard(hasDocuments) {
+        document.getElementById('library-populated').classList.toggle('hidden-section', !hasDocuments);
+        document.getElementById('library-empty').classList.toggle('hidden-section', hasDocuments);
+        const subtitle = document.getElementById('dashboard-subtitle');
+        if (subtitle) subtitle.style.display = hasDocuments ? '' : 'none';
+    }
+
+    // ── Preview modal ─────────────────────────────────────────────
+
+    function openPreview(title) {
+        document.getElementById('preview-title').innerText = title;
+        openModal('preview-modal');
+    }
+
+    function startReading() {
+        closeModal('preview-modal');
+        // Reset session complete signal
+        const signal = document.getElementById('session-complete');
+        if (signal) signal.classList.add('hidden-section');
+        showSection('reading-mode');
+        // App's render() and boot sequence take over from here
+    }
+
+    // ── Bottom bar control bridges ────────────────────────────────
+
+    function shellPauseToggle(btn) {
+        try {
+            // ttsStop is defined in tts.js
+            if (typeof ttsStop === 'function') ttsStop();
+        } catch(_) {}
+    }
+
+    function shellToggleAutoplay(btn) {
+        // Mirror state to the hidden #autoplayToggle checkbox that tts.js reads
+        const chk = document.getElementById('autoplayToggle');
+        if (chk) {
+            chk.checked = !chk.checked;
+            chk.dispatchEvent(new Event('change'));
+        }
+        btn.classList.toggle('active', chk ? chk.checked : false);
+    }
+
+    function shellSetSpeed(value) {
+        try {
+            if (typeof TTS_STATE !== 'undefined') TTS_STATE.rate = parseFloat(value) || 1;
+        } catch(_) {}
+    }
+
+    // Updates bottom bar page counter from live app state.
+    // Called by app on page advance (hook via window.onShellPageChange).
+    window.onShellPageChange = function(current, total) {
+        const prog = document.getElementById('shell-page-progress');
+        const dots = document.getElementById('shell-page-dots');
+        if (prog) prog.textContent = total > 0 ? `Page ${current + 1} / ${total}` : '—';
+        if (dots) {
+            const max = Math.min(total, 12); // cap dots at 12 for narrow screens
+            dots.innerHTML = Array.from({ length: max }, (_, i) =>
+                `<div class="w-2 h-2 rounded-full" style="background:${i <= current ? 'var(--theme-accent)' : '#e2e8f0'}"></div>`
+            ).join('');
+        }
+    };
+
+    // Session complete signal — called from app when last page is done
+    window.jublySessionComplete = function(pageCount, minutes) {
+        const signal = document.getElementById('session-complete');
+        if (!signal) return;
+        document.getElementById('stat-pages').textContent   = pageCount || '—';
+        document.getElementById('stat-minutes').textContent = minutes ? '~' + minutes : '—';
+        signal.classList.remove('hidden-section');
+        signal.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+
+    // ── App boot hook ─────────────────────────────────────────────
+    // After app.js loads, sync shell UI to restored app state.
+
+    window.addEventListener('load', function() {
+        // Sync autoplay button to restored state
+        try {
+            const chk = document.getElementById('autoplayToggle');
+            const btn = document.getElementById('shell-autoplay-btn');
+            if (chk && btn) btn.classList.toggle('active', chk.checked);
+        } catch(_) {}
+
+        // Sync tier display to restored tier from localStorage
+        try {
+            const sel = document.getElementById('tierSelect');
+            if (sel) {
+                const valToLabel = { free: 'Basic', paid: 'Pro', premium: 'Premium' };
+                const label = valToLabel[sel.value] || 'Basic';
+                const pill  = document.getElementById('tier-display');
+                if (pill) pill.textContent = label;
+                document.querySelectorAll('.tier-btn').forEach(b =>
+                    b.classList.toggle('active', b.textContent.trim() === label));
+                // Apply Explorer swatch state
+                const isPro = sel.value === 'paid' || sel.value === 'premium';
+                const explorerBtn = document.getElementById('explorer-swatch-btn');
+                if (explorerBtn) {
+                    explorerBtn.classList.toggle('explorer-locked', !isPro);
+                    const swatch = explorerBtn.querySelector('.theme-swatch');
+                    if (swatch) swatch.style.opacity = isPro ? '1' : '0.55';
+                }
+            }
+        } catch(_) {}
+
+        // Sync library state — show populated or empty based on IndexedDB
+        try {
+            if (typeof localBooksGetAll === 'function') {
+                localBooksGetAll().then(books => renderDashboard(books.length > 0)).catch(() => {});
+            }
+        } catch(_) {}
+
+        // Refresh library after any import/delete
+        try {
+            const orig = window.__rcRefreshBookSelect;
+            window.__rcRefreshBookSelect = async function() {
+                if (typeof orig === 'function') await orig();
+                if (typeof localBooksGetAll === 'function') {
+                    const books = await localBooksGetAll();
+                    renderDashboard(books.length > 0);
+                }
+            };
+        } catch(_) {}
+    });
+</script>
 
 <script src="js/audio.js"></script>
-<script src="js/embers.js"></script>
-<script src="js/config.js"></script>
 <script src="assets/books/embedded_books.js"></script>
 <script src="js/app.js"></script>
-
-
-  <!-- Support Footer -->
-  <footer id="supportFooter" aria-label="Support this project">
-    <div class="support-footer-inner">
-      <span class="support-footer-icon">📖</span>
-      <span class="support-footer-text">If this helped you, consider supporting the project</span>
-      <a class="support-footer-button" href="https://www.buymeacoffee.com/tristonb" target="_blank" rel="noopener noreferrer">
-        <img alt="Buy me a coffee" src="https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&amp;emoji=%E2%98%95&amp;slug=tristonb&amp;button_colour=FFDD00&amp;font_colour=000000&amp;font_family=Cookie&amp;outline_colour=000000&amp;coffee_colour=ffffff">
-      </a>
-    </div>
-  </footer>
-
 </body>
 </html>
