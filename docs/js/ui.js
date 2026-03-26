@@ -146,7 +146,7 @@
     }
 
     // Volume panel wiring
-    if (volumePanel) {
+    if (musicToggleBtn && volumePanel) {
       const sliders = {
         voice: document.getElementById('vol_voice'),
         music: document.getElementById('vol_music'),
@@ -326,48 +326,40 @@
         el.addEventListener('input', () => setVolume(key, el.value));
       });
 
-      // Open the volume panel from the music button (if it exists in this layout).
-      if (musicToggleBtn) {
-        musicToggleBtn.addEventListener('click', (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
+      // Open the volume panel from the existing music button (no extra top-controls button).
+      musicToggleBtn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
 
-          const isOpen = volumePanel.style.display === 'block';
-          hideAllPanels();
-          if (!isOpen) {
-            syncSlidersFromState();
-            populateBrowserVoicePicker();
-            try {
-              volumePanel.style.visibility = 'hidden';
-              volumePanel.style.display = 'block';
-
-              const rect = musicToggleBtn.getBoundingClientRect();
-              const panelW = volumePanel.offsetWidth;
-              const panelH = volumePanel.offsetHeight;
-
-              const gap = 10;
-              const top = Math.max(10, rect.top - panelH - gap);
-              const left = Math.min(
-                window.innerWidth - panelW - 10,
-                Math.max(10, rect.right - panelW)
-              );
-
-              volumePanel.style.top = `${top}px`;
-              volumePanel.style.left = `${left}px`;
-            } catch (_) {}
-            volumePanel.style.visibility = 'visible';
-          }
-        });
-      }
-
-      // Sync sliders on first open from shell bottom bar
-      const soundVoiceBtn = document.getElementById('soundVoiceBtn');
-      if (soundVoiceBtn) {
-        soundVoiceBtn.addEventListener('click', () => {
+        const isOpen = volumePanel.style.display === 'block';
+        hideAllPanels();
+        if (!isOpen) {
           syncSlidersFromState();
           populateBrowserVoicePicker();
-        });
-      }
+          // Position the panel just ABOVE the music toggle so it never drops below the fold.
+          // (iPad cursor can't reach off-page dropdowns.)
+          try {
+            // Temporarily show invisibly so we can measure height.
+            volumePanel.style.visibility = 'hidden';
+            volumePanel.style.display = 'block';
+
+            const rect = musicToggleBtn.getBoundingClientRect();
+            const panelW = volumePanel.offsetWidth;
+            const panelH = volumePanel.offsetHeight;
+
+            const gap = 10;
+            const top = Math.max(10, rect.top - panelH - gap);
+            const left = Math.min(
+              window.innerWidth - panelW - 10,
+              Math.max(10, rect.right - panelW)
+            );
+
+            volumePanel.style.top = `${top}px`;
+            volumePanel.style.left = `${left}px`;
+          } catch (_) {}
+          volumePanel.style.visibility = 'visible';
+        }
+      });
 
       if (volumeCloseBtn) volumeCloseBtn.addEventListener('click', () => (volumePanel.style.display = 'none'));
       if (toggleMusicBtn) toggleMusicBtn.addEventListener('click', () => window.toggleMusic && window.toggleMusic());
@@ -762,12 +754,42 @@
   });
 })();
 
-// --- Boot: session restore ---
-// In the shell layout, users start at the dashboard. Session restore happens
-// when they click a book and enter reading mode (handled by shell-bridge.js).
-// We still load persisted state so it's available, but don't render or scroll.
+// --- Boot: restore local session if present ---
 try {
-  loadPersistedSessionIfAny();
+  if (loadPersistedSessionIfAny()) {
+    render();
+    updateDiagnostics();
+    // Ensure we can rehydrate per-page saved work even if the session snapshot lacked hashes.
+    ensurePageHashesAndRehydrate();
+
+    // Phase 0 — scroll to last-read page.
+    // lastFocusedPageIndex was restored from the session snapshot by
+    // loadPersistedSessionIfAny(). Defer until window.load so all resources
+    // (fonts, images, scripts) have resolved and layout is stable — avoids the
+    // 4-5s delay on slow connections that a fixed timeout can't account for.
+    // A short 300ms settle after load prevents browser scroll-restoration races.
+    if (typeof lastFocusedPageIndex === 'number' && lastFocusedPageIndex > 0) {
+      const targetIdx = lastFocusedPageIndex;
+      const doScroll = () => {
+        setTimeout(() => {
+          try {
+            const pageEls = document.querySelectorAll('.page');
+            const target = pageEls[targetIdx];
+            if (target) {
+              target.scrollIntoView({ behavior: 'instant', block: 'start' });
+              if (window.DEBUG_TTS) console.log(`[Boot] Restored to page ${targetIdx}`);
+            }
+          } catch (_) {}
+        }, 300);
+      };
+      // If load already fired (fast connection), run immediately; otherwise wait.
+      if (document.readyState === 'complete') {
+        doScroll();
+      } else {
+        window.addEventListener('load', doScroll, { once: true });
+      }
+    }
+  }
 } catch (_) {}
 // ===================================
 // Footer-aware music button position

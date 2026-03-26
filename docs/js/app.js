@@ -1,6 +1,9 @@
-// jubly app loader
-// Loads role-based JS files sequentially, then the shell bridge.
+// Phase-1 app loader
+// Keeps compatibility with an index.html that already points at js/app.js.
+// It loads the new role-based files in order, without requiring a bundler.
 (function () {
+  // Enable observability flags when ?debug=1 is in the URL.
+  // These are checked by tts.js, audio.js, and ui.js for console/overlay output.
   try {
     const params = new URLSearchParams(window.location.search);
     const v = (params.get('debug') || '').trim().toLowerCase();
@@ -13,17 +16,14 @@
   } catch (_) {}
 
   const ORDER = [
-    'config.js',
     'state.js',
-    'audio.js',
     'tts.js',
     'utils.js',
     'anchors.js',
     'import.js',
     'library.js',
     'evaluation.js',
-    'ui.js',
-    'shell-bridge.js'
+    'ui.js'
   ];
 
   const current = document.currentScript;
@@ -37,8 +37,6 @@
     s.onload = () => loadScriptSequentially(i + 1);
     s.onerror = () => {
       console.error('Failed to load script:', ORDER[i]);
-      // Continue loading remaining scripts even if one fails
-      loadScriptSequentially(i + 1);
     };
     document.head.appendChild(s);
   }
