@@ -73,7 +73,7 @@
         .page-card { transition: opacity 0.4s cubic-bezier(0.4,0,0.2,1), transform 0.4s cubic-bezier(0.4,0,0.2,1), border-color 0.3s ease; opacity: 0.3; transform: scale(0.96); }
         .page-card.active { opacity: 1; transform: scale(1); border-color: var(--theme-accent); }
         .speaking-word { background-color: var(--theme-accent-soft); border-bottom: 2px solid var(--theme-accent); border-radius: 2px; }
-        .modal-overlay { backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+        .modal-overlay { position:fixed; inset:0; background:rgba(15,23,42,0.55); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); z-index:200; display:flex; align-items:center; justify-content:center; padding:1.5rem; }
         .profile-tab-btn.active { background-color: #f1f5f9; color: var(--jubly-purple); font-weight: 700; }
         .tier-btn { padding: 3px 11px; border-radius: 999px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; border: 2px solid #e2e8f0; color: #94a3b8; cursor: pointer; transition: all 0.15s ease; background: transparent; }
         .tier-btn.active { border-color: var(--jubly-purple); color: var(--jubly-purple); background: #f5f3ff; }
@@ -94,9 +94,9 @@
         .sidebar-btn { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 6px; border-radius: 10px; color: #94a3b8; font-size: 0.58rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; transition: background 0.15s, color 0.15s; width: 52px; cursor: pointer; background: transparent; border: none; }
         .sidebar-btn:hover { background: #f1f5f9; color: var(--jubly-purple); }
         .sidebar-btn.active { color: var(--jubly-purple); background: #f5f3ff; }
-        /* Sidebar offset: !important overrides Tailwind's mx-auto */
-        .with-sidebar { margin-left: 68px !important; }
-        @media (max-width: 640px) { .with-sidebar { margin-left: 0 !important; } #app-sidebar { display: none !important; } }
+        /* Sidebar offset — pad the body left so content stays centered within remaining space */
+        .with-sidebar { padding-left: 68px !important; }
+        @media (max-width: 640px) { .with-sidebar { padding-left: 0 !important; } #app-sidebar { display: none !important; } }
         /* ── Explorer theme swatch ── */
         .explorer-locked { position: relative; }
         .explorer-locked::after { content: 'Pro+'; position: absolute; top: -4px; right: -4px; background: var(--jubly-purple); color: white; font-size: 0.5rem; font-weight: 800; padding: 1px 4px; border-radius: 999px; letter-spacing: 0.04em; }
@@ -358,7 +358,7 @@
                         <div class="import-footerbar">
                             <div id="importSelectionMeta" class="import-selection-meta">Selected: 0</div>
                             <div style="display:flex;gap:6px;align-items:center;">
-                                <button id="importBackBtn"        type="button" class="btn-mini">Back</button>
+                                <button id="importBackBtn"        type="button" class="btn-mini" style="display:none;">Back</button>
                                 <button id="importAdvancedToggle" type="button" class="btn-mini">Advanced</button>
                                 <button id="importDoImport"       type="button" class="btn-primary">Import selected</button>
                             </div>
@@ -521,41 +521,36 @@
         </div>
     </header>
 
-    <!-- POPULATED STATE -->
-    <div id="library-populated">
+    <!-- POPULATED STATE — rows injected by refreshLibrary() after import -->
+    <div id="library-populated" class="hidden-section">
         <div class="glass-card overflow-hidden shadow-sm">
             <div class="bg-slate-50 border-b border-slate-200 px-6 py-3 flex text-xs font-bold text-slate-400 uppercase tracking-wider">
                 <div class="flex-grow">Document Name</div>
-                <div class="w-32">Status</div>
-                <div class="w-32">Time</div>
+                <div class="w-32 hidden md:block">Status</div>
+                <div class="w-32 hidden md:block">Pages</div>
                 <div class="w-8"></div>
             </div>
-            <div onclick="openPreview('Deep Work Summary')" class="px-6 py-4 flex items-center hover:bg-slate-50 cursor-pointer transition-colors border-b border-slate-100">
-                <div class="flex-grow flex items-center gap-3">
-                    <div class="w-8 h-8 rounded flex items-center justify-center text-lg bg-accent-soft text-accent">📄</div>
-                    <div>
-                        <p class="font-semibold text-slate-800 text-sm">Deep Work Summary</p>
-                        <p class="text-xs text-slate-400">Added Feb 24, 2026</p>
-                    </div>
-                </div>
-                <div class="w-32"><span class="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">In Progress</span></div>
-                <div class="w-32 text-sm text-slate-500 font-medium">12 min left</div>
-                <div class="w-8 text-slate-300">→</div>
-            </div>
+            <div id="library-rows"></div>
         </div>
     </div>
 
-    <!-- COLD-START EMPTY STATE (shown when no documents exist) -->
-    <div id="library-empty" class="hidden-section">
-        <div class="glass-card shadow-sm py-16 px-8 text-center">
+    <!-- COLD-START EMPTY STATE -->
+    <div id="library-empty">
+        <div id="empty-drop-zone"
+             class="glass-card shadow-sm py-16 px-8 text-center transition-all"
+             style="border:2px dashed transparent; cursor:pointer;"
+             onclick="document.getElementById('importBookBtn').click()"
+             ondragover="event.preventDefault(); this.style.borderColor='var(--jubly-purple)'; this.style.background='var(--jubly-light)';"
+             ondragleave="this.style.borderColor='transparent'; this.style.background='';"
+             ondrop="emptyStateDrop(event)">
             <div class="text-5xl mb-5">📭</div>
-            <h3 class="text-xl font-extrabold text-slate-800 mb-2">Start here — add your first document</h3>
-            <p class="text-slate-400 text-sm mb-8 max-w-sm mx-auto leading-relaxed">Upload a book, article, or PDF. jubly breaks it into pages, reads it aloud, and keeps your place.</p>
-            <button onclick="openModal('upload-modal')" class="btn-jubly px-8 py-3 rounded-xl font-bold text-sm inline-flex items-center gap-2">
+            <h3 class="text-xl font-extrabold text-slate-800 mb-2">Start here — import your first book</h3>
+            <p class="text-slate-400 text-sm mb-8 max-w-sm mx-auto leading-relaxed">Drop a file here, or click to browse. jubly breaks it into pages, reads it aloud, and keeps your place.</p>
+            <div class="inline-flex items-center gap-2 btn-jubly px-8 py-3 rounded-xl font-bold text-sm pointer-events-none">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                Upload your first document
-            </button>
-            <p class="text-xs text-slate-300 mt-6">PDF, EPUB, or DOCX · Up to 50MB</p>
+                Import your first book
+            </div>
+            <p class="text-xs text-slate-300 mt-6">EPUB, PDF, DOCX, TXT and more</p>
         </div>
     </div>
 
@@ -907,9 +902,6 @@
 <script>
     // ─────────────────────────────────────────────────────────────
     // jubly shell — navigation + wiring layer
-    // App logic lives in js/app.js and its dependencies.
-    // This file owns: routing, focus mode, tier/theme UI,
-    // and bottom bar control bridges only.
     // ─────────────────────────────────────────────────────────────
 
     const ALL_SECTIONS     = ['landing-page', 'login-page', 'dashboard', 'profile-page', 'reading-mode'];
@@ -935,15 +927,17 @@
         const sbLibrary = document.getElementById('sb-library');
         if (sbLibrary) sbLibrary.classList.toggle('active', id === 'dashboard');
 
-        // Reading mode: full focus — hide nav, show on exit
         const mainNav = document.querySelector('nav');
         if (mainNav) mainNav.style.display = id === 'reading-mode' ? 'none' : '';
         if (id === 'reading-mode') initFocusMode();
 
+        // Refresh library every time dashboard is shown
+        if (id === 'dashboard') refreshLibrary();
+
         window.scrollTo(0, 0);
     }
 
-    // ── Focus mode: top bar fades after 3s, returns on interaction ─
+    // ── Focus mode ────────────────────────────────────────────────
 
     let focusModeTimer   = null;
     let focusModeHandler = null;
@@ -952,36 +946,41 @@
         const bar = document.getElementById('reading-top-bar');
         const rm  = document.getElementById('reading-mode');
         if (!bar || !rm) return;
-
-        // Remove previous listeners to prevent stacking on re-entry
         if (focusModeHandler) {
             ['mousemove','scroll','touchstart','click'].forEach(ev =>
                 rm.removeEventListener(ev, focusModeHandler));
         }
-
         bar.classList.remove('faded');
-
         function resetFade() {
             bar.classList.remove('faded');
             clearTimeout(focusModeTimer);
             focusModeTimer = setTimeout(() => bar.classList.add('faded'), 3000);
         }
-
         focusModeHandler = resetFade;
         resetFade();
-
         ['mousemove','scroll','touchstart','click'].forEach(ev =>
             rm.addEventListener(ev, resetFade, { passive: true }));
         bar.addEventListener('mouseenter', () => { bar.classList.remove('faded'); clearTimeout(focusModeTimer); });
         bar.addEventListener('mouseleave', resetFade);
     }
 
-    // ── Modal helpers ─────────────────────────────────────────────
+    // ── Modals ────────────────────────────────────────────────────
 
-    function openModal(id)  { document.getElementById(id).classList.remove('hidden-section'); }
-    function closeModal(id) { document.getElementById(id).classList.add('hidden-section'); }
+    function openModal(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        // modal-overlay uses display:flex — remove hidden-section and set flex
+        el.classList.remove('hidden-section');
+        if (el.classList.contains('modal-overlay')) el.style.display = 'flex';
+    }
+    function closeModal(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.classList.add('hidden-section');
+        el.style.display = '';
+    }
 
-    // ── Login (scaffold — replace with Supabase) ──────────────────
+    // ── Login (scaffold) ──────────────────────────────────────────
 
     function login() { showSection('profile-page'); }
 
@@ -995,68 +994,51 @@
     }
 
     // ── Tier ──────────────────────────────────────────────────────
-    // Profile tier buttons drive #tierSelect (hidden), which app JS
-    // reads via applyTierAccess(). Also updates the reading mode pill
-    // and unlocks/locks the Explorer swatch.
 
     function setTier(btn) {
         document.querySelectorAll('.tier-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-
         const map   = { 'Basic': 'free', 'Pro': 'paid', 'Premium': 'premium' };
         const value = map[btn.textContent.trim()] || 'free';
-
-        // Drive the hidden tierSelect so app's applyTierAccess() fires
-        const sel = document.getElementById('tierSelect');
+        const sel   = document.getElementById('tierSelect');
         if (sel && sel.value !== value) {
             sel.value = value;
             sel.dispatchEvent(new Event('change'));
         }
-
-        // Update reading mode tier pill
         const pill = document.getElementById('tier-display');
         if (pill) pill.textContent = btn.textContent.trim();
-
-        // Visual state of Explorer swatch
-        const isPro = value === 'paid' || value === 'premium';
+        // Unlock Explorer swatch for Pro+
+        const isPro      = value === 'paid' || value === 'premium';
         const explorerBtn = document.getElementById('explorer-swatch-btn');
         if (explorerBtn) {
             explorerBtn.classList.toggle('explorer-locked', !isPro);
             explorerBtn.title = isPro ? 'Explorer theme' : 'Explorer theme — Pro+ only';
-            const swatch = explorerBtn.querySelector('.theme-swatch');
-            if (swatch) swatch.style.opacity = isPro ? '1' : '0.55';
+            const sw = explorerBtn.querySelector('.theme-swatch');
+            if (sw) sw.style.opacity = isPro ? '1' : '0.55';
         }
     }
 
     // ── Theme ─────────────────────────────────────────────────────
-    // Default / Green / Purple: CSS variables only, no extra files.
-    // Explorer: loads css/theme.css + js/embers.js once, Pro+ only.
 
     let explorerAssetsLoaded = false;
 
     function setTheme(theme, btn) {
         document.body.classList.remove('theme-green', 'theme-purple', 'theme-explorer');
         if (theme !== 'default') document.body.classList.add('theme-' + theme);
-
         document.querySelectorAll('#theme-swatches .theme-swatch').forEach(s => s.classList.remove('selected'));
         btn.querySelector('.theme-swatch').classList.add('selected');
-
         if (theme === 'explorer' && !explorerAssetsLoaded) {
-            const link   = document.createElement('link');
-            link.rel     = 'stylesheet';
-            link.href    = 'css/theme.css';
+            const link = document.createElement('link');
+            link.rel  = 'stylesheet'; link.href = 'css/theme.css';
             document.head.appendChild(link);
-
             const script = document.createElement('script');
-            script.src   = 'js/embers.js';
+            script.src = 'js/embers.js';
             document.body.appendChild(script);
-
             explorerAssetsLoaded = true;
         }
     }
 
     function promptExplorerUpgrade() {
-        // If Pro+, apply. Otherwise prompt upgrade.
         const sel   = document.getElementById('tierSelect');
         const value = sel ? sel.value : 'free';
         if (value === 'paid' || value === 'premium') {
@@ -1067,42 +1049,116 @@
         }
     }
 
-    // ── Dashboard empty/populated state ──────────────────────────
+    // ── Library ───────────────────────────────────────────────────
 
-    function renderDashboard(hasDocuments) {
-        document.getElementById('library-populated').classList.toggle('hidden-section', !hasDocuments);
-        document.getElementById('library-empty').classList.toggle('hidden-section', hasDocuments);
-        const subtitle = document.getElementById('dashboard-subtitle');
-        if (subtitle) subtitle.style.display = hasDocuments ? '' : 'none';
+    function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    async function refreshLibrary() {
+        const rowsEl  = document.getElementById('library-rows');
+        const popEl   = document.getElementById('library-populated');
+        const emptyEl = document.getElementById('library-empty');
+        const sub     = document.getElementById('dashboard-subtitle');
+        if (!rowsEl) return;
+
+        let books = [];
+        try {
+            if (typeof localBooksGetAll === 'function') books = await localBooksGetAll();
+        } catch(_) {}
+
+        const has = books.length > 0;
+        if (popEl)  popEl.classList.toggle('hidden-section', !has);
+        if (emptyEl) emptyEl.classList.toggle('hidden-section', has);
+        if (sub) sub.style.display = has ? '' : 'none';
+        if (!has) return;
+
+        books.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        rowsEl.innerHTML = books.map(b => {
+            const pages = (String(b.markdown || '').match(/^\s*##\s+/gm) || []).length;
+            const date  = new Date(b.createdAt || Date.now()).toLocaleDateString();
+            const id    = String(b.id).replace(/'/g, "\\'");
+            const title = escHtml(b.title || 'Untitled');
+            return `<div onclick="openPreview('${id}','${title.replace(/'/g,"\\'")}')"
+                        class="px-6 py-4 flex items-center hover:bg-slate-50 cursor-pointer transition-colors border-b border-slate-100">
+                        <div class="flex-grow flex items-center gap-3">
+                            <div class="w-8 h-8 rounded flex items-center justify-center text-lg bg-accent-soft text-accent flex-shrink-0">📄</div>
+                            <div>
+                                <p class="font-semibold text-slate-800 text-sm">${title}</p>
+                                <p class="text-xs text-slate-400">Added ${date}</p>
+                            </div>
+                        </div>
+                        <div class="w-32 hidden md:block">
+                            <span class="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-bold">Unread</span>
+                        </div>
+                        <div class="w-32 hidden md:block text-sm text-slate-400">${pages} pages</div>
+                        <div class="w-8 text-slate-300">→</div>
+                    </div>`;
+        }).join('');
     }
 
     // ── Preview modal ─────────────────────────────────────────────
 
-    function openPreview(title) {
-        document.getElementById('preview-title').innerText = title;
+    let _previewBookId = null;
+
+    function openPreview(id, title) {
+        _previewBookId = id;
+        const el = document.getElementById('preview-title');
+        if (el) el.innerText = title || 'Book';
         openModal('preview-modal');
     }
 
     function startReading() {
         closeModal('preview-modal');
-        // Reset session complete signal
         const signal = document.getElementById('session-complete');
         if (signal) signal.classList.add('hidden-section');
         showSection('reading-mode');
-        // App's render() and boot sequence take over from here
+        // Load the selected book into the app
+        if (_previewBookId) {
+            const bookSel = document.getElementById('bookSelect');
+            if (bookSel) {
+                bookSel.value = _previewBookId;
+                bookSel.dispatchEvent(new Event('change'));
+                // After chapters populate, click load
+                setTimeout(() => {
+                    const loadBtn = document.getElementById('loadBookSelection');
+                    if (loadBtn) loadBtn.click();
+                    setTimeout(shellUpdateProgress, 600);
+                }, 400);
+            }
+        }
     }
 
-    // ── Bottom bar control bridges ────────────────────────────────
+    // ── Empty state drag/drop ─────────────────────────────────────
+    // Drop a file on the empty state → open import modal with file pre-loaded
+
+    function emptyStateDrop(e) {
+        e.preventDefault();
+        const zone = document.getElementById('empty-drop-zone');
+        if (zone) { zone.style.borderColor = 'transparent'; zone.style.background = ''; }
+        const files = e.dataTransfer && e.dataTransfer.files;
+        if (!files || !files.length) return;
+        // Open import modal
+        openModal('importBookModal');
+        // Forward file to the hidden input
+        const inp = document.getElementById('importFileInput');
+        if (inp) {
+            try {
+                const dt = new DataTransfer();
+                dt.items.add(files[0]);
+                inp.files = dt.files;
+                inp.dispatchEvent(new Event('change', { bubbles: true }));
+            } catch(_) {}
+        }
+    }
+
+    // ── Bottom bar bridges ────────────────────────────────────────
 
     function shellPauseToggle(btn) {
-        try {
-            // ttsStop is defined in tts.js
-            if (typeof ttsStop === 'function') ttsStop();
-        } catch(_) {}
+        try { if (typeof ttsStop === 'function') ttsStop(); } catch(_) {}
     }
 
     function shellToggleAutoplay(btn) {
-        // Mirror state to the hidden #autoplayToggle checkbox that tts.js reads
         const chk = document.getElementById('autoplayToggle');
         if (chk) {
             chk.checked = !chk.checked;
@@ -1112,26 +1168,26 @@
     }
 
     function shellSetSpeed(value) {
+        try { if (typeof TTS_STATE !== 'undefined') TTS_STATE.rate = parseFloat(value) || 1; } catch(_) {}
+    }
+
+    function shellUpdateProgress() {
         try {
-            if (typeof TTS_STATE !== 'undefined') TTS_STATE.rate = parseFloat(value) || 1;
+            const total   = (typeof pages !== 'undefined' && Array.isArray(pages)) ? pages.length : 0;
+            const current = (typeof lastFocusedPageIndex === 'number' && lastFocusedPageIndex >= 0) ? lastFocusedPageIndex : 0;
+            const prog    = document.getElementById('shell-page-progress');
+            const dots    = document.getElementById('shell-page-dots');
+            if (prog) prog.textContent = total > 0 ? `Page ${current + 1} / ${total}` : '—';
+            if (dots) {
+                const cap = Math.min(total, 12);
+                dots.innerHTML = Array.from({ length: cap }, (_, i) =>
+                    `<div class="w-2 h-2 rounded-full" style="background:${i <= current ? 'var(--theme-accent)' : '#e2e8f0'}"></div>`
+                ).join('');
+            }
         } catch(_) {}
     }
 
-    // Updates bottom bar page counter from live app state.
-    // Called by app on page advance (hook via window.onShellPageChange).
-    window.onShellPageChange = function(current, total) {
-        const prog = document.getElementById('shell-page-progress');
-        const dots = document.getElementById('shell-page-dots');
-        if (prog) prog.textContent = total > 0 ? `Page ${current + 1} / ${total}` : '—';
-        if (dots) {
-            const max = Math.min(total, 12); // cap dots at 12 for narrow screens
-            dots.innerHTML = Array.from({ length: max }, (_, i) =>
-                `<div class="w-2 h-2 rounded-full" style="background:${i <= current ? 'var(--theme-accent)' : '#e2e8f0'}"></div>`
-            ).join('');
-        }
-    };
-
-    // Session complete signal — called from app when last page is done
+    window.onShellPageChange    = shellUpdateProgress;
     window.jublySessionComplete = function(pageCount, minutes) {
         const signal = document.getElementById('session-complete');
         if (!signal) return;
@@ -1141,56 +1197,58 @@
         signal.scrollIntoView({ behavior: 'smooth', block: 'center' });
     };
 
-    // ── App boot hook ─────────────────────────────────────────────
-    // After app.js loads, sync shell UI to restored app state.
+    // ── Boot ──────────────────────────────────────────────────────
 
     window.addEventListener('load', function() {
-        // Sync autoplay button to restored state
+        // Sync autoplay button
         try {
             const chk = document.getElementById('autoplayToggle');
             const btn = document.getElementById('shell-autoplay-btn');
             if (chk && btn) btn.classList.toggle('active', chk.checked);
         } catch(_) {}
 
-        // Sync tier display to restored tier from localStorage
+        // Sync tier pill and buttons from restored localStorage tier
         try {
             const sel = document.getElementById('tierSelect');
             if (sel) {
-                const valToLabel = { free: 'Basic', paid: 'Pro', premium: 'Premium' };
-                const label = valToLabel[sel.value] || 'Basic';
+                const map = { free: 'Basic', paid: 'Pro', premium: 'Premium' };
+                const label = map[sel.value] || 'Basic';
                 const pill  = document.getElementById('tier-display');
                 if (pill) pill.textContent = label;
                 document.querySelectorAll('.tier-btn').forEach(b =>
                     b.classList.toggle('active', b.textContent.trim() === label));
-                // Apply Explorer swatch state
                 const isPro = sel.value === 'paid' || sel.value === 'premium';
                 const explorerBtn = document.getElementById('explorer-swatch-btn');
                 if (explorerBtn) {
                     explorerBtn.classList.toggle('explorer-locked', !isPro);
-                    const swatch = explorerBtn.querySelector('.theme-swatch');
-                    if (swatch) swatch.style.opacity = isPro ? '1' : '0.55';
+                    const sw = explorerBtn.querySelector('.theme-swatch');
+                    if (sw) sw.style.opacity = isPro ? '1' : '0.55';
                 }
             }
         } catch(_) {}
 
-        // Sync library state — show populated or empty based on IndexedDB
-        try {
-            if (typeof localBooksGetAll === 'function') {
-                localBooksGetAll().then(books => renderDashboard(books.length > 0)).catch(() => {});
-            }
-        } catch(_) {}
-
-        // Refresh library after any import/delete
+        // Patch __rcRefreshBookSelect so library refreshes after any import/delete
         try {
             const orig = window.__rcRefreshBookSelect;
             window.__rcRefreshBookSelect = async function() {
                 if (typeof orig === 'function') await orig();
-                if (typeof localBooksGetAll === 'function') {
-                    const books = await localBooksGetAll();
-                    renderDashboard(books.length > 0);
-                }
+                await refreshLibrary();
             };
         } catch(_) {}
+
+        // Hook importDoneBtn → close modal + refresh + go to library
+        const doneBtn = document.getElementById('importDoneBtn');
+        if (doneBtn) {
+            doneBtn.addEventListener('click', async function() {
+                const modal = document.getElementById('importBookModal');
+                if (modal) { modal.classList.add('hidden-section'); modal.style.display = ''; }
+                await refreshLibrary();
+                showSection('dashboard');
+            });
+        }
+
+        // Initial library render
+        refreshLibrary();
     });
 </script>
 
