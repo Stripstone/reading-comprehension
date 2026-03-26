@@ -112,7 +112,7 @@
         .reading-top-left::-webkit-scrollbar { display: none; }
         .reading-top-exit { flex-shrink: 0; margin-left: 8px; }
         .reading-bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,0.97); border-top: 1px solid var(--jubly-border); backdrop-filter: blur(8px); box-shadow: 0 -4px 24px rgba(0,0,0,0.06); }
-        .reading-bottom-left { display: flex; align-items: center; gap: 4px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; }
+        .reading-bottom-left { display: flex; align-items: center; gap: 4px; overflow-x: auto; flex: 1; min-width: 0; flex-shrink: 1; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
         .reading-bottom-left::-webkit-scrollbar { display: none; }
         .reading-content { max-width: 42rem; margin: 0 auto; padding: 80px 1rem 96px; }
         .reading-select { font-size: 0.75rem; font-weight: 700; color: #475569; background: transparent; border: none; outline: none; cursor: pointer; padding: 4px 2px; white-space: nowrap; }
@@ -208,6 +208,146 @@
         .howitworks-list { margin:6px 0 0 18px; }
         .howitworks-list li { margin:5px 0; }
         .howitworks-quote { margin-top:12px; padding:12px; border:1.5px solid var(--jubly-border); border-radius:12px; background:#fafafa; font-style:italic; font-size:0.82rem; color:#64748b; }
+
+        /* ═══════════════════════════════════════════════════════════
+           THEME VARIABLE BRIDGE — reading mode only
+           Basic  : shell purple accent, clean white cards.
+           Pro+   : Explorer warm palette. Full textured version is
+                    activated by loading css/theme.css which overrides
+                    these variables and adds body::before/after textures.
+           Green / Purple: accent-only swaps via existing theme-* vars.
+           To add a new theme: set --rm-* overrides on body.theme-X.
+           ═══════════════════════════════════════════════════════════ */
+        :root {
+            --rm-accent:      var(--jubly-purple);
+            --rm-accent-soft: #ede9fe;
+            --rm-card-bg:     #ffffff;
+            --rm-page-bg:     #f5f3ff;
+            --rm-text:        #1e293b;
+            --rm-text-2:      #64748b;
+            --rm-border:      #e2e8f0;
+            --rm-shadow:      0 4px 16px rgba(99,68,245,0.08);
+            --rm-btn-bg:      rgba(99,68,245,0.07);
+            --rm-btn-hover:   rgba(99,68,245,0.14);
+            --sand-drift-duration: 4s;
+        }
+        body.theme-green  { --rm-accent:#22c55e; --rm-accent-soft:#dcfce7; --rm-btn-bg:rgba(34,197,94,0.08);    --rm-btn-hover:rgba(34,197,94,0.15);    --rm-page-bg:#f0fdf4; }
+        body.theme-purple { --rm-accent:#a78bfa; --rm-accent-soft:#ede9fe; --rm-btn-bg:rgba(167,139,250,0.08); --rm-btn-hover:rgba(167,139,250,0.15); --rm-page-bg:#faf5ff; }
+        /* Explorer (Pro+) — accent colours only. css/theme.css adds the textures + embers. */
+        body.theme-explorer {
+            --rm-accent:      #c17d4a;
+            --rm-accent-soft: #f5ede0;
+            --rm-card-bg:     #f5f1e8;
+            --rm-page-bg:     #ebe7de;
+            --rm-text:        #2b2520;
+            --rm-text-2:      #6b5d54;
+            --rm-border:      #e8dfd4;
+            --rm-shadow:      0 4px 16px rgba(139,111,87,0.12);
+            --rm-btn-bg:      rgba(193,125,74,0.10);
+            --rm-btn-hover:   rgba(193,125,74,0.18);
+        }
+
+        /* ═══════════════════════════════════════════════════════════
+           READING MODE CARD STYLES — scoped to #reading-mode
+           Zero effect outside reading mode.
+           ═══════════════════════════════════════════════════════════ */
+        #reading-mode { background:var(--rm-accent-soft); min-height:100vh; }
+        #reading-mode #pages { max-width:860px; margin:0 auto; padding:80px 1.5rem 96px; }
+
+        /* Page card */
+        #reading-mode .page {
+            background:var(--rm-card-bg); border:1px solid var(--rm-border);
+            border-left:4px solid var(--rm-accent); border-radius:12px;
+            padding:28px; margin-bottom:24px; box-shadow:var(--rm-shadow);
+            position:relative; overflow:hidden;
+            animation:rmSlideIn 0.4s ease-out backwards;
+            transition:border-left-color 0.3s, box-shadow 0.3s;
+        }
+        #reading-mode .page.page-active {
+            border-left-width:6px;
+            box-shadow:var(--rm-shadow), -6px 0 12px -2px rgba(99,68,245,0.2);
+        }
+        body.theme-explorer #reading-mode .page.page-active {
+            box-shadow:var(--rm-shadow), -6px 0 12px -2px rgba(193,125,74,0.35);
+        }
+        @keyframes rmSlideIn { from{opacity:0;transform:translateX(-16px)} to{opacity:1;transform:translateX(0)} }
+
+        /* Page header — "Page N" label */
+        #reading-mode .page-header {
+            font-size:0.78rem; font-weight:800; text-transform:uppercase;
+            letter-spacing:0.06em; color:var(--rm-accent); margin-bottom:12px;
+        }
+        /* Passage text */
+        #reading-mode .page-text {
+            background:var(--rm-page-bg); border-radius:8px; padding:16px 18px;
+            margin-bottom:14px; line-height:1.7; font-size:1rem;
+            color:var(--rm-text); font-family:'Lora',serif;
+            overflow-wrap:anywhere; word-break:break-word; overflow-x:hidden;
+        }
+        /* TTS word highlight */
+        #reading-mode .speaking-word { background-color:var(--rm-accent-soft); border-bottom:2px solid var(--rm-accent); border-radius:2px; }
+        /* Anchor highlights */
+        #reading-mode .page-text .anchor { color:inherit; background-color:rgba(255,241,118,var(--anchor-alpha,0)); border-radius:3px; padding:0 2px; transition:background-color 0.35s; }
+        #reading-mode .page-text .anchor .anchor-term-found { background-color:rgba(255,241,118,0.95); border-radius:3px; padding:0 2px; }
+        #reading-mode .page.anchor-hint-active .page-text .anchor { --anchor-alpha:0.9; }
+
+        /* Buttons: Read Page, Hint, Next */
+        #reading-mode .top-btn {
+            background:var(--rm-btn-bg); border:none; border-radius:8px;
+            font-family:'Inter',sans-serif; font-size:0.82rem; font-weight:700;
+            color:var(--rm-accent); cursor:pointer; padding:8px 14px;
+            transition:background 0.15s, transform 0.12s; opacity:1; box-shadow:none;
+        }
+        #reading-mode .top-btn:hover { background:var(--rm-btn-hover); transform:translateY(-1px); box-shadow:none; }
+        #reading-mode .top-btn:active { transform:translateY(0); }
+        #reading-mode .top-btn.tts-active { background:var(--rm-btn-hover); box-shadow:0 0 0 2px var(--rm-accent); }
+        #reading-mode .hint-btn:disabled { opacity:0.35; cursor:not-allowed; transform:none; }
+
+        /* page-actions + anchors layout */
+        #reading-mode .page-actions  { margin-bottom:4px; }
+        #reading-mode .anchors-row   { display:flex; justify-content:flex-end; margin:4px 0 2px; }
+        #reading-mode .anchors-ui    { display:flex; gap:8px; align-items:center; font-size:0.75rem; }
+        #reading-mode .anchors-counter { padding:4px 10px; border-radius:8px; background:var(--rm-btn-bg); color:var(--rm-text-2); }
+        #reading-mode .anchors-nav   { display:flex; justify-content:flex-end; margin:6px 0 14px; }
+        #reading-mode .anchors-nav .next-btn { min-height:36px; }
+
+        /* Comprehension elements (hidden in reading mode by applyModeVisibility) */
+        #reading-mode .sand-wrapper { position:relative; margin-top:8px; }
+        #reading-mode .sand-wrapper textarea {
+            width:100%; min-height:110px; padding:14px; font-family:'Inter',sans-serif;
+            font-size:0.9rem; line-height:1.6; color:var(--rm-text);
+            background:var(--rm-card-bg); border:2px solid var(--rm-border);
+            border-radius:8px; resize:vertical; outline:none;
+            position:relative; z-index:2; transition:border-color 0.2s; box-sizing:border-box;
+        }
+        #reading-mode .sand-wrapper textarea:focus { border-color:var(--rm-accent); }
+        #reading-mode .sand-layer {
+            position:absolute; bottom:0; left:0; width:100%; height:0%;
+            z-index:1; pointer-events:none; border-radius:6px;
+            background:repeating-radial-gradient(circle at 20% 30%,rgba(255,255,255,0.18) 0px,rgba(255,255,255,0.18) 1px,transparent 2px,transparent 4px),
+                       linear-gradient(to top,rgba(194,178,128,0.65),rgba(214,198,148,0.4));
+            background-size:120px 120px,100% 100%;
+            animation:sandDrift var(--sand-drift-duration) linear infinite;
+            transition:height 0.6s linear;
+        }
+        @keyframes sandDrift { from{background-position:0 0,0 0} to{background-position:120px 120px,0 0} }
+        #reading-mode .sandstone .sand-layer {
+            height:100% !important; animation:none;
+            background:repeating-linear-gradient(45deg,rgba(160,140,95,0.6),rgba(160,140,95,0.6) 4px,rgba(135,115,75,0.6) 8px),
+                       linear-gradient(to top,rgba(170,150,105,0.8),rgba(200,180,130,0.8));
+        }
+        #reading-mode .info-row { display:flex; justify-content:space-between; align-items:flex-start; margin-top:10px; gap:16px; flex-wrap:wrap; }
+        #reading-mode .timer, #reading-mode .char-counter { font-family:monospace; font-size:0.82rem; color:var(--rm-accent); line-height:1.6; }
+        #reading-mode .evaluation-section { display:flex; flex-direction:column; align-items:center; gap:6px; }
+        #reading-mode .evaluation-label { font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--rm-text-2); }
+        #reading-mode .stars { display:flex; gap:4px; }
+        #reading-mode .star { cursor:pointer; font-size:1rem; opacity:0.35; transition:opacity 0.15s; }
+        #reading-mode .star.filled { opacity:1; }
+        #reading-mode .stars.locked .star { cursor:not-allowed; }
+        #reading-mode .action-buttons { display:flex; flex-direction:column; gap:6px; align-items:flex-end; }
+        #reading-mode .ai-btn { background:none; border:none; font-family:'Inter',sans-serif; font-size:0.78rem; color:var(--rm-text-2); cursor:pointer; padding:4px 8px; border-radius:6px; transition:all 0.15s; box-shadow:none; }
+        #reading-mode .ai-btn:hover { color:var(--rm-accent); background:var(--rm-btn-bg); transform:none; }
+        #reading-mode .ai-feedback { width:100%; margin-top:14px; padding:18px; background:var(--rm-btn-bg); border-left:3px solid var(--rm-accent); border-radius:8px; font-size:0.88rem; line-height:1.7; color:var(--rm-text); }
     </style>
 </head>
 <body class="bg-white">
@@ -220,10 +360,8 @@
     <!-- Source/mode/tier — wired by ui.js -->
     <select id="importSource"><option value="book" selected>Book</option><option value="text">Text</option></select>
     <select id="tierSelect"><option value="free" selected>Free</option><option value="paid">Paid</option><option value="premium">Premium</option></select>
-    <!-- bookControls/chapterControls wrapper divs exist for app show/hide logic.
-         bookSelect and chapterSelect live in the visible reading top bar. -->
-    <div id="bookControls"></div>
-    <div id="chapterControls"></div>
+    <!-- bookControls/chapterControls: the wrapper divs are in the reading top bar,
+         wrapping the visible selects. app.js uses those IDs to show/hide them. -->
     <div id="pageControls"><select id="pageStart"></select><select id="pageEnd"></select></div>
     <div id="textControls"><textarea id="bulkInput"></textarea></div>
     <div id="thesisRow"><textarea id="thesisInput"></textarea></div>
@@ -527,7 +665,7 @@
             <div class="bg-slate-50 border-b border-slate-200 px-6 py-3 flex text-xs font-bold text-slate-400 uppercase tracking-wider">
                 <div class="flex-grow">Document Name</div>
                 <div class="w-32 hidden md:block">Status</div>
-                <div class="w-32 hidden md:block">Pages</div>
+                <div class="w-32 hidden md:block">Time</div>
                 <div class="w-8"></div>
             </div>
             <div id="library-rows"></div>
@@ -751,15 +889,19 @@
                 <option value="research">Mode: Research</option>
             </select>
             <div class="reading-divider"></div>
-            <!-- bookSelect: populated by library.js initBookImporter() -->
-            <select id="bookSelect" class="reading-select">
-                <option value="">Book: —</option>
-            </select>
+            <!-- bookControls wraps bookSelect — initBookImporter() wires to this div -->
+            <div id="bookControls" style="display:flex;align-items:center;">
+                <select id="bookSelect" class="reading-select">
+                    <option value="">Book: —</option>
+                </select>
+            </div>
             <div class="reading-divider"></div>
-            <!-- chapterSelect: populated by library.js initBookImporter() -->
-            <select id="chapterSelect" class="reading-select">
-                <option value="">Ch: —</option>
-            </select>
+            <!-- chapterControls wraps chapterSelect — initBookImporter() wires to this div -->
+            <div id="chapterControls" style="display:flex;align-items:center;">
+                <select id="chapterSelect" class="reading-select">
+                    <option value="">Ch: —</option>
+                </select>
+            </div>
             <div class="reading-divider"></div>
             <!-- Tier display — updated by setTierDisplay() when profile tier changes -->
             <span class="tier-pill" id="tier-display">Basic</span>
@@ -769,7 +911,7 @@
 
     <!-- CONTENT — app render() writes .page elements into #pages -->
     <div class="reading-content">
-        <div id="pages" class="space-y-8"></div>
+        <div id="pages"></div>
 
         <!-- END-OF-SESSION SIGNAL (hidden until last page completed) -->
         <div id="session-complete" class="hidden-section mt-12 mb-4">
@@ -811,10 +953,9 @@
                 Sound &amp; Voice
             </button>
         </div>
-        <!-- Page progress — updated by shellUpdateProgress() -->
-        <div class="flex items-center gap-3 flex-shrink-0">
+        <!-- Page progress — plain text counter, no dots -->
+        <div class="flex-shrink-0">
             <span class="page-progress" id="shell-page-progress">—</span>
-            <div class="flex gap-1" id="shell-page-dots"></div>
         </div>
     </div>
 
@@ -1075,10 +1216,11 @@
 
         books.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         rowsEl.innerHTML = books.map(b => {
-            const pages = (String(b.markdown || '').match(/^\s*##\s+/gm) || []).length;
-            const date  = new Date(b.createdAt || Date.now()).toLocaleDateString();
-            const id    = String(b.id).replace(/'/g, "\\'");
-            const title = escHtml(b.title || 'Untitled');
+            const pages   = (String(b.markdown || '').match(/^\s*##\s+/gm) || []).length;
+            const date    = new Date(b.createdAt || Date.now()).toLocaleDateString();
+            const estMins = Math.max(1, Math.round(pages * 1.5));
+            const id      = String(b.id).replace(/'/g, "\\'");
+            const title   = escHtml(b.title || 'Untitled');
             return `<div onclick="openPreview('${id}','${title.replace(/'/g,"\\'")}')"
                         class="px-6 py-4 flex items-center hover:bg-slate-50 cursor-pointer transition-colors border-b border-slate-100">
                         <div class="flex-grow flex items-center gap-3">
@@ -1091,7 +1233,7 @@
                         <div class="w-32 hidden md:block">
                             <span class="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-bold">Unread</span>
                         </div>
-                        <div class="w-32 hidden md:block text-sm text-slate-400">${pages} pages</div>
+                        <div class="w-32 hidden md:block text-sm text-slate-500 font-medium">${estMins} min left</div>
                         <div class="w-8 text-slate-300">→</div>
                     </div>`;
         }).join('');
@@ -1176,14 +1318,7 @@
             const total   = (typeof pages !== 'undefined' && Array.isArray(pages)) ? pages.length : 0;
             const current = (typeof lastFocusedPageIndex === 'number' && lastFocusedPageIndex >= 0) ? lastFocusedPageIndex : 0;
             const prog    = document.getElementById('shell-page-progress');
-            const dots    = document.getElementById('shell-page-dots');
             if (prog) prog.textContent = total > 0 ? `Page ${current + 1} / ${total}` : '—';
-            if (dots) {
-                const cap = Math.min(total, 12);
-                dots.innerHTML = Array.from({ length: cap }, (_, i) =>
-                    `<div class="w-2 h-2 rounded-full" style="background:${i <= current ? 'var(--theme-accent)' : '#e2e8f0'}"></div>`
-                ).join('');
-            }
         } catch(_) {}
     }
 
@@ -1227,15 +1362,6 @@
             }
         } catch(_) {}
 
-        // Patch __rcRefreshBookSelect so library refreshes after any import/delete
-        try {
-            const orig = window.__rcRefreshBookSelect;
-            window.__rcRefreshBookSelect = async function() {
-                if (typeof orig === 'function') await orig();
-                await refreshLibrary();
-            };
-        } catch(_) {}
-
         // Hook importDoneBtn → close modal + refresh + go to library
         const doneBtn = document.getElementById('importDoneBtn');
         if (doneBtn) {
@@ -1250,6 +1376,28 @@
         // Initial library render
         refreshLibrary();
     });
+
+    // Patch __rcRefreshBookSelect after initBookImporter() has defined it.
+    // initBookImporter() is called synchronously at the end of evaluation.js,
+    // which is loaded by app.js sequentially. We poll until it exists, then wrap it.
+    (function patchRefreshHook() {
+        let attempts = 0;
+        const id = setInterval(function() {
+            attempts++;
+            if (typeof window.__rcRefreshBookSelect === 'function') {
+                clearInterval(id);
+                const orig = window.__rcRefreshBookSelect;
+                window.__rcRefreshBookSelect = async function() {
+                    await orig();
+                    await refreshLibrary();
+                };
+            } else if (attempts > 80) {
+                // app.js didn't load — just wire refreshLibrary directly
+                clearInterval(id);
+                window.__rcRefreshBookSelect = refreshLibrary;
+            }
+        }, 100);
+    })();
 </script>
 
 <script src="assets/books/embedded_books.js"></script>
