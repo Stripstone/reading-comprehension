@@ -1451,9 +1451,34 @@
       console.error("Book manifest load error:", e);
     }
 
+    // Shell hook — refresh the shell library table after boot population.
+    try { if (typeof window.__jublyLibraryRefresh === 'function') await window.__jublyLibraryRefresh(); } catch(_) {}
+
     // Expose a tiny hook so the import modal can refresh the dropdown after import.
     window.__rcRefreshBookSelect = async () => {
       try { await populateBookSelectWithLocal(); } catch (_) {}
+      // Shell hook — refresh the shell library table after any import/delete.
+      try { if (typeof window.__jublyLibraryRefresh === 'function') await window.__jublyLibraryRefresh(); } catch(_) {}
+    };
+
+    // Shell hook — load a book by ID and render pages.
+    // Called from startReading() in index.html. Handles the full async
+    // loadBook() → click Load sequence so the shell needs no polling.
+    window.__jublyStartReading = async function(bookId) {
+      if (!bookId) return;
+      bookSelect.value = bookId;
+      bookSelect.dispatchEvent(new Event('change'));
+      // loadBook() is async — wait until currentPages is populated (max 8s)
+      const deadline = Date.now() + 8000;
+      await new Promise(function(resolve) {
+        var check = setInterval(function() {
+          if (currentPages.length > 0 || Date.now() > deadline) {
+            clearInterval(check);
+            resolve();
+          }
+        }, 100);
+      });
+      if (currentPages.length > 0) loadBtn.click();
     };
   }
 
@@ -1857,9 +1882,12 @@
     checkCompassUnlock();
     checkSubmitButton();
 
-    
     applyModeVisibility();
     if (typeof applyTierAccess === 'function') applyTierAccess();
+
+    // Shell hook — runs after every render() so the shell can apply
+    // post-render work (Continue affordance) without patching render().
+    try { if (typeof window.__jublyAfterRender === 'function') window.__jublyAfterRender(); } catch(_) {}
   }
 
   function applyModeVisibility() {

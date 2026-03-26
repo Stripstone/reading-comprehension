@@ -73,7 +73,6 @@
         .page-card { transition: opacity 0.4s cubic-bezier(0.4,0,0.2,1), transform 0.4s cubic-bezier(0.4,0,0.2,1), border-color 0.3s ease; opacity: 0.3; transform: scale(0.96); }
         .page-card.active { opacity: 1; transform: scale(1); border-color: var(--theme-accent); }
         .speaking-word { background-color: var(--theme-accent-soft); border-bottom: 2px solid var(--theme-accent); border-radius: 2px; }
-        .modal-overlay { position:fixed; inset:0; background:rgba(15,23,42,0.55); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); z-index:200; display:flex; align-items:center; justify-content:center; padding:1.5rem; }
         .profile-tab-btn.active { background-color: #f1f5f9; color: var(--jubly-purple); font-weight: 700; }
         .tier-btn { padding: 3px 11px; border-radius: 999px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; border: 2px solid #e2e8f0; color: #94a3b8; cursor: pointer; transition: all 0.15s ease; background: transparent; }
         .tier-btn.active { border-color: var(--jubly-purple); color: var(--jubly-purple); background: #f5f3ff; }
@@ -94,7 +93,7 @@
         .sidebar-btn { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 6px; border-radius: 10px; color: #94a3b8; font-size: 0.58rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; transition: background 0.15s, color 0.15s; width: 52px; cursor: pointer; background: transparent; border: none; }
         .sidebar-btn:hover { background: #f1f5f9; color: var(--jubly-purple); }
         .sidebar-btn.active { color: var(--jubly-purple); background: #f5f3ff; }
-        /* Sidebar offset — pad the body left so content stays centered within remaining space */
+        /* Sidebar offset — padding pushes content right, mx-auto still centres within full viewport */
         .with-sidebar { padding-left: 68px !important; }
         @media (max-width: 640px) { .with-sidebar { padding-left: 0 !important; } #app-sidebar { display: none !important; } }
         /* ── Explorer theme swatch ── */
@@ -105,31 +104,16 @@
         .btn-subscribe:hover { background: var(--jubly-light); transform: translateY(-1px); }
         /* ── Focus Mode reading UI ── */
         #reading-mode { background: var(--theme-accent-soft); min-height: 100vh; padding: 0; }
-        .reading-top-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,0.96); border-bottom: 1px solid #e2e8f0; backdrop-filter: blur(8px); transition: opacity 0.5s ease, transform 0.5s ease; }
+        .reading-top-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,0.96); border-bottom: 1px solid #e2e8f0; backdrop-filter: blur(8px); transition: opacity 0.5s ease, transform 0.5s ease; }
         .reading-top-bar.faded { opacity: 0; pointer-events: none; transform: translateY(-6px); }
-        /* Controls centred; exit pinned right */
-        .reading-top-left { display: flex; align-items: center; gap: 6px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; justify-content: center; }
+        /* Left controls scroll horizontally on narrow; Exit is pinned right and never clips */
+        .reading-top-left { display: flex; align-items: center; gap: 6px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; }
         .reading-top-left::-webkit-scrollbar { display: none; }
-        .reading-top-exit { flex-shrink: 0; }
-        .reading-bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,0.97); border-top: 1px solid var(--jubly-border); backdrop-filter: blur(8px); box-shadow: 0 -4px 24px rgba(0,0,0,0.06); }
-        .reading-bottom-left { display: flex; align-items: center; gap: 4px; overflow-x: auto; flex: 1; min-width: 0; flex-shrink: 1; scrollbar-width: none; -webkit-overflow-scrolling: touch; justify-content: center; }
+        .reading-top-exit { flex-shrink: 0; margin-left: 8px; }
+        .reading-bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,0.97); border-top: 1px solid var(--jubly-border); backdrop-filter: blur(8px); box-shadow: 0 -4px 24px rgba(0,0,0,0.06); }
+        .reading-bottom-left { display: flex; align-items: center; gap: 4px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; }
         .reading-bottom-left::-webkit-scrollbar { display: none; }
-        /* Reading content wrapper — unconstrained on desktop, centred column on tablet/mobile */
-        .reading-content { padding: 80px 0 96px; }
-
-        /* Pages container: breakpoint-aware width */
-        #reading-mode #pages {
-            /* Desktop (≥1025px): full natural width, unconstrained */
-            max-width: 900px; margin: 0 auto; padding: 0 2rem;
-        }
-        @media (max-width: 1024px) {
-            /* Tablet: constrained, centred */
-            #reading-mode #pages { max-width: 720px; padding: 0 1.5rem; }
-        }
-        @media (max-width: 768px) {
-            /* Mobile: tight padding */
-            #reading-mode #pages { max-width: 100%; padding: 0 1rem; }
-        }
+        .reading-content { max-width: 42rem; margin: 0 auto; padding: 80px 1rem 96px; }
         .reading-select { font-size: 0.75rem; font-weight: 700; color: #475569; background: transparent; border: none; outline: none; cursor: pointer; padding: 4px 2px; white-space: nowrap; }
         .reading-select:hover { color: var(--jubly-purple); }
         .reading-divider { width: 1px; height: 16px; background: #e2e8f0; flex-shrink: 0; }
@@ -139,8 +123,8 @@
         .pb-icon-btn.active { background: var(--theme-accent-soft); color: var(--theme-accent); }
         .page-progress { font-size: 0.7rem; font-weight: 700; color: #94a3b8; letter-spacing: 0.04em; white-space: nowrap; flex-shrink: 0; }
 
-        /* ── App modal overlay (used by howItWorksModal, importBookModal, manageLibraryModal) ── */
-        .modal-overlay { position:fixed; inset:0; background:rgba(15,23,42,0.55); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); z-index:200; display:flex; align-items:center; justify-content:center; padding:1.5rem; }
+        /* ── App modal overlay — display set by JS (ui.js/import.js set style.display='flex'/'none') ── */
+        .modal-overlay { position:fixed; inset:0; background:rgba(15,23,42,0.55); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); z-index:200; align-items:center; justify-content:center; padding:1.5rem; }
         .modal { background:#fff; border-radius:20px; border:1px solid var(--jubly-border); box-shadow:0 24px 64px rgba(0,0,0,0.18); width:min(720px,96vw); max-height:min(88vh,860px); overflow:auto; }
         .import-modal { width:min(980px,96vw); }
         .modal-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:1.25rem 1.5rem 1rem; border-bottom:1px solid var(--jubly-border); }
@@ -223,202 +207,6 @@
         .howitworks-list { margin:6px 0 0 18px; }
         .howitworks-list li { margin:5px 0; }
         .howitworks-quote { margin-top:12px; padding:12px; border:1.5px solid var(--jubly-border); border-radius:12px; background:#fafafa; font-style:italic; font-size:0.82rem; color:#64748b; }
-
-        /* ═══════════════════════════════════════════════════════════
-           THEME VARIABLE BRIDGE — reading mode only
-           Basic  : shell purple accent, clean white cards.
-           Pro+   : Explorer warm palette. Full textured version is
-                    activated by loading css/theme.css which overrides
-                    these variables and adds body::before/after textures.
-           Green / Purple: accent-only swaps via existing theme-* vars.
-           To add a new theme: set --rm-* overrides on body.theme-X.
-           ═══════════════════════════════════════════════════════════ */
-        :root {
-            --rm-accent:      var(--jubly-purple);
-            --rm-accent-soft: #ede9fe;
-            --rm-card-bg:     #ffffff;
-            --rm-page-bg:     #f5f3ff;
-            --rm-text:        #1e293b;
-            --rm-text-2:      #64748b;
-            --rm-border:      #e2e8f0;
-            --rm-shadow:      0 4px 16px rgba(99,68,245,0.08);
-            --rm-btn-bg:      rgba(99,68,245,0.07);
-            --rm-btn-hover:   rgba(99,68,245,0.14);
-            --sand-drift-duration: 4s;
-        }
-        body.theme-green  { --rm-accent:#22c55e; --rm-accent-soft:#dcfce7; --rm-btn-bg:rgba(34,197,94,0.08);    --rm-btn-hover:rgba(34,197,94,0.15);    --rm-page-bg:#f0fdf4; }
-        body.theme-purple { --rm-accent:#a78bfa; --rm-accent-soft:#ede9fe; --rm-btn-bg:rgba(167,139,250,0.08); --rm-btn-hover:rgba(167,139,250,0.15); --rm-page-bg:#faf5ff; }
-        /* Explorer (Pro+) — accent colours only. css/theme.css adds the textures + embers. */
-        body.theme-explorer {
-            --rm-accent:      #c17d4a;
-            --rm-accent-soft: #f5ede0;
-            --rm-card-bg:     #f5f1e8;
-            --rm-page-bg:     #ebe7de;
-            --rm-text:        #2b2520;
-            --rm-text-2:      #6b5d54;
-            --rm-border:      #e8dfd4;
-            --rm-shadow:      0 4px 16px rgba(139,111,87,0.12);
-            --rm-btn-bg:      rgba(193,125,74,0.10);
-            --rm-btn-hover:   rgba(193,125,74,0.18);
-        }
-
-        /* ═══════════════════════════════════════════════════════════
-           READING MODE CARD STYLES — scoped to #reading-mode
-           Zero effect outside reading mode.
-           ═══════════════════════════════════════════════════════════ */
-        #reading-mode { background:var(--rm-accent-soft); min-height:100vh; }
-        /* #pages padding handled by .reading-content breakpoint rules above */
-        #reading-mode #pages { padding-top: 0; }
-
-        /* Page card */
-        #reading-mode .page {
-            background:var(--rm-card-bg); border:1px solid var(--rm-border);
-            border-left:4px solid var(--rm-accent); border-radius:12px;
-            padding:28px; margin-bottom:24px; box-shadow:var(--rm-shadow);
-            position:relative; overflow:hidden;
-            animation:rmSlideIn 0.4s ease-out backwards;
-            transition:border-left-color 0.3s, box-shadow 0.3s;
-        }
-        @media (max-width: 1024px) {
-            #reading-mode .page { padding: 22px 20px; }
-        }
-        @media (max-width: 768px) {
-            #reading-mode .page { padding: 18px 16px; }
-        }
-        #reading-mode .page.page-active {
-            border-left-width:6px;
-            box-shadow:var(--rm-shadow), -6px 0 12px -2px rgba(99,68,245,0.2);
-        }
-        body.theme-explorer #reading-mode .page.page-active {
-            box-shadow:var(--rm-shadow), -6px 0 12px -2px rgba(193,125,74,0.35);
-        }
-        @keyframes rmSlideIn { from{opacity:0;transform:translateX(-16px)} to{opacity:1;transform:translateX(0)} }
-
-        /* Page header — "Page N" label */
-        #reading-mode .page-header {
-            font-size:0.78rem; font-weight:800; text-transform:uppercase;
-            letter-spacing:0.06em; color:var(--rm-accent); margin-bottom:12px;
-        }
-
-        /* Passage text — page-size aware:
-           Desktop: unconstrained height, natural scroll.
-           Tablet/Mobile: capped height, internal scroll, Continue affordance via ::after fade. */
-        #reading-mode .page-text {
-            background:var(--rm-page-bg); border-radius:8px; padding:16px 18px;
-            margin-bottom:14px; line-height:1.7; font-size:1rem;
-            color:var(--rm-text); font-family:'Lora',serif;
-            overflow-wrap:anywhere; word-break:break-word; overflow-x:hidden;
-            position:relative;
-        }
-        @media (max-width: 1024px) {
-            #reading-mode .page-text {
-                max-height: 48vh; overflow-y: auto; overscroll-behavior: contain;
-                font-size: 0.97rem;
-            }
-        }
-        @media (max-width: 768px) {
-            #reading-mode .page-text {
-                max-height: 40vh; overflow-y: auto; overscroll-behavior: contain;
-                font-size: 0.93rem; line-height: 1.65;
-            }
-        }
-
-        /* "Continue" affordance — fade + chevron at bottom of scrollable text.
-           The .page-text-wrap element is injected by shellWrapPageText() on tablet/mobile.
-           On desktop the wrapper is present but the fade is hidden. */
-        .page-text-wrap { position: relative; }
-        .page-text-wrap .page-text-fade {
-            position: absolute; bottom: 0; left: 0; right: 0; height: 48px;
-            background: linear-gradient(to bottom, transparent, var(--rm-page-bg));
-            border-radius: 0 0 8px 8px; pointer-events: none;
-            display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px;
-            transition: opacity 0.2s;
-        }
-        .page-text-wrap .page-text-fade::after {
-            content: '▾';
-            font-size: 0.9rem; color: var(--rm-accent); opacity: 0.7;
-            animation: fadeChevron 1.4s ease-in-out infinite;
-        }
-        .page-text-wrap.scrolled-to-end .page-text-fade { opacity: 0; pointer-events: none; }
-        @keyframes fadeChevron { 0%,100%{transform:translateY(0)} 50%{transform:translateY(3px)} }
-        /* Desktop: no fade needed */
-        @media (min-width: 1025px) {
-            .page-text-wrap .page-text-fade { display: none; }
-        }
-
-        /* TTS word highlight */
-        #reading-mode .speaking-word { background-color:var(--rm-accent-soft); border-bottom:2px solid var(--rm-accent); border-radius:2px; }
-        /* TTS sentence highlight — driven by --tts-alpha set by tts.js */
-        #reading-mode .tts-sentence {
-            --tts-alpha: 0;
-            border-radius: 6px; padding: 0 2px;
-            background-color: rgba(255, 230, 120, var(--tts-alpha));
-            transition: background-color 220ms ease;
-        }
-        #reading-mode .page-text .anchor { color:inherit; background-color:rgba(255,241,118,var(--anchor-alpha,0)); border-radius:3px; padding:0 2px; transition:background-color 0.35s; }
-        #reading-mode .page-text .anchor .anchor-term-found { background-color:rgba(255,241,118,0.95); border-radius:3px; padding:0 2px; }
-        #reading-mode .page.anchor-hint-active .page-text .anchor { --anchor-alpha:0.9; }
-
-        /* Buttons: Read Page, Hint, Next */
-        #reading-mode .top-btn {
-            background:var(--rm-btn-bg); border:none; border-radius:8px;
-            font-family:'Inter',sans-serif; font-size:0.82rem; font-weight:700;
-            color:var(--rm-accent); cursor:pointer; padding:8px 14px;
-            transition:background 0.15s, transform 0.12s; opacity:1; box-shadow:none;
-        }
-        #reading-mode .top-btn:hover { background:var(--rm-btn-hover); transform:translateY(-1px); box-shadow:none; }
-        #reading-mode .top-btn:active { transform:translateY(0); }
-        #reading-mode .top-btn.tts-active { background:var(--rm-btn-hover); box-shadow:0 0 0 2px var(--rm-accent); }
-        #reading-mode .hint-btn:disabled { opacity:0.35; cursor:not-allowed; transform:none; }
-
-        /* page-actions (Read Page) sits just above anchors-nav (Next) — both right-aligned,
-           matching the MVP app's exact render order: page-actions → anchors-nav */
-        #reading-mode .page-actions {
-            display:flex; justify-content:flex-end; gap:8px; margin:6px 0 4px;
-        }
-        #reading-mode .anchors-row   { display:flex; justify-content:flex-end; margin:4px 0 2px; }
-        #reading-mode .anchors-ui    { display:flex; gap:8px; align-items:center; font-size:0.75rem; }
-        #reading-mode .anchors-counter { padding:4px 10px; border-radius:8px; background:var(--rm-btn-bg); color:var(--rm-text-2); }
-        #reading-mode .anchors-nav   { display:flex; justify-content:flex-end; margin:4px 0 14px; }
-        #reading-mode .anchors-nav .next-btn { min-height:36px; }
-
-        /* Comprehension elements (hidden in reading mode by applyModeVisibility) */
-        #reading-mode .sand-wrapper { position:relative; margin-top:8px; }
-        #reading-mode .sand-wrapper textarea {
-            width:100%; min-height:110px; padding:14px; font-family:'Inter',sans-serif;
-            font-size:0.9rem; line-height:1.6; color:var(--rm-text);
-            background:var(--rm-card-bg); border:2px solid var(--rm-border);
-            border-radius:8px; resize:vertical; outline:none;
-            position:relative; z-index:2; transition:border-color 0.2s; box-sizing:border-box;
-        }
-        #reading-mode .sand-wrapper textarea:focus { border-color:var(--rm-accent); }
-        #reading-mode .sand-layer {
-            position:absolute; bottom:0; left:0; width:100%; height:0%;
-            z-index:1; pointer-events:none; border-radius:6px;
-            background:repeating-radial-gradient(circle at 20% 30%,rgba(255,255,255,0.18) 0px,rgba(255,255,255,0.18) 1px,transparent 2px,transparent 4px),
-                       linear-gradient(to top,rgba(194,178,128,0.65),rgba(214,198,148,0.4));
-            background-size:120px 120px,100% 100%;
-            animation:sandDrift var(--sand-drift-duration) linear infinite;
-            transition:height 0.6s linear;
-        }
-        @keyframes sandDrift { from{background-position:0 0,0 0} to{background-position:120px 120px,0 0} }
-        #reading-mode .sandstone .sand-layer {
-            height:100% !important; animation:none;
-            background:repeating-linear-gradient(45deg,rgba(160,140,95,0.6),rgba(160,140,95,0.6) 4px,rgba(135,115,75,0.6) 8px),
-                       linear-gradient(to top,rgba(170,150,105,0.8),rgba(200,180,130,0.8));
-        }
-        #reading-mode .info-row { display:flex; justify-content:space-between; align-items:flex-start; margin-top:10px; gap:16px; flex-wrap:wrap; }
-        #reading-mode .timer, #reading-mode .char-counter { font-family:monospace; font-size:0.82rem; color:var(--rm-accent); line-height:1.6; }
-        #reading-mode .evaluation-section { display:flex; flex-direction:column; align-items:center; gap:6px; }
-        #reading-mode .evaluation-label { font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--rm-text-2); }
-        #reading-mode .stars { display:flex; gap:4px; }
-        #reading-mode .star { cursor:pointer; font-size:1rem; opacity:0.35; transition:opacity 0.15s; }
-        #reading-mode .star.filled { opacity:1; }
-        #reading-mode .stars.locked .star { cursor:not-allowed; }
-        #reading-mode .action-buttons { display:flex; flex-direction:column; gap:6px; align-items:flex-end; }
-        #reading-mode .ai-btn { background:none; border:none; font-family:'Inter',sans-serif; font-size:0.78rem; color:var(--rm-text-2); cursor:pointer; padding:4px 8px; border-radius:6px; transition:all 0.15s; box-shadow:none; }
-        #reading-mode .ai-btn:hover { color:var(--rm-accent); background:var(--rm-btn-bg); transform:none; }
-        #reading-mode .ai-feedback { width:100%; margin-top:14px; padding:18px; background:var(--rm-btn-bg); border-left:3px solid var(--rm-accent); border-radius:8px; font-size:0.88rem; line-height:1.7; color:var(--rm-text); }
     </style>
 </head>
 <body class="bg-white">
@@ -431,8 +219,8 @@
     <!-- Source/mode/tier — wired by ui.js -->
     <select id="importSource"><option value="book" selected>Book</option><option value="text">Text</option></select>
     <select id="tierSelect"><option value="free" selected>Free</option><option value="paid">Paid</option><option value="premium">Premium</option></select>
-    <!-- bookControls/chapterControls: the wrapper divs are in the reading top bar,
-         wrapping the visible selects. app.js uses those IDs to show/hide them. -->
+    <!-- bookControls/chapterControls live in the reading top bar wrapping the visible selects.
+         pageControls, textControls, goal-time-row always hidden — driven by ui.js -->
     <div id="pageControls"><select id="pageStart"></select><select id="pageEnd"></select></div>
     <div id="textControls"><textarea id="bulkInput"></textarea></div>
     <div id="thesisRow"><textarea id="thesisInput"></textarea></div>
@@ -567,7 +355,7 @@
                         <div class="import-footerbar">
                             <div id="importSelectionMeta" class="import-selection-meta">Selected: 0</div>
                             <div style="display:flex;gap:6px;align-items:center;">
-                                <button id="importBackBtn"        type="button" class="btn-mini" style="display:none;">Back</button>
+                                <button id="importBackBtn"        type="button" class="btn-mini">Back</button>
                                 <button id="importAdvancedToggle" type="button" class="btn-mini">Advanced</button>
                                 <button id="importDoImport"       type="button" class="btn-primary">Import selected</button>
                             </div>
@@ -730,36 +518,41 @@
         </div>
     </header>
 
-    <!-- POPULATED STATE — rows injected by refreshLibrary() after import -->
-    <div id="library-populated" class="hidden-section">
+    <!-- POPULATED STATE -->
+    <div id="library-populated">
         <div class="glass-card overflow-hidden shadow-sm">
             <div class="bg-slate-50 border-b border-slate-200 px-6 py-3 flex text-xs font-bold text-slate-400 uppercase tracking-wider">
                 <div class="flex-grow">Document Name</div>
-                <div class="w-32 hidden md:block">Status</div>
-                <div class="w-32 hidden md:block">Time</div>
+                <div class="w-32">Status</div>
+                <div class="w-32">Time</div>
                 <div class="w-8"></div>
             </div>
-            <div id="library-rows"></div>
+            <div onclick="openPreview('Deep Work Summary')" class="px-6 py-4 flex items-center hover:bg-slate-50 cursor-pointer transition-colors border-b border-slate-100">
+                <div class="flex-grow flex items-center gap-3">
+                    <div class="w-8 h-8 rounded flex items-center justify-center text-lg bg-accent-soft text-accent">📄</div>
+                    <div>
+                        <p class="font-semibold text-slate-800 text-sm">Deep Work Summary</p>
+                        <p class="text-xs text-slate-400">Added Feb 24, 2026</p>
+                    </div>
+                </div>
+                <div class="w-32"><span class="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">In Progress</span></div>
+                <div class="w-32 text-sm text-slate-500 font-medium">12 min left</div>
+                <div class="w-8 text-slate-300">→</div>
+            </div>
         </div>
     </div>
 
-    <!-- COLD-START EMPTY STATE -->
-    <div id="library-empty">
-        <div id="empty-drop-zone"
-             class="glass-card shadow-sm py-16 px-8 text-center transition-all"
-             style="border:2px dashed transparent; cursor:pointer;"
-             onclick="document.getElementById('importBookBtn').click()"
-             ondragover="event.preventDefault(); this.style.borderColor='var(--jubly-purple)'; this.style.background='var(--jubly-light)';"
-             ondragleave="this.style.borderColor='transparent'; this.style.background='';"
-             ondrop="emptyStateDrop(event)">
+    <!-- COLD-START EMPTY STATE (shown when no documents exist) -->
+    <div id="library-empty" class="hidden-section">
+        <div class="glass-card shadow-sm py-16 px-8 text-center">
             <div class="text-5xl mb-5">📭</div>
-            <h3 class="text-xl font-extrabold text-slate-800 mb-2">Start here — import your first book</h3>
-            <p class="text-slate-400 text-sm mb-8 max-w-sm mx-auto leading-relaxed">Drop a file here, or click to browse. jubly breaks it into pages, reads it aloud, and keeps your place.</p>
-            <div class="inline-flex items-center gap-2 btn-jubly px-8 py-3 rounded-xl font-bold text-sm pointer-events-none">
+            <h3 class="text-xl font-extrabold text-slate-800 mb-2">Start here — add your first document</h3>
+            <p class="text-slate-400 text-sm mb-8 max-w-sm mx-auto leading-relaxed">Upload a book, article, or PDF. jubly breaks it into pages, reads it aloud, and keeps your place.</p>
+            <button onclick="openModal('upload-modal')" class="btn-jubly px-8 py-3 rounded-xl font-bold text-sm inline-flex items-center gap-2">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                Import your first book
-            </div>
-            <p class="text-xs text-slate-300 mt-6">EPUB, PDF, DOCX, TXT and more</p>
+                Upload your first document
+            </button>
+            <p class="text-xs text-slate-300 mt-6">PDF, EPUB, or DOCX · Up to 50MB</p>
         </div>
     </div>
 
@@ -960,14 +753,14 @@
                 <option value="research">Mode: Research</option>
             </select>
             <div class="reading-divider"></div>
-            <!-- bookControls wraps bookSelect — initBookImporter() wires to this div -->
+            <!-- bookControls wraps bookSelect — initBookImporter() wires + shows/hides this div -->
             <div id="bookControls" style="display:flex;align-items:center;">
                 <select id="bookSelect" class="reading-select">
                     <option value="">Book: —</option>
                 </select>
             </div>
             <div class="reading-divider"></div>
-            <!-- chapterControls wraps chapterSelect — initBookImporter() wires to this div -->
+            <!-- chapterControls wraps chapterSelect — initBookImporter() wires + shows/hides this div -->
             <div id="chapterControls" style="display:flex;align-items:center;">
                 <select id="chapterSelect" class="reading-select">
                     <option value="">Ch: —</option>
@@ -1018,15 +811,18 @@
                 Autoplay
             </button>
             <div class="reading-divider mx-1"></div>
-            <!-- Sound & Voice — id="musicToggle" so ui.js wires it to open volumePanel -->
+            <!-- Sound & Voice — id="musicToggle" so ui.js wires it to open volumePanel.
+                 musicIcon span required by audio.js toggleMusic() -->
             <button id="musicToggle" class="pb-icon-btn" title="Sound &amp; voice settings">
+                <span id="musicIcon">🔇</span>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
                 Sound &amp; Voice
             </button>
         </div>
-        <!-- Page progress — plain text counter, no dots -->
-        <div class="flex-shrink-0">
+        <!-- Page progress — updated by shellUpdateProgress() -->
+        <div class="flex items-center gap-3 flex-shrink-0">
             <span class="page-progress" id="shell-page-progress">—</span>
+            <div class="flex gap-1" id="shell-page-dots"></div>
         </div>
     </div>
 
@@ -1112,451 +908,227 @@
 </div>
 
 <script>
-    // ─────────────────────────────────────────────────────────────
-    // jubly shell — navigation + wiring layer
-    // ─────────────────────────────────────────────────────────────
+    // jubly shell — routing, modals, tier, theme.
+    // All reading + app logic lives in js/*.js files.
+    // Shell defines hooks; .js files call them.
 
-    const ALL_SECTIONS     = ['landing-page', 'login-page', 'dashboard', 'profile-page', 'reading-mode'];
-    const SIDEBAR_SECTIONS = ['dashboard', 'profile-page'];
-
-    // ── Section routing ───────────────────────────────────────────
+    const ALL_SECTIONS     = ["landing-page", "login-page", "dashboard", "profile-page", "reading-mode"];
+    const SIDEBAR_SECTIONS = ["dashboard", "profile-page"];
 
     function showSection(id) {
-        ALL_SECTIONS.forEach(s => document.getElementById(s).classList.add('hidden-section'));
-        document.getElementById(id).classList.remove('hidden-section');
-
-        const isPublic  = id === 'landing-page' || id === 'login-page';
-        const isLanding = id === 'landing-page';
-
-        document.getElementById('nav-user-controls').classList.toggle('hidden-section', isPublic);
-        const landingControls = document.getElementById('nav-landing-controls');
-        if (landingControls) landingControls.style.display = isLanding ? 'flex' : 'none';
-        const footer = document.getElementById('landing-footer');
-        if (footer) footer.classList.toggle('hidden-section', id !== 'landing-page');
-
-        const sidebar = document.getElementById('app-sidebar');
-        if (sidebar) sidebar.style.display = SIDEBAR_SECTIONS.includes(id) ? 'flex' : 'none';
-        const sbLibrary = document.getElementById('sb-library');
-        if (sbLibrary) sbLibrary.classList.toggle('active', id === 'dashboard');
-
-        const mainNav = document.querySelector('nav');
-        if (mainNav) mainNav.style.display = id === 'reading-mode' ? 'none' : '';
-        if (id === 'reading-mode') initFocusMode();
-
-        // Refresh library every time dashboard is shown
-        if (id === 'dashboard') refreshLibrary();
-
+        ALL_SECTIONS.forEach(s => document.getElementById(s).classList.add("hidden-section"));
+        document.getElementById(id).classList.remove("hidden-section");
+        const isPublic  = id === "landing-page" || id === "login-page";
+        const isLanding = id === "landing-page";
+        document.getElementById("nav-user-controls").classList.toggle("hidden-section", isPublic);
+        const lc = document.getElementById("nav-landing-controls");
+        if (lc) lc.style.display = isLanding ? "flex" : "none";
+        const ft = document.getElementById("landing-footer");
+        if (ft) ft.classList.toggle("hidden-section", id !== "landing-page");
+        const sb = document.getElementById("app-sidebar");
+        if (sb) sb.style.display = SIDEBAR_SECTIONS.includes(id) ? "flex" : "none";
+        const sbl = document.getElementById("sb-library");
+        if (sbl) sbl.classList.toggle("active", id === "dashboard");
+        const nav = document.querySelector("nav");
+        if (nav) nav.style.display = id === "reading-mode" ? "none" : "";
+        if (id === "reading-mode") initFocusMode();
+        if (id === "dashboard" && typeof window.__jublyLibraryRefresh === "function") window.__jublyLibraryRefresh();
         window.scrollTo(0, 0);
     }
 
-    // ── Focus mode ────────────────────────────────────────────────
-
-    let focusModeTimer   = null;
-    let focusModeHandler = null;
-
+    // Focus mode
+    let focusModeTimer = null, focusModeHandler = null;
     function initFocusMode() {
-        const bar = document.getElementById('reading-top-bar');
-        const rm  = document.getElementById('reading-mode');
+        const bar = document.getElementById("reading-top-bar");
+        const rm  = document.getElementById("reading-mode");
         if (!bar || !rm) return;
-        if (focusModeHandler) {
-            ['mousemove','scroll','touchstart','click'].forEach(ev =>
-                rm.removeEventListener(ev, focusModeHandler));
-        }
-        bar.classList.remove('faded');
-        function resetFade() {
-            bar.classList.remove('faded');
-            clearTimeout(focusModeTimer);
-            focusModeTimer = setTimeout(() => bar.classList.add('faded'), 3000);
-        }
+        if (focusModeHandler) ["mousemove","scroll","touchstart","click"].forEach(ev => rm.removeEventListener(ev, focusModeHandler));
+        bar.classList.remove("faded");
+        function resetFade() { bar.classList.remove("faded"); clearTimeout(focusModeTimer); focusModeTimer = setTimeout(() => bar.classList.add("faded"), 3000); }
         focusModeHandler = resetFade;
         resetFade();
-        ['mousemove','scroll','touchstart','click'].forEach(ev =>
-            rm.addEventListener(ev, resetFade, { passive: true }));
-        bar.addEventListener('mouseenter', () => { bar.classList.remove('faded'); clearTimeout(focusModeTimer); });
-        bar.addEventListener('mouseleave', resetFade);
+        ["mousemove","scroll","touchstart","click"].forEach(ev => rm.addEventListener(ev, resetFade, { passive: true }));
+        bar.addEventListener("mouseenter", () => { bar.classList.remove("faded"); clearTimeout(focusModeTimer); });
+        bar.addEventListener("mouseleave", resetFade);
     }
 
-    // ── Modals ────────────────────────────────────────────────────
+    // Modals — import.js and ui.js set style.display directly; shell uses hidden-section class
+    function openModal(id)  { const el = document.getElementById(id); if (el) el.classList.remove("hidden-section"); }
+    function closeModal(id) { const el = document.getElementById(id); if (el) el.classList.add("hidden-section"); }
 
-    function openModal(id) {
-        const el = document.getElementById(id);
-        if (!el) return;
-        // modal-overlay uses display:flex — remove hidden-section and set flex
-        el.classList.remove('hidden-section');
-        if (el.classList.contains('modal-overlay')) el.style.display = 'flex';
-    }
-    function closeModal(id) {
-        const el = document.getElementById(id);
-        if (!el) return;
-        el.classList.add('hidden-section');
-        el.style.display = '';
-    }
+    // Login (scaffold)
+    function login() { showSection("profile-page"); }
 
-    // ── Login (scaffold) ──────────────────────────────────────────
-
-    function login() { showSection('profile-page'); }
-
-    // ── Profile tabs ──────────────────────────────────────────────
-
+    // Profile tabs
     function switchTab(tabId) {
-        document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden-section'));
-        document.getElementById(tabId).classList.remove('hidden-section');
-        document.querySelectorAll('.profile-tab-btn').forEach(btn =>
-            btn.classList.toggle('active', btn.dataset.tab === tabId));
+        document.querySelectorAll(".tab-content").forEach(t => t.classList.add("hidden-section"));
+        document.getElementById(tabId).classList.remove("hidden-section");
+        document.querySelectorAll(".profile-tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tabId));
     }
 
-    // ── Tier ──────────────────────────────────────────────────────
-
+    // Tier — drives #tierSelect so ui.js applyTierAccess() fires
     function setTier(btn) {
-        document.querySelectorAll('.tier-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        const map   = { 'Basic': 'free', 'Pro': 'paid', 'Premium': 'premium' };
-        const value = map[btn.textContent.trim()] || 'free';
-        const sel   = document.getElementById('tierSelect');
-        if (sel && sel.value !== value) {
-            sel.value = value;
-            sel.dispatchEvent(new Event('change'));
-        }
-        const pill = document.getElementById('tier-display');
+        document.querySelectorAll(".tier-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        const map = { "Basic":"free", "Pro":"paid", "Premium":"premium" };
+        const value = map[btn.textContent.trim()] || "free";
+        const sel = document.getElementById("tierSelect");
+        if (sel && sel.value !== value) { sel.value = value; sel.dispatchEvent(new Event("change")); }
+        const pill = document.getElementById("tier-display");
         if (pill) pill.textContent = btn.textContent.trim();
-        // Unlock Explorer swatch for Pro+
-        const isPro      = value === 'paid' || value === 'premium';
-        const explorerBtn = document.getElementById('explorer-swatch-btn');
-        if (explorerBtn) {
-            explorerBtn.classList.toggle('explorer-locked', !isPro);
-            explorerBtn.title = isPro ? 'Explorer theme' : 'Explorer theme — Pro+ only';
-            const sw = explorerBtn.querySelector('.theme-swatch');
-            if (sw) sw.style.opacity = isPro ? '1' : '0.55';
-        }
+        const isPro = value === "paid" || value === "premium";
+        const eb = document.getElementById("explorer-swatch-btn");
+        if (eb) { eb.classList.toggle("explorer-locked", !isPro); eb.title = isPro ? "Explorer theme" : "Explorer theme — Pro+ only"; const sw = eb.querySelector(".theme-swatch"); if (sw) sw.style.opacity = isPro ? "1" : "0.55"; }
     }
 
-    // ── Theme ─────────────────────────────────────────────────────
-
+    // Theme — Explorer loads css/theme.css + js/embers.js once, Pro+ only
     let explorerAssetsLoaded = false;
-
     function setTheme(theme, btn) {
-        document.body.classList.remove('theme-green', 'theme-purple', 'theme-explorer');
-        if (theme !== 'default') document.body.classList.add('theme-' + theme);
-        document.querySelectorAll('#theme-swatches .theme-swatch').forEach(s => s.classList.remove('selected'));
-        btn.querySelector('.theme-swatch').classList.add('selected');
-        if (theme === 'explorer' && !explorerAssetsLoaded) {
-            const link = document.createElement('link');
-            link.rel  = 'stylesheet'; link.href = 'css/theme.css';
-            document.head.appendChild(link);
-            const script = document.createElement('script');
-            script.src = 'js/embers.js';
-            document.body.appendChild(script);
+        document.body.classList.remove("theme-green", "theme-purple", "theme-explorer");
+        if (theme !== "default") document.body.classList.add("theme-" + theme);
+        document.querySelectorAll("#theme-swatches .theme-swatch").forEach(s => s.classList.remove("selected"));
+        btn.querySelector(".theme-swatch").classList.add("selected");
+        if (theme === "explorer" && !explorerAssetsLoaded) {
+            const link = document.createElement("link"); link.rel = "stylesheet"; link.href = "css/theme.css"; document.head.appendChild(link);
+            const script = document.createElement("script"); script.src = "js/embers.js"; document.body.appendChild(script);
             explorerAssetsLoaded = true;
         }
     }
-
     function promptExplorerUpgrade() {
-        const sel   = document.getElementById('tierSelect');
-        const value = sel ? sel.value : 'free';
-        if (value === 'paid' || value === 'premium') {
-            const btn = document.getElementById('explorer-swatch-btn');
-            if (btn) setTheme('explorer', btn);
-        } else {
-            openModal('pricing-modal');
-        }
+        const sel = document.getElementById("tierSelect");
+        if (sel && (sel.value === "paid" || sel.value === "premium")) { const b = document.getElementById("explorer-swatch-btn"); if (b) setTheme("explorer", b); }
+        else openModal("pricing-modal");
     }
 
-    // ── Library ───────────────────────────────────────────────────
-
-    function escHtml(s) {
-        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    }
-
+    // Library table — populated via window.__jublyLibraryRefresh called from library.js
+    function escHtml(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
     async function refreshLibrary() {
-        const rowsEl  = document.getElementById('library-rows');
-        const popEl   = document.getElementById('library-populated');
-        const emptyEl = document.getElementById('library-empty');
-        const sub     = document.getElementById('dashboard-subtitle');
+        const rowsEl = document.getElementById("library-rows");
+        const popEl  = document.getElementById("library-populated");
+        const emptyEl= document.getElementById("library-empty");
+        const sub    = document.getElementById("dashboard-subtitle");
         if (!rowsEl) return;
-
         let books = [];
-        try {
-            if (typeof localBooksGetAll === 'function') books = await localBooksGetAll();
-        } catch(_) {}
-
+        try { if (typeof localBooksGetAll === "function") books = await localBooksGetAll(); } catch(_) {}
         const has = books.length > 0;
-        if (popEl)  popEl.classList.toggle('hidden-section', !has);
-        if (emptyEl) emptyEl.classList.toggle('hidden-section', has);
-        if (sub) sub.style.display = has ? '' : 'none';
+        if (popEl)   popEl.classList.toggle("hidden-section", !has);
+        if (emptyEl) emptyEl.classList.toggle("hidden-section", has);
+        if (sub) sub.style.display = has ? "" : "none";
         if (!has) return;
-
-        books.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        books.sort((a, b) => (b.createdAt||0) - (a.createdAt||0));
         rowsEl.innerHTML = books.map(b => {
-            const pages   = (String(b.markdown || '').match(/^\s*##\s+/gm) || []).length;
-            const date    = new Date(b.createdAt || Date.now()).toLocaleDateString();
-            const estMins = Math.max(1, Math.round(pages * 1.5));
-            const id      = String(b.id).replace(/'/g, "\\'");
-            const title   = escHtml(b.title || 'Untitled');
-            return `<div onclick="openPreview('${id}','${title.replace(/'/g,"\\'")}')"
-                        class="px-6 py-4 flex items-center hover:bg-slate-50 cursor-pointer transition-colors border-b border-slate-100">
-                        <div class="flex-grow flex items-center gap-3">
-                            <div class="w-8 h-8 rounded flex items-center justify-center text-lg bg-accent-soft text-accent flex-shrink-0">📄</div>
-                            <div>
-                                <p class="font-semibold text-slate-800 text-sm">${title}</p>
-                                <p class="text-xs text-slate-400">Added ${date}</p>
-                            </div>
-                        </div>
-                        <div class="w-32 hidden md:block">
-                            <span class="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-bold">Unread</span>
-                        </div>
-                        <div class="w-32 hidden md:block text-sm text-slate-500 font-medium">${estMins} min left</div>
-                        <div class="w-8 text-slate-300">→</div>
-                    </div>`;
-        }).join('');
+            const pageCount = (String(b.markdown||"").match(/^\s*##\s+/gm)||[]).length;
+            const date      = new Date(b.createdAt||Date.now()).toLocaleDateString();
+            const estMins   = Math.max(1, Math.round(pageCount * 1.5));
+            const id        = String(b.id).replace(/''/g, "\'");
+            const title     = escHtml(b.title||"Untitled");
+            return "<div onclick="openPreview('" + id + "','" + title.replace(/'/g,"\'") + "')" class="px-6 py-4 flex items-center hover:bg-slate-50 cursor-pointer transition-colors border-b border-slate-100">" +
+                "<div class="flex-grow flex items-center gap-3"><div class="w-8 h-8 rounded flex items-center justify-center text-lg bg-accent-soft text-accent flex-shrink-0">📄</div>" +
+                "<div><p class="font-semibold text-slate-800 text-sm">" + title + "</p><p class="text-xs text-slate-400">Added " + date + "</p></div></div>" +
+                "<div class="w-32 hidden md:block"><span class="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-bold">Unread</span></div>" +
+                "<div class="w-32 hidden md:block text-sm text-slate-500 font-medium">" + estMins + " min left</div>" +
+                "<div class="w-8 text-slate-300">→</div></div>";
+        }).join("");
     }
+    // Expose so library.js can call it after populateBookSelectWithLocal()
+    window.__jublyLibraryRefresh = refreshLibrary;
 
-    // ── Preview modal ─────────────────────────────────────────────
-
-    let _previewBookId = null;
-
-    function openPreview(id, title) {
-        _previewBookId = id;
-        const el = document.getElementById('preview-title');
-        if (el) el.innerText = title || 'Book';
-        openModal('preview-modal');
-    }
-
-    function startReading() {
-        closeModal('preview-modal');
-        const signal = document.getElementById('session-complete');
-        if (signal) signal.classList.add('hidden-section');
-        showSection('reading-mode');
-
-        if (!_previewBookId) return;
-
-        const bookSel = document.getElementById('bookSelect');
-        if (!bookSel) return;
-
-        // Set the book value and fire change — this triggers initBookImporter's
-        // async loadBook() which populates chapter/page selects.
-        bookSel.value = _previewBookId;
-        bookSel.dispatchEvent(new Event('change'));
-
-        // Poll until loadBook() has finished populating pageStart (max 8s).
-        // Only then click Load — avoids the race condition of a blind timeout.
-        const started = Date.now();
-        const pollLoad = setInterval(function() {
-            const ps = document.getElementById('pageStart');
-            const ready = ps && ps.options.length > 1 && ps.options[1] && ps.options[1].value !== '';
-            if (ready || Date.now() - started > 8000) {
-                clearInterval(pollLoad);
-                const loadBtn = document.getElementById('loadBookSelection');
-                if (loadBtn) loadBtn.click();
-                setTimeout(shellUpdateProgress, 600);
-            }
-        }, 120);
-    }
-
-    // ── TTS stop on reading mode hidden (MutationObserver) ───────
-    // Watches #reading-mode for hidden-section class being added.
-    // Fires regardless of how reading mode is dismissed — Exit button,
-    // session complete, programmatic hide, etc.
-    (function initTtsStopObserver() {
-        const rm = document.getElementById('reading-mode');
-        if (!rm) return;
-        const observer = new MutationObserver(function(mutations) {
-            mutations.forEach(function(m) {
-                if (m.type === 'attributes' && m.attributeName === 'class') {
-                    if (rm.classList.contains('hidden-section')) {
-                        try { if (typeof ttsStop === 'function') ttsStop(); } catch(_) {}
-                    }
-                }
-            });
+    // Continue affordance — called by library.js via window.__jublyAfterRender after render()
+    window.__jublyAfterRender = function() {
+        document.querySelectorAll("#pages .page").forEach(function(pageEl) {
+            const textEl = pageEl.querySelector(".page-text");
+            if (!textEl || textEl.parentElement.classList.contains("page-text-wrap")) return;
+            const wrap = document.createElement("div"); wrap.className = "page-text-wrap";
+            textEl.parentNode.insertBefore(wrap, textEl); wrap.appendChild(textEl);
+            const fade = document.createElement("div"); fade.className = "page-text-fade"; wrap.appendChild(fade);
+            function checkScroll() { wrap.classList.toggle("scrolled-to-end", textEl.scrollHeight - textEl.scrollTop - textEl.clientHeight < 8 || textEl.scrollHeight <= textEl.clientHeight + 4); }
+            textEl.addEventListener("scroll", checkScroll, { passive: true });
+            setTimeout(checkScroll, 150);
         });
-        observer.observe(rm, { attributes: true, attributeFilter: ['class'] });
-    })();
-
-    // ── Continue affordance — wraps .page-text in a .page-text-wrap ─
-    // Detects scrollable overflow on tablet/mobile, shows a fade + chevron,
-    // hides it once the user has scrolled to the end.
-    // Runs after render() fires (hooked via MutationObserver on #pages).
-    (function initContinueAffordance() {
-        function wrapAndBind(pageEl) {
-            const textEl = pageEl.querySelector('.page-text');
-            if (!textEl || textEl.parentElement.classList.contains('page-text-wrap')) return;
-
-            // Wrap
-            const wrap = document.createElement('div');
-            wrap.className = 'page-text-wrap';
-            textEl.parentNode.insertBefore(wrap, textEl);
-            wrap.appendChild(textEl);
-
-            // Fade overlay
-            const fade = document.createElement('div');
-            fade.className = 'page-text-fade';
-            wrap.appendChild(fade);
-
-            // Check on scroll
-            function checkScroll() {
-                const atEnd = textEl.scrollHeight - textEl.scrollTop - textEl.clientHeight < 8;
-                wrap.classList.toggle('scrolled-to-end', atEnd);
-                // Also hide if there's no overflow at all
-                if (textEl.scrollHeight <= textEl.clientHeight + 4) {
-                    wrap.classList.add('scrolled-to-end');
-                }
-            }
-            textEl.addEventListener('scroll', checkScroll, { passive: true });
-            // Run once after layout settles
-            setTimeout(checkScroll, 100);
-        }
-
-        const pagesEl = document.getElementById('pages');
-        if (!pagesEl) return;
-
-        // Observe #pages for new .page cards added by render()
-        const observer = new MutationObserver(function() {
-            pagesEl.querySelectorAll('.page').forEach(wrapAndBind);
-        });
-        observer.observe(pagesEl, { childList: true });
-        // Also run on any already-rendered cards
-        pagesEl.querySelectorAll('.page').forEach(wrapAndBind);
-    })();
-
-    // ── Empty state drag/drop ─────────────────────────────────────
-    // Drop a file on the empty state → open import modal with file pre-loaded
-
-    function emptyStateDrop(e) {
-        e.preventDefault();
-        const zone = document.getElementById('empty-drop-zone');
-        if (zone) { zone.style.borderColor = 'transparent'; zone.style.background = ''; }
-        const files = e.dataTransfer && e.dataTransfer.files;
-        if (!files || !files.length) return;
-        // Open import modal
-        openModal('importBookModal');
-        // Forward file to the hidden input
-        const inp = document.getElementById('importFileInput');
-        if (inp) {
-            try {
-                const dt = new DataTransfer();
-                dt.items.add(files[0]);
-                inp.files = dt.files;
-                inp.dispatchEvent(new Event('change', { bubbles: true }));
-            } catch(_) {}
-        }
-    }
-
-    // ── Bottom bar bridges ────────────────────────────────────────
-
-    function shellPauseToggle(btn) {
-        try {
-            // ttsIsActive / ttsStop / ttsResume are defined in tts.js
-            if (typeof ttsIsActive === 'function' && ttsIsActive()) {
-                if (typeof ttsStop === 'function') ttsStop();
-                if (btn) { btn.querySelector('svg').innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>'; if (btn.lastChild) btn.lastChild.textContent = ' Play'; }
-            } else {
-                // No active TTS — speak the current page
-                if (typeof ttsSpeakQueue === 'function' && typeof lastFocusedPageIndex !== 'undefined') {
-                    const i = lastFocusedPageIndex >= 0 ? lastFocusedPageIndex : 0;
-                    if (typeof pages !== 'undefined' && pages[i]) ttsSpeakQueue(`page-${i}`, [pages[i]]);
-                }
-                if (btn) { btn.querySelector('svg').innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>'; if (btn.lastChild) btn.lastChild.textContent = ' Pause'; }
-            }
-        } catch(_) {}
-    }
-
-    function shellToggleAutoplay(btn) {
-        const chk = document.getElementById('autoplayToggle');
-        if (chk) {
-            chk.checked = !chk.checked;
-            chk.dispatchEvent(new Event('change'));
-        }
-        btn.classList.toggle('active', chk ? chk.checked : false);
-    }
-
-    function shellSetSpeed(value) {
-        try { if (typeof TTS_STATE !== 'undefined') TTS_STATE.rate = parseFloat(value) || 1; } catch(_) {}
-    }
-
-    function shellUpdateProgress() {
-        try {
-            const total   = (typeof pages !== 'undefined' && Array.isArray(pages)) ? pages.length : 0;
-            const current = (typeof lastFocusedPageIndex === 'number' && lastFocusedPageIndex >= 0) ? lastFocusedPageIndex : 0;
-            const prog    = document.getElementById('shell-page-progress');
-            if (prog) prog.textContent = total > 0 ? `Page ${current + 1} / ${total}` : '—';
-        } catch(_) {}
-    }
-
-    window.onShellPageChange    = shellUpdateProgress;
-    window.jublySessionComplete = function(pageCount, minutes) {
-        const signal = document.getElementById('session-complete');
-        if (!signal) return;
-        document.getElementById('stat-pages').textContent   = pageCount || '—';
-        document.getElementById('stat-minutes').textContent = minutes ? '~' + minutes : '—';
-        signal.classList.remove('hidden-section');
-        signal.scrollIntoView({ behavior: 'smooth', block: 'center' });
     };
 
-    // ── Boot ──────────────────────────────────────────────────────
+    // Preview modal and startReading — delegates to library.js __jublyStartReading
+    let _previewBookId = null;
+    function openPreview(id, title) {
+        _previewBookId = id;
+        const el = document.getElementById("preview-title"); if (el) el.innerText = title || "Book";
+        openModal("preview-modal");
+    }
+    function startReading() {
+        closeModal("preview-modal");
+        const sig = document.getElementById("session-complete"); if (sig) sig.classList.add("hidden-section");
+        showSection("reading-mode");
+        if (_previewBookId && typeof window.__jublyStartReading === "function") window.__jublyStartReading(_previewBookId);
+    }
 
-    window.addEventListener('load', function() {
-        // Sync autoplay button
-        try {
-            const chk = document.getElementById('autoplayToggle');
-            const btn = document.getElementById('shell-autoplay-btn');
-            if (chk && btn) btn.classList.toggle('active', chk.checked);
-        } catch(_) {}
+    // Empty state drag/drop → open import modal with file pre-loaded
+    function emptyStateDrop(e) {
+        e.preventDefault();
+        const zone = document.getElementById("empty-drop-zone");
+        if (zone) { zone.style.borderColor = "transparent"; zone.style.background = ""; }
+        const files = e.dataTransfer && e.dataTransfer.files;
+        if (!files || !files.length) return;
+        openModal("importBookModal");
+        const inp = document.getElementById("importFileInput");
+        if (inp) { try { const dt = new DataTransfer(); dt.items.add(files[0]); inp.files = dt.files; inp.dispatchEvent(new Event("change", { bubbles: true })); } catch(_) {} }
+    }
 
-        // Sync tier pill and buttons from restored localStorage tier
+    // Bottom bar bridges to app globals
+    function shellPauseToggle(btn) {
         try {
-            const sel = document.getElementById('tierSelect');
-            if (sel) {
-                const map = { free: 'Basic', paid: 'Pro', premium: 'Premium' };
-                const label = map[sel.value] || 'Basic';
-                const pill  = document.getElementById('tier-display');
-                if (pill) pill.textContent = label;
-                document.querySelectorAll('.tier-btn').forEach(b =>
-                    b.classList.toggle('active', b.textContent.trim() === label));
-                const isPro = sel.value === 'paid' || sel.value === 'premium';
-                const explorerBtn = document.getElementById('explorer-swatch-btn');
-                if (explorerBtn) {
-                    explorerBtn.classList.toggle('explorer-locked', !isPro);
-                    const sw = explorerBtn.querySelector('.theme-swatch');
-                    if (sw) sw.style.opacity = isPro ? '1' : '0.55';
+            if (typeof ttsIsActive === "function" && ttsIsActive()) {
+                if (typeof ttsStop === "function") ttsStop();
+                if (btn) { btn.querySelector("svg").innerHTML = "<polygon points="5 3 19 12 5 21 5 3"/>"; if (btn.lastChild) btn.lastChild.textContent = " Play"; }
+            } else {
+                if (typeof ttsSpeakQueue === "function" && typeof lastFocusedPageIndex !== "undefined") {
+                    const i = lastFocusedPageIndex >= 0 ? lastFocusedPageIndex : 0;
+                    if (typeof pages !== "undefined" && pages[i]) ttsSpeakQueue("page-" + i, [pages[i]]);
                 }
+                if (btn) { btn.querySelector("svg").innerHTML = "<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>"; if (btn.lastChild) btn.lastChild.textContent = " Pause"; }
             }
         } catch(_) {}
+    }
+    function shellToggleAutoplay(btn) {
+        const chk = document.getElementById("autoplayToggle");
+        if (chk) { chk.checked = !chk.checked; chk.dispatchEvent(new Event("change")); }
+        if (btn) btn.classList.toggle("active", chk ? chk.checked : false);
+    }
+    function shellSetSpeed(value) {
+        try { if (typeof TTS_STATE !== "undefined") TTS_STATE.rate = parseFloat(value) || 1; } catch(_) {}
+    }
+    function shellUpdateProgress() {
+        try {
+            const total   = (typeof pages !== "undefined" && Array.isArray(pages)) ? pages.length : 0;
+            const current = (typeof lastFocusedPageIndex === "number" && lastFocusedPageIndex >= 0) ? lastFocusedPageIndex : 0;
+            const prog = document.getElementById("shell-page-progress");
+            if (prog) prog.textContent = total > 0 ? "Page " + (current + 1) + " / " + total : "—";
+        } catch(_) {}
+    }
 
-        // Hook importDoneBtn → close modal + refresh + go to library
-        const doneBtn = document.getElementById('importDoneBtn');
-        if (doneBtn) {
-            doneBtn.addEventListener('click', async function() {
-                const modal = document.getElementById('importBookModal');
-                if (modal) { modal.classList.add('hidden-section'); modal.style.display = ''; }
-                await refreshLibrary();
-                showSection('dashboard');
-            });
-        }
-
+    // Boot — sync shell UI to app state restored by ui.js from localStorage
+    window.addEventListener("load", function() {
+        try {
+            const sel = document.getElementById("tierSelect");
+            if (sel) {
+                const map = { free:"Basic", paid:"Pro", premium:"Premium" };
+                const label = map[sel.value] || "Basic";
+                const pill = document.getElementById("tier-display"); if (pill) pill.textContent = label;
+                document.querySelectorAll(".tier-btn").forEach(b => b.classList.toggle("active", b.textContent.trim() === label));
+                const isPro = sel.value === "paid" || sel.value === "premium";
+                const eb = document.getElementById("explorer-swatch-btn");
+                if (eb) { eb.classList.toggle("explorer-locked", !isPro); const sw = eb.querySelector(".theme-swatch"); if (sw) sw.style.opacity = isPro ? "1" : "0.55"; }
+            }
+        } catch(_) {}
+        try { const chk = document.getElementById("autoplayToggle"); const btn = document.getElementById("shell-autoplay-btn"); if (chk && btn) btn.classList.toggle("active", chk.checked); } catch(_) {}
+        // Hook importDoneBtn — close modal, library refreshes via __jublyLibraryRefresh from library.js
+        const doneBtn = document.getElementById("importDoneBtn");
+        if (doneBtn) doneBtn.addEventListener("click", function() {
+            const modal = document.getElementById("importBookModal"); if (modal) modal.style.display = "none";
+            showSection("dashboard");
+        });
         // Initial library render
         refreshLibrary();
     });
-
-    // Patch __rcRefreshBookSelect after initBookImporter() has defined it.
-    // initBookImporter() is called synchronously at the end of evaluation.js,
-    // which is loaded by app.js sequentially. We poll until it exists, then wrap it.
-    (function patchRefreshHook() {
-        let attempts = 0;
-        const id = setInterval(function() {
-            attempts++;
-            if (typeof window.__rcRefreshBookSelect === 'function') {
-                clearInterval(id);
-                const orig = window.__rcRefreshBookSelect;
-                window.__rcRefreshBookSelect = async function() {
-                    await orig();
-                    await refreshLibrary();
-                };
-            } else if (attempts > 80) {
-                // app.js didn't load — just wire refreshLibrary directly
-                clearInterval(id);
-                window.__rcRefreshBookSelect = refreshLibrary;
-            }
-        }, 100);
-    })();
 </script>
 
 <script src="assets/books/embedded_books.js"></script>

@@ -854,3 +854,29 @@ try {
     mo.observe(pagesEl, { childList: true, subtree: true, characterData: true });
   }
 })();
+
+// ===================================
+// Shell integration hooks
+// ===================================
+
+// Expose ttsIsActive() so the shell Pause button can read TTS state without
+// reimplementing the check. TTS_STATE.activeKey is non-null while speaking.
+function ttsIsActive() {
+  try { return !!(TTS_STATE && TTS_STATE.activeKey); } catch(_) { return false; }
+}
+
+// Stop TTS when #reading-mode is hidden — covers Exit, session complete,
+// and any future dismiss path. Does NOT use visibilitychange (intentional
+// per SRM §9 — audio continues on tab switch).
+(function initReadingModeHideObserver() {
+  const rm = document.getElementById('reading-mode');
+  if (!rm || !window.MutationObserver) return;
+  new MutationObserver(function(mutations) {
+    for (var i = 0; i < mutations.length; i++) {
+      if (mutations[i].attributeName === 'class' && rm.classList.contains('hidden-section')) {
+        try { ttsStop(); } catch(_) {}
+        break;
+      }
+    }
+  }).observe(rm, { attributes: true, attributeFilter: ['class'] });
+})();
