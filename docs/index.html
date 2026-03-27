@@ -521,14 +521,10 @@
         <option value="premium">Premium</option>
     </select>
     <div id="thesisRow"><textarea id="thesisInput" placeholder="Enter your research thesis…"></textarea></div>
-    <!-- Book / chapter / page range -->
-    <div id="bookControls">
-        <select id="bookSelect"><option value="">Loading…</option></select>
-        <div id="chapterControls"><select id="chapterSelect"><option value="">Select a book first</option></select></div>
-        <div id="pageControls">
-            <select id="pageStart"><option value="">Loading…</option></select>
-            <select id="pageEnd"><option value="">Loading…</option></select>
-        </div>
+    <!-- Page range — used by engine's page range picker -->
+    <div id="pageControls">
+        <select id="pageStart"><option value="">Loading…</option></select>
+        <select id="pageEnd"><option value="">Loading…</option></select>
     </div>
     <!-- Text paste input -->
     <div id="textControls"><textarea id="bulkInput" placeholder="Paste text here…"></textarea></div>
@@ -905,24 +901,26 @@
     <!-- TOP BAR: session-defining — fades on idle. Left scrolls, Exit always pinned right -->
     <div id="reading-top-bar" class="reading-top-bar">
         <div class="reading-top-left">
-            <!-- modeSelect — wired by app's initModeSelector() → render() on change -->
+            <!-- modeSelect: wired by ui.js initModeSelector() -->
             <select id="modeSelect" class="reading-select">
-                <option value="reading"       selected>Mode: Reading</option>
-                <option value="comprehension"         >Mode: Comprehension</option>
-                <option value="research"      disabled>Mode: Research (soon)</option>
+                <option value="reading" selected>Mode: Reading</option>
+                <option value="comprehension">Mode: Comprehension</option>
+                <option value="research">Mode: Research</option>
             </select>
             <div class="reading-divider"></div>
-            <!-- shell-book-display — display mirror of #bookSelect (canonical in #app-hidden-controls).
-                 Wired to engine in Pass 2. -->
-            <select id="shell-book-display" class="reading-select">
-                <option value="">Book: Loading…</option>
-            </select>
+            <!-- bookControls wraps bookSelect — initBookImporter() wires to this div -->
+            <div id="bookControls" style="display:flex;align-items:center;">
+                <select id="bookSelect" class="reading-select">
+                    <option value="">Book: —</option>
+                </select>
+            </div>
             <div class="reading-divider"></div>
-            <!-- shell-chapter-display — display mirror of #chapterSelect (canonical in #app-hidden-controls).
-                 Wired to engine in Pass 2. -->
-            <select id="shell-chapter-display" class="reading-select">
-                <option value="">Ch: —</option>
-            </select>
+            <!-- chapterControls wraps chapterSelect — initBookImporter() wires to this div -->
+            <div id="chapterControls" style="display:flex;align-items:center;">
+                <select id="chapterSelect" class="reading-select">
+                    <option value="">Ch: —</option>
+                </select>
+            </div>
             <div class="reading-divider"></div>
             <!-- Tier display — reflects current appTier; changed via Profile tier buttons -->
             <span id="reading-tier-pill" class="tier-pill">Basic</span>
@@ -949,38 +947,36 @@
     <!-- BOTTOM PLAYBACK BAR: moment controls — always visible -->
     <div class="reading-bottom-bar">
         <div class="reading-bottom-left">
-            <!-- Speed — shell-controlled; applies to cloud audio + browser TTS via shellSetSpeed() -->
+            <!-- Speed — wired to TTS_STATE by shellSetSpeed() -->
             <select id="shell-speed" class="reading-select" onchange="shellSetSpeed(this.value)">
-                <option value="1.0">Speed: 1.0×</option>
+                <option value="1">Speed: 1.0×</option>
                 <option value="1.25">Speed: 1.25×</option>
                 <option value="1.5">Speed: 1.5×</option>
                 <option value="1.75">Speed: 1.75×</option>
-                <option value="2.0">Speed: 2.0×</option>
+                <option value="2">Speed: 2.0×</option>
             </select>
             <div class="reading-divider mx-1"></div>
-            <!-- Pause/Play — calls ttsPause() / ttsResume() from app's tts.js -->
+            <!-- Pause — calls ttsStop() / resumes TTS -->
             <button id="shell-pause-btn" onclick="handlePausePlay()" class="pb-icon-btn" title="Pause narration">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
                 Pause
             </button>
             <div class="reading-divider mx-1"></div>
-            <!-- Autoplay — syncs with #autoplayToggle checkbox (inside volumePanel) -->
+            <!-- Autoplay — mirrors hidden #autoplayToggle checkbox that tts.js reads -->
             <button id="shell-autoplay-btn" onclick="handleAutoplayToggle()" class="pb-icon-btn" title="Toggle autoplay between pages">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                 Autoplay
             </button>
             <div class="reading-divider mx-1"></div>
-            <!-- Sound & Voice — id="musicToggle" wired directly by app's initUtilityPanels()
-                 to open the volumePanel; position measured from this element's real coords. -->
+            <!-- Sound & Voice — id="musicToggle" so ui.js wires it to open volumePanel -->
             <button id="musicToggle" class="pb-icon-btn" title="Sound &amp; voice settings">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
                 Sound &amp; Voice
             </button>
         </div>
-        <!-- Page progress — updated by updateProgressBar() -->
-        <div class="flex items-center gap-3 flex-shrink-0">
-            <span class="page-progress" id="shell-page-progress">Page — / —</span>
-            <div class="flex gap-1" id="shell-page-dots"></div>
+        <!-- Page progress — plain text counter, no dots -->
+        <div class="flex-shrink-0">
+            <span class="page-progress" id="shell-page-progress">—</span>
         </div>
     </div>
 
