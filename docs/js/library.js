@@ -1206,8 +1206,7 @@
 
     async function loadManifest() {
       const candidates = [
-        "assets/books/index.json",
-        "index.json"
+        "assets/books/index.json"
       ];
 
       let lastErr = null;
