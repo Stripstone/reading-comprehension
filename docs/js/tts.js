@@ -13,6 +13,9 @@ const TTS_STATE = {
   volume: 1,
   // 'female' (default) or 'male' for Polly narrator selection
   voiceVariant: 'female',
+  // Playback speed multiplier. 1.0 = normal. Applied to audio.playbackRate (cloud)
+  // and SpeechSynthesisUtterance.rate (browser). Persisted as rc_tts_speed.
+  playbackRate: 1,
   // Name of the browser voice currently in use (set by browserSpeakQueue, cleared on stop)
   activeBrowserVoiceName: null,
   // sentence highlight state (page read)
@@ -167,8 +170,23 @@ function ttsAutoplayScheduleNext(pageIndex) {
       // Scroll to next page
       const nextPageEl = pageEls[nextIndex];
       if (nextPageEl) nextPageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Fire page turn sound — mirrors the manual Next button (evaluation.js:activatePageCard)
+      try {
+        if (!window.allSoundsMuted && pageTurnSound) {
+          pageTurnSound.currentTime = 0;
+          pageTurnSound.play().catch(() => {});
+        }
+      } catch (_) {}
       // Start reading next page after scroll settles
       setTimeout(() => {
+        // In comprehension mode (consolidation phase) focus the textarea — mirrors goToNext()
+        try {
+          if (typeof appMode !== 'undefined' && appMode === 'comprehension' &&
+              typeof evaluationPhase !== 'undefined' && !evaluationPhase && nextPageEl) {
+            const ta = nextPageEl.querySelector('textarea');
+            if (ta && !ta.readOnly && !ta.disabled) ta.focus();
+          }
+        } catch (_) {}
         const text = (typeof pages !== 'undefined' && pages[nextIndex]) ? pages[nextIndex] : '';
         if (text) ttsSpeakQueue(`page-${nextIndex}`, [text]);
       }, 400);
@@ -764,7 +782,7 @@ function browserSpeakQueue(key, parts) {
     }
     const utter = new SpeechSynthesisUtterance(queue[idx]);
     utter.lang = "en-US";
-    utter.rate = 1;
+    utter.rate = Math.max(0.1, Math.min(10, Number(TTS_STATE.playbackRate ?? 1)));
     utter.pitch = 1;
     try { utter.volume = Math.max(0, Math.min(1, Number(TTS_STATE.volume ?? 1))); } catch (_) {}
     if (voice) utter.voice = voice;
@@ -883,6 +901,8 @@ async function ttsSpeakQueue(key, parts) {
         TTS_STATE.audio = audio;
         // Polly audio volume (0..1). Persisted via the Voices slider.
         try { audio.volume = Math.max(0, Math.min(1, Number(TTS_STATE.volume ?? 1))); } catch (_) {}
+        // Playback speed (1.0 = normal). Persisted via the Speed selector.
+        try { audio.playbackRate = Math.max(0.25, Math.min(16, Number(TTS_STATE.playbackRate ?? 1))); } catch (_) {}
         // Start sentence highlight loop if prepared for this action.
         ttsStartHighlightLoop(audio);
         audio.onended = () => { ttsClearSentenceHighlight(); resolve(); };
