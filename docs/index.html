@@ -144,7 +144,9 @@
         /* Sidebar offset: !important overrides Tailwind's mx-auto */
         .with-sidebar { padding-left: 68px !important; }
         @media (max-width: 640px) { .with-sidebar { padding-left: 0 !important; } #app-sidebar { display: none !important; } }
-        /* Support footer flows at the bottom of the document (no fixed overlay) */
+        /* Footer pinned to bottom, aligned to sidebar width */
+        #supportFooter { position: fixed; bottom: 0; left: var(--sidebar-width); right: 0; z-index: 40; height: var(--support-footer-height); }
+        @media (max-width:640px) { #supportFooter { left:0; } }
         /* ── Explorer theme swatch ── */
         .explorer-locked { position: relative; }
         .explorer-locked::after { content: 'Pro+'; position: absolute; top: -4px; right: -4px; background: var(--jubly-purple); color: white; font-size: 0.5rem; font-weight: 800; padding: 1px 4px; border-radius: 999px; letter-spacing: 0.04em; }
@@ -229,6 +231,11 @@
             border-radius: 6px; padding: 0 2px;
             background-color: rgba(255, 230, 120, var(--tts-alpha));
             transition: background-color 220ms ease;
+        }
+        /* Only these pages need padding so they never slide behind footer */
+        #dashboard,
+        #profile-page {
+            padding-bottom: calc(var(--support-footer-height) + 24px);
         }
     </style>
 </head>
