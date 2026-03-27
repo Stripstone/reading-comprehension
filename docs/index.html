@@ -63,6 +63,7 @@
             --rm-shadow:      0 4px 16px rgba(99,68,245,0.08);
             --rm-btn-bg:      rgba(99,68,245,0.07);
             --rm-btn-hover:   rgba(99,68,245,0.14);
+            --sand-drift-duration: 4s;
         }
         /* Theme overrides — applied as body class by setTheme() */
         body.theme-green  { --theme-accent: #22c55e; --theme-accent-deep: #16a34a; --theme-accent-soft: #dcfce7; --rm-accent:#22c55e; --rm-accent-soft:#dcfce7; --rm-btn-bg:rgba(34,197,94,0.08); --rm-btn-hover:rgba(34,197,94,0.15); --rm-page-bg:#f0fdf4; --rm-shadow:0 4px 16px rgba(34,197,94,0.10); }
@@ -938,7 +939,7 @@
             <div class="glass-card p-8 text-center" style="border-color: var(--theme-accent); border-width: 2px;">
                 <div class="text-3xl mb-3">✓</div>
                 <h3 class="font-extrabold text-lg text-slate-800 mb-1">Session complete</h3>
-                <p class="text-sm text-slate-400 mb-6">You read <strong id="stat-pages">0</strong> pages · <strong id="stat-minutes">~0</strong> min</p>
+                <p id="session-stats" class="text-sm text-slate-400 mb-6">You read <strong id="stat-pages">—</strong> pages · <strong id="stat-minutes">—</strong> min</p>
                 <button onclick="showSection('dashboard')" class="btn-theme px-8 py-3 rounded-xl font-bold text-sm">Back to Library →</button>
             </div>
         </div>
