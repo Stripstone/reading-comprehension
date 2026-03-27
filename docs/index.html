@@ -64,13 +64,14 @@
             --theme-accent:      #c17d4a;
             --theme-accent-deep: #8B2500;
             --theme-accent-soft: #f5ede4;
-            --border:            #e8dfd4;
-            --secondary-bg:      #dfddd8;
-            --text-primary:      #2b2520;
             --accent:            #c17d4a;
-            /* background-color intentionally omitted — parchment scoped to reading-mode only */
         }
-        body.theme-explorer #reading-mode { background: #d8d6d1; }
+        body.theme-explorer #reading-mode {
+            background:      #d8d6d1;
+            --border:        #e8dfd4;
+            --secondary-bg:  #dfddd8;
+            --text-primary:  #2b2520;
+        }
         body.theme-explorer #fireCanvas   { display: block !important; }
 
         /* Utility classes for consistent brand/theme color usage */
@@ -121,9 +122,10 @@
         /* Sidebar offset: !important overrides Tailwind's mx-auto */
         .with-sidebar { margin-left: 68px !important; }
         @media (max-width: 640px) { .with-sidebar { margin-left: 0 !important; } #app-sidebar { display: none !important; } }
-        /* Support footer must clear the fixed 68px sidebar on logged-in pages */
-        #supportFooter { margin-left: 68px; }
-        @media (max-width: 640px) { #supportFooter { margin-left: 0; } }
+        /* Support footer is fixed to viewport bottom, clearing the sidebar */
+        #supportFooter { position: fixed; bottom: 0; left: 68px; right: 0; z-index: 40; }
+        @media (max-width: 640px) { #supportFooter { left: 0; } }
+        #dashboard, #profile-page { padding-bottom: var(--support-footer-height); }
         /* ── Explorer theme swatch ── */
         .explorer-locked { position: relative; }
         .explorer-locked::after { content: 'Pro+'; position: absolute; top: -4px; right: -4px; background: var(--jubly-purple); color: white; font-size: 0.5rem; font-weight: 800; padding: 1px 4px; border-radius: 999px; letter-spacing: 0.04em; }
@@ -288,8 +290,7 @@
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.5rem;">
                             <span id="importSelectionMeta" style="font-size:0.75rem; color:#94a3b8;">Selected: 0</span>
                             <div style="display:flex; gap:6px;">
-                                <button id="importBackBtn"        type="button" style="display:none; padding:5px 12px; font-size:0.75rem; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; background:white;">Back</button>
-                                <button id="importAdvancedToggle" type="button" style="padding:5px 12px; font-size:0.75rem; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; background:white;">Advanced</button>
+<button id="importAdvancedToggle" type="button" style="padding:5px 12px; font-size:0.75rem; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; background:white;">Advanced</button>
                                 <button id="importDoImport"       type="button" style="padding:5px 14px; font-size:0.75rem; background:var(--jubly-purple); color:white; border:none; border-radius:6px; cursor:pointer; font-weight:700;">Import selected</button>
                             </div>
                         </div>
@@ -926,6 +927,7 @@
         if (mainNav) mainNav.style.display = id === 'reading-mode' ? 'none' : '';
         if (id === 'reading-mode') {
             initFocusMode();
+            syncShellDisplays();
             updateProgressBar();
         }
 
@@ -1299,11 +1301,24 @@
                 bookDst.innerHTML = bookSrc.innerHTML;
                 bookDst.value     = bookSrc.value;
                 refreshShellLibrary();
-            }).observe(bookSrc, { childList: true, subtree: true });
+            }).observe(bookSrc, { childList: true });
         }
         if (chSrc && chDst) {
             new MutationObserver(() => _mirrorSelect(chSrc, chDst))
-                .observe(chSrc, { childList: true, subtree: true });
+                .observe(chSrc, { childList: true });
+        }
+
+        // After a successful import the engine fires Done; refresh shell library explicitly.
+        const importDoneBtn = document.getElementById('importDoneBtn');
+        if (importDoneBtn) {
+            importDoneBtn.addEventListener('click', () => refreshShellLibrary());
+        }
+
+        // Keep progress bar in sync as the user scrolls or focuses pages.
+        const pagesEl = document.getElementById('pages');
+        if (pagesEl) {
+            pagesEl.addEventListener('scroll',  () => updateProgressBar());
+            pagesEl.addEventListener('focusin', () => updateProgressBar());
         }
 
         // Exit reading: stop TTS and cancel autoplay countdown before navigating away.
