@@ -68,7 +68,7 @@
             --secondary-bg:      #dfddd8;
             --text-primary:      #2b2520;
             --accent:            #c17d4a;
-            background-color:    #d8d6d1;
+            /* background-color intentionally omitted — parchment scoped to reading-mode only */
         }
         body.theme-explorer #reading-mode { background: #d8d6d1; }
         body.theme-explorer #fireCanvas   { display: block !important; }
@@ -121,6 +121,9 @@
         /* Sidebar offset: !important overrides Tailwind's mx-auto */
         .with-sidebar { margin-left: 68px !important; }
         @media (max-width: 640px) { .with-sidebar { margin-left: 0 !important; } #app-sidebar { display: none !important; } }
+        /* Support footer must clear the fixed 68px sidebar on logged-in pages */
+        #supportFooter { margin-left: 68px; }
+        @media (max-width: 640px) { #supportFooter { margin-left: 0; } }
         /* ── Explorer theme swatch ── */
         .explorer-locked { position: relative; }
         .explorer-locked::after { content: 'Pro+'; position: absolute; top: -4px; right: -4px; background: var(--jubly-purple); color: white; font-size: 0.5rem; font-weight: 800; padding: 1px 4px; border-radius: 999px; letter-spacing: 0.04em; }
@@ -285,7 +288,7 @@
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.5rem;">
                             <span id="importSelectionMeta" style="font-size:0.75rem; color:#94a3b8;">Selected: 0</span>
                             <div style="display:flex; gap:6px;">
-                                <button id="importBackBtn"        type="button" style="padding:5px 12px; font-size:0.75rem; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; background:white;">Back</button>
+                                <button id="importBackBtn"        type="button" style="display:none; padding:5px 12px; font-size:0.75rem; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; background:white;">Back</button>
                                 <button id="importAdvancedToggle" type="button" style="padding:5px 12px; font-size:0.75rem; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; background:white;">Advanced</button>
                                 <button id="importDoImport"       type="button" style="padding:5px 14px; font-size:0.75rem; background:var(--jubly-purple); color:white; border:none; border-radius:6px; cursor:pointer; font-weight:700;">Import selected</button>
                             </div>
@@ -509,27 +512,16 @@
         <button onclick="document.getElementById('importBookBtn').click()" class="btn-jubly px-6 py-2.5 rounded-lg font-bold text-sm shadow-sm">+ New Document</button>
     </header>
 
-    <!-- POPULATED STATE -->
-    <div id="library-populated">
-        <div class="glass-card overflow-hidden shadow-sm">
+    <!-- POPULATED STATE — book rows injected dynamically by refreshShellLibrary() -->
+    <div id="library-populated" class="hidden-section">
+        <div id="library-table" class="glass-card overflow-hidden shadow-sm">
             <div class="bg-slate-50 border-b border-slate-200 px-6 py-3 flex text-xs font-bold text-slate-400 uppercase tracking-wider">
                 <div class="flex-grow">Document Name</div>
                 <div class="w-32">Status</div>
                 <div class="w-32">Time</div>
                 <div class="w-8"></div>
             </div>
-            <div onclick="openPreview('Deep Work Summary')" class="px-6 py-4 flex items-center hover:bg-slate-50 cursor-pointer transition-colors border-b border-slate-100">
-                <div class="flex-grow flex items-center gap-3">
-                    <div class="w-8 h-8 rounded flex items-center justify-center text-lg bg-accent-soft text-accent">📄</div>
-                    <div>
-                        <p class="font-semibold text-slate-800 text-sm">Deep Work Summary</p>
-                        <p class="text-xs text-slate-400">Added Feb 24, 2026</p>
-                    </div>
-                </div>
-                <div class="w-32"><span class="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">In Progress</span></div>
-                <div class="w-32 text-sm text-slate-500 font-medium">12 min left</div>
-                <div class="w-8 text-slate-300">→</div>
-            </div>
+            <!-- rows appended by refreshShellLibrary() -->
         </div>
     </div>
 
@@ -1097,12 +1089,95 @@
     });
 
     // ── Dashboard state ──────────────────────────────────────────
-    // hasDocuments: driven by real pages.length once app is loaded
-    function renderDashboard(hasDocuments) {
-        document.getElementById('library-populated').classList.toggle('hidden-section', !hasDocuments);
-        document.getElementById('library-empty').classList.toggle('hidden-section', hasDocuments);
+    // ── Library list — driven by engine's #bookSelect ────────────
+    // Called whenever bookSelect options change (MutationObserver) or after boot settle.
+    // Reads the engine's canonical select, renders one row per book, wires each row to
+    // set bookSelect.value and open the preview modal before reading starts.
+    function refreshShellLibrary() {
+        const bookSel   = document.getElementById('bookSelect');
+        const populated = document.getElementById('library-populated');
+        const empty     = document.getElementById('library-empty');
+        const table     = document.getElementById('library-table');
+        if (!populated || !empty || !table) return;
+
+        // Collect all books (skip the blank placeholder option)
+        const books = [];
+        if (bookSel) {
+            bookSel.querySelectorAll('option').forEach(opt => {
+                if (opt.value) books.push({ value: opt.value, title: opt.textContent.trim() });
+            });
+        }
+
+        const hasBooks = books.length > 0;
+        populated.classList.toggle('hidden-section', !hasBooks);
+        empty.classList.toggle('hidden-section', hasBooks);
+
         const subtitle = document.getElementById('dashboard-subtitle');
-        if (subtitle) subtitle.style.display = hasDocuments ? '' : 'none';
+        if (subtitle) subtitle.style.display = hasBooks ? '' : 'none';
+
+        if (!hasBooks) return;
+
+        // Preserve header row, clear book rows, re-append
+        const header = table.querySelector('.bg-slate-50');
+        table.innerHTML = '';
+        if (header) table.appendChild(header);
+
+        books.forEach(book => {
+            const row = document.createElement('div');
+            row.className = 'px-6 py-4 flex items-center hover:bg-slate-50 cursor-pointer transition-colors border-b border-slate-100';
+            row.addEventListener('click', () => {
+                // Set engine canonical select to this book, let engine load it
+                const bs = document.getElementById('bookSelect');
+                if (bs && bs.value !== book.value) {
+                    bs.value = book.value;
+                    bs.dispatchEvent(new Event('change'));
+                }
+                openPreview(book.title);
+            });
+
+            const nameDiv = document.createElement('div');
+            nameDiv.className = 'flex-grow flex items-center gap-3';
+
+            const icon = document.createElement('div');
+            icon.className = 'w-8 h-8 rounded flex items-center justify-center text-lg bg-accent-soft text-accent';
+            icon.textContent = '📄';
+
+            const txtDiv = document.createElement('div');
+            const pTitle = document.createElement('p');
+            pTitle.className = 'font-semibold text-slate-800 text-sm';
+            pTitle.textContent = book.title;
+            const pSub = document.createElement('p');
+            pSub.className = 'text-xs text-slate-400';
+            pSub.textContent = 'Saved on this device';
+            txtDiv.appendChild(pTitle);
+            txtDiv.appendChild(pSub);
+            nameDiv.appendChild(icon);
+            nameDiv.appendChild(txtDiv);
+
+            const statusDiv = document.createElement('div');
+            statusDiv.className = 'w-32';
+            statusDiv.innerHTML = '<span class="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-bold">Ready</span>';
+
+            const timeDiv = document.createElement('div');
+            timeDiv.className = 'w-32 text-sm text-slate-400 font-medium';
+            timeDiv.textContent = '—';
+
+            const arrow = document.createElement('div');
+            arrow.className = 'w-8 text-slate-300';
+            arrow.textContent = '→';
+
+            row.appendChild(nameDiv);
+            row.appendChild(statusDiv);
+            row.appendChild(timeDiv);
+            row.appendChild(arrow);
+            table.appendChild(row);
+        });
+    }
+
+    // hasDocuments: legacy parameter kept for compatibility; actual state derived from bookSelect
+    function renderDashboard(hasDocuments) {
+        // Defer slightly so engine's bookSelect population has time to settle
+        setTimeout(refreshShellLibrary, 50);
     }
 
     // ── Reading session ──────────────────────────────────────────
@@ -1217,10 +1292,13 @@
         // Engine select → shell display: engine populates options asynchronously
         // after its dynamic script chain completes. MutationObserver catches every
         // childList mutation (option add/remove) and keeps shell in sync.
+        // Also refreshes the visible library list whenever the book catalogue changes
+        // (e.g. after a successful import via window.__rcRefreshBookSelect).
         if (bookSrc && bookDst) {
             new MutationObserver(() => {
                 bookDst.innerHTML = bookSrc.innerHTML;
                 bookDst.value     = bookSrc.value;
+                refreshShellLibrary();
             }).observe(bookSrc, { childList: true, subtree: true });
         }
         if (chSrc && chDst) {
@@ -1239,8 +1317,8 @@
         }
     });
 
-    // Engine scripts load dynamically after window.load; sync displays once boot settles.
-    window.addEventListener('load', () => setTimeout(syncShellDisplays, 350));
+    // Engine scripts load dynamically after window.load; sync displays and library once boot settles.
+    window.addEventListener('load', () => setTimeout(() => { syncShellDisplays(); refreshShellLibrary(); }, 350));
 
 </script>
 
