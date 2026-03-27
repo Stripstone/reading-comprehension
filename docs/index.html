@@ -137,13 +137,13 @@
         .reading-top-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,0.96); border-bottom: 1px solid #e2e8f0; backdrop-filter: blur(8px); transition: opacity 0.5s ease, transform 0.5s ease; }
         .reading-top-bar.faded { opacity: 0; pointer-events: none; transform: translateY(-6px); }
         /* Left controls scroll horizontally on narrow; Exit is pinned right and never clips */
-        .reading-top-left { display: flex; align-items: center; gap: 6px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; }
+        .reading-top-left { display: flex; align-items: center; gap: 6px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; justify-content: center; }
         .reading-top-left::-webkit-scrollbar { display: none; }
-        .reading-top-exit { flex-shrink: 0; margin-left: 8px; }
+        .reading-top-exit { flex-shrink: 0; margin-left: 0; }
         .reading-bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,0.97); border-top: 1px solid var(--jubly-border); backdrop-filter: blur(8px); box-shadow: 0 -4px 24px rgba(0,0,0,0.06); }
-        .reading-bottom-left { display: flex; align-items: center; gap: 4px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; }
+        .reading-bottom-left { display: flex; align-items: center; gap: 4px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; justify-content: center; }
         .reading-bottom-left::-webkit-scrollbar { display: none; }
-        .reading-content { max-width: 42rem; margin: 0 auto; padding: 80px 1rem 96px; }
+        .reading-content { max-width: 56rem; margin: 0 auto; padding: 80px 0 96px; }
         .reading-select { font-size: 0.75rem; font-weight: 700; color: #475569; background: transparent; border: none; outline: none; cursor: pointer; padding: 4px 2px; white-space: nowrap; }
         .reading-select:hover { color: var(--jubly-purple); }
         .reading-divider { width: 1px; height: 16px; background: #e2e8f0; flex-shrink: 0; }
@@ -152,6 +152,16 @@
         .pb-icon-btn:hover { background: #f1f5f9; color: #1e293b; }
         .pb-icon-btn.active { background: var(--theme-accent-soft); color: var(--theme-accent); }
         .page-progress { font-size: 0.7rem; font-weight: 700; color: #94a3b8; letter-spacing: 0.04em; white-space: nowrap; flex-shrink: 0; }
+        /* ── F3: Page advance pulse ── */
+        @keyframes pageAdvancePulse { 0%,100% { color: #94a3b8; } 50% { color: var(--theme-accent); } }
+        .page-advance-pulse { animation: pageAdvancePulse 0.5s ease; }
+        /* ── F4: Reading surface quality — responsive pages container ── */
+        #reading-mode #pages { padding: 0 2rem; }
+        @media (max-width: 1024px) { #reading-mode #pages { padding: 0 1.5rem; } }
+        @media (max-width: 768px)  { #reading-mode #pages { padding: 0 1rem; } }
+        #session-complete { padding: 0 2rem; }
+        .page-text { line-height: 1.75; font-size: 1rem; }
+        @media (min-width: 1200px) { #reading-mode #pages { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; } #reading-mode .page { break-inside: avoid; } }
     </style>
 </head>
 <body class="bg-white">
@@ -180,37 +190,38 @@
 </button>
 
 <!-- Volume panel — positioned and shown by app's initUtilityPanels() -->
-<div id="volumePanel" style="display:none; position:fixed; z-index:1000; width:320px; max-width:92vw; padding:14px; border:2px solid var(--jubly-border); border-radius:12px; background:white; box-shadow:0 8px 28px rgba(0,0,0,0.18);">
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
-        <span style="font-size:0.8rem; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.06em;">Sound &amp; Voice</span>
-        <button type="button" id="volumeCloseBtn" style="padding:4px 10px; font-size:0.75rem; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; background:white;">✕</button>
+<div id="volumePanel" style="display:none; position:fixed; z-index:1000; width:300px; max-width:92vw;">
+    <div class="glass-card p-4 shadow-xl">
+        <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-black uppercase tracking-wider text-slate-400">Sound &amp; Voice</span>
+            <button type="button" id="volumeCloseBtn" style="background:#f1f5f9; border:none; border-radius:8px; width:28px; height:28px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#64748b; font-size:0.9rem; transition:background 0.15s;">✕</button>
+        </div>
+        <div class="flex gap-2 mb-3">
+            <select id="voiceFemaleSelect" class="flex-1 text-xs font-semibold border-2 border-slate-200 rounded-lg px-2 py-2 bg-white text-slate-600 outline-none min-w-0"></select>
+            <select id="voiceMaleSelect"   class="flex-1 text-xs font-semibold border-2 border-slate-200 rounded-lg px-2 py-2 bg-white text-slate-600 outline-none min-w-0"></select>
+        </div>
+        <div class="flex items-center justify-between mb-3 text-xs text-slate-500">
+            <span class="font-semibold">Autoplay</span>
+            <label class="flex items-center gap-2 cursor-pointer">
+                <span class="text-slate-400">Next page auto</span>
+                <input type="checkbox" id="autoplayToggle" style="accent-color:var(--theme-accent); width:15px; height:15px; cursor:pointer;">
+            </label>
+        </div>
+        <div class="space-y-2 text-xs text-slate-500">
+            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Voice</span><input id="vol_voice"    type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
+            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Music</span><input id="vol_music"    type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
+            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Sand</span><input id="vol_sand"     type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
+            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Sandstone</span><input id="vol_stone"    type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
+            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Reward</span><input id="vol_reward"   type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
+            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Compass</span><input id="vol_compass"  type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
+            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Page Turn</span><input id="vol_pageTurn" type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
+            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Evaluate</span><input id="vol_evaluate" type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
+        </div>
+        <div class="mt-3 pt-3 border-t border-slate-100 flex justify-between items-center">
+            <button type="button" id="toggleMusicBtn" class="btn-ghost px-3 py-1.5 rounded-lg text-xs font-bold">Music On/Off</button>
+            <span class="text-xs text-slate-300">Volumes save locally</span>
+        </div>
     </div>
-    <div style="display:flex; gap:8px; margin-bottom:12px;">
-        <button type="button" id="toggleMusicBtn" style="flex:1; padding:7px 10px; font-size:0.75rem; font-weight:700; border:2px solid #e2e8f0; border-radius:8px; cursor:pointer; background:white;">Mute / Unmute</button>
-    </div>
-    <div style="display:flex; gap:8px; margin-bottom:10px; align-items:center;">
-        <span style="font-size:0.75rem; font-weight:800; white-space:nowrap; color:#475569;">Voices:</span>
-        <select id="voiceFemaleSelect" style="flex:1; min-width:0; max-width:44%; padding:5px 8px; font-size:0.75rem; border:2px solid #e2e8f0; border-radius:6px; background:white; outline:none;"></select>
-        <select id="voiceMaleSelect"   style="flex:1; min-width:0; max-width:44%; padding:5px 8px; font-size:0.75rem; border:2px solid #e2e8f0; border-radius:6px; background:white; outline:none;"></select>
-    </div>
-    <div style="display:flex; gap:8px; margin-bottom:10px; align-items:center;">
-        <span style="font-size:0.75rem; font-weight:800; color:#475569;">Autoplay:</span>
-        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.75rem; flex:1; justify-content:flex-end;">
-            <span style="opacity:0.8;">Read next page automatically</span>
-            <input type="checkbox" id="autoplayToggle" style="width:16px; height:16px; cursor:pointer; accent-color:var(--theme-accent);">
-        </label>
-    </div>
-    <div style="display:grid; grid-template-columns:1fr 120px; gap:7px 10px; align-items:center; font-size:0.75rem; color:#475569;">
-        <div>Voices</div>   <input id="vol_voice"    type="range" min="0" max="1" step="0.01" style="accent-color:var(--theme-accent);">
-        <div>Music</div>    <input id="vol_music"    type="range" min="0" max="1" step="0.01" style="accent-color:var(--theme-accent);">
-        <div>Sand</div>     <input id="vol_sand"     type="range" min="0" max="1" step="0.01" style="accent-color:var(--theme-accent);">
-        <div>Sandstone</div><input id="vol_stone"    type="range" min="0" max="1" step="0.01" style="accent-color:var(--theme-accent);">
-        <div>Reward</div>   <input id="vol_reward"   type="range" min="0" max="1" step="0.01" style="accent-color:var(--theme-accent);">
-        <div>Compass</div>  <input id="vol_compass"  type="range" min="0" max="1" step="0.01" style="accent-color:var(--theme-accent);">
-        <div>Page Turn</div><input id="vol_pageTurn" type="range" min="0" max="1" step="0.01" style="accent-color:var(--theme-accent);">
-        <div>Evaluate</div> <input id="vol_evaluate" type="range" min="0" max="1" step="0.01" style="accent-color:var(--theme-accent);">
-    </div>
-    <div style="margin-top:8px; font-size:0.7rem; color:#94a3b8;">Volumes save locally on this device.</div>
 </div>
 
 <!-- How This Works modal — content from original app, styled for shell -->
@@ -509,8 +520,11 @@
             <h2 class="text-3xl font-extrabold text-slate-900 tracking-tight">Library</h2>
             <p id="dashboard-subtitle" class="text-slate-500 text-sm mt-1">You've completed <strong>2 sessions</strong> this week. Keep the momentum going.</p>
         </div>
-        <!-- + New Document delegates to real importBookBtn (opens importBookModal) -->
-        <button onclick="document.getElementById('importBookBtn').click()" class="btn-jubly px-6 py-2.5 rounded-lg font-bold text-sm shadow-sm">+ New Document</button>
+        <!-- Manage + New Document: proxy to hidden engine buttons -->
+        <div class="flex items-center gap-2">
+            <button onclick="document.getElementById('manageLibraryBtn').click()" class="btn-ghost px-4 py-2.5 rounded-lg font-bold text-sm">🗂️ Manage</button>
+            <button onclick="document.getElementById('importBookBtn').click()" class="btn-jubly px-6 py-2.5 rounded-lg font-bold text-sm shadow-sm">+ New Document</button>
+        </div>
     </header>
 
     <!-- POPULATED STATE — book rows injected dynamically by refreshShellLibrary() -->
@@ -778,9 +792,8 @@
     <!-- BOTTOM PLAYBACK BAR: moment controls — always visible -->
     <div class="reading-bottom-bar">
         <div class="reading-bottom-left">
-            <!-- Speed — wired to TTS_STATE.playbackRate by app on merge via volume panel
-                 For now: visible control; full wiring in Pass B -->
-            <select id="shell-speed-select" class="reading-select" onchange="if(typeof TTS_STATE!=='undefined')TTS_STATE.playbackRate=parseFloat(this.value)">
+            <!-- Speed — shell-controlled; applies to cloud audio + browser TTS via shellSetSpeed() -->
+            <select id="shell-speed-select" class="reading-select" onchange="shellSetSpeed(this.value)">
                 <option value="1.0">Speed: 1.0×</option>
                 <option value="1.25">Speed: 1.25×</option>
                 <option value="1.5">Speed: 1.5×</option>
@@ -939,6 +952,16 @@
     let focusModeHandler = null;
 
     function initFocusMode() {
+        // Restore persisted TTS speed into the dropdown and the audio element.
+        try {
+            const savedSpeed = localStorage.getItem('rc_tts_speed');
+            if (savedSpeed) {
+                const sel = document.getElementById('shell-speed-select');
+                if (sel) sel.value = savedSpeed;
+                shellSetSpeed(savedSpeed);
+            }
+        } catch(_) {}
+
         const bar = document.getElementById('reading-top-bar');
         const rm  = document.getElementById('reading-mode');
         if (!bar || !rm) return;
@@ -1046,6 +1069,25 @@
     }
 
     function promptExplorerUpgrade() { openModal('pricing-modal'); }
+
+    // ── F1: TTS Speed Control (shell-only) ────────────────────────
+    // Patches window.speechSynthesis.speak once so every browser TTS utterance
+    // inherits the saved rate without touching tts.js.
+    (function patchSpeechSynthesisRate() {
+        if (!window.speechSynthesis) return;
+        const _origSpeak = window.speechSynthesis.speak.bind(window.speechSynthesis);
+        window.speechSynthesis.speak = function(utter) {
+            try { utter.rate = parseFloat(localStorage.getItem('rc_tts_speed') || '1') || 1; } catch(_) {}
+            return _origSpeak(utter);
+        };
+    })();
+
+    function shellSetSpeed(value) {
+        const rate = parseFloat(value) || 1;
+        try { localStorage.setItem('rc_tts_speed', String(rate)); } catch(_) {}
+        // Apply immediately to the engine's shared cloud audio element.
+        try { if (typeof TTS_AUDIO_ELEMENT !== 'undefined') TTS_AUDIO_ELEMENT.playbackRate = rate; } catch(_) {}
+    }
 
     // ── Bottom bar controls ──────────────────────────────────────
 
@@ -1182,6 +1224,9 @@
         setTimeout(refreshShellLibrary, 50);
     }
 
+    // ── F7: Reading time tracker (shell-only) ────────────────────
+    let _readingStartTime = null;
+
     // ── Reading session ──────────────────────────────────────────
     function openPreview(title) {
         document.getElementById('preview-title').innerText = title;
@@ -1190,6 +1235,7 @@
 
     function startReading() {
         closeModal('preview-modal');
+        _readingStartTime = Date.now();
         // Trigger engine's load flow — reads canonical hidden selects, calls render() internally.
         // Fall back to render() directly only if loadBookSelection is absent.
         const loadBtn = document.getElementById('loadBookSelection');
@@ -1204,15 +1250,15 @@
         updateProgressBar();
     }
 
-    // Session complete signal — uses real pages[] from app state
+    // Session complete signal — uses real pages[] and shell reading timer
     function showSessionComplete() {
         const signal = document.getElementById('session-complete');
         if (!signal) return;
         const pageCount = (typeof pages !== 'undefined' && Array.isArray(pages)) ? pages.length : 0;
-        // sessionMinutesListened comes from app state once wired; estimate until then
-        const estMins = Math.max(1, Math.round(pageCount * 1.5));
+        const elapsed   = _readingStartTime ? Date.now() - _readingStartTime : 0;
+        const mins      = elapsed > 0 ? Math.max(1, Math.round(elapsed / 60000)) : Math.max(1, Math.round(pageCount * 1.5));
         document.getElementById('stat-pages').textContent   = pageCount;
-        document.getElementById('stat-minutes').textContent = '~' + estMins;
+        document.getElementById('stat-minutes').textContent = mins;
         signal.classList.remove('hidden-section');
         signal.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
@@ -1321,13 +1367,77 @@
             pagesEl.addEventListener('focusin', () => updateProgressBar());
         }
 
-        // Exit reading: stop TTS and cancel autoplay countdown before navigating away.
+        // F2: Autoplay countdown badge — polls AUTOPLAY_STATE every 300ms, shows badge on button.
+        let _countdownInterval = null;
+        function _startCountdownPoll() {
+            if (_countdownInterval) return;
+            _countdownInterval = setInterval(() => {
+                const btn = document.getElementById('shell-autoplay-btn');
+                if (!btn) return;
+                let badge = document.getElementById('shell-countdown-badge');
+                try {
+                    const idx = (typeof AUTOPLAY_STATE !== 'undefined') ? AUTOPLAY_STATE.countdownPageIndex : -1;
+                    const sec = (typeof AUTOPLAY_STATE !== 'undefined') ? AUTOPLAY_STATE.countdownSec      : 0;
+                    if (idx !== -1 && sec > 0) {
+                        if (!badge) {
+                            badge = document.createElement('span');
+                            badge.id = 'shell-countdown-badge';
+                            badge.style.cssText = 'margin-left:4px; font-size:0.65rem; font-weight:800; color:var(--theme-accent); background:var(--theme-accent-soft); border-radius:999px; padding:1px 6px;';
+                            btn.appendChild(badge);
+                        }
+                        badge.textContent = `Next: ${sec}…`;
+                    } else if (badge) {
+                        badge.remove();
+                    }
+                } catch(_) { if (badge) badge.remove(); }
+            }, 300);
+        }
+        _startCountdownPoll();
+
+        // F3: Page advance pulse + end-of-book detection via MutationObserver.
+        let _sessionCompletePending = false;
+        const _pagesContainer = document.getElementById('pages');
+        if (_pagesContainer) {
+            new MutationObserver(() => {
+                // Pulse progress indicator on any page advance.
+                const prog = document.getElementById('shell-page-progress');
+                if (prog && !prog.classList.contains('page-advance-pulse')) {
+                    prog.classList.add('page-advance-pulse');
+                    prog.addEventListener('animationend', () => prog.classList.remove('page-advance-pulse'), { once: true });
+                }
+                // Detect last page reached: active page is the last one.
+                try {
+                    const total = (typeof pages !== 'undefined' && Array.isArray(pages)) ? pages.length : 0;
+                    if (total < 1) return;
+                    const activeEl = _pagesContainer.querySelector('.page-active');
+                    if (!activeEl) return;
+                    const allPages = Array.from(_pagesContainer.querySelectorAll('.page'));
+                    const activeIdx = allPages.indexOf(activeEl);
+                    if (activeIdx === total - 1 && !_sessionCompletePending) {
+                        _sessionCompletePending = true;
+                        // 500ms debounce: wait to confirm no further page-active transition follows.
+                        setTimeout(() => {
+                            _sessionCompletePending = false;
+                            const stillActive = _pagesContainer.querySelector('.page-active');
+                            const stillLast   = stillActive && Array.from(_pagesContainer.querySelectorAll('.page')).indexOf(stillActive) === total - 1;
+                            const noCountdown = (typeof AUTOPLAY_STATE === 'undefined') || AUTOPLAY_STATE.countdownPageIndex === -1;
+                            if (stillLast && noCountdown) showSessionComplete();
+                        }, 500);
+                    }
+                } catch(_) {}
+            }, { attributes: true, subtree: true, attributeFilter: ['class'] });
+        }
+
+        // Exit reading: stop TTS, cancel autoplay, clear countdown poll before navigating away.
         // The button's inline onclick still fires (showSection) — this just cleans up first.
         const exitBtn = document.querySelector('.reading-top-exit');
         if (exitBtn) {
             exitBtn.addEventListener('click', () => {
                 try { if (typeof ttsStop === 'function') ttsStop(); } catch(_) {}
                 try { if (typeof ttsAutoplayCancelCountdown === 'function') ttsAutoplayCancelCountdown(); } catch(_) {}
+                if (_countdownInterval) { clearInterval(_countdownInterval); _countdownInterval = null; }
+                const badge = document.getElementById('shell-countdown-badge');
+                if (badge) badge.remove();
             });
         }
     });
