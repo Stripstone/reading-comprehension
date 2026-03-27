@@ -212,6 +212,40 @@
             margin-bottom: 14px; line-height: 1.7; font-size: 1rem;
             color: var(--rm-text); font-family: 'Lora', serif;
             overflow-wrap: anywhere; word-break: break-word; overflow-x: hidden;
+            position: relative;
+        }
+        @media (max-width: 1024px) {
+            #reading-mode .page-text {
+                max-height: 48vh; overflow-y: auto; overscroll-behavior: contain;
+                font-size: 0.97rem;
+            }
+        }
+        @media (max-width: 768px) {
+            #reading-mode .page-text {
+                max-height: 40vh; overflow-y: auto; overscroll-behavior: contain;
+                font-size: 0.93rem; line-height: 1.65;
+            }
+        }
+        /* "Continue" affordance — fade + chevron at bottom of scrollable text.
+           .page-text-wrap is injected by window.__jublyAfterRender after render().
+           On desktop the wrapper is present but the fade is hidden. */
+        .page-text-wrap { position: relative; }
+        .page-text-wrap .page-text-fade {
+            position: absolute; bottom: 0; left: 0; right: 0; height: 48px;
+            background: linear-gradient(to bottom, transparent, var(--rm-page-bg));
+            border-radius: 0 0 8px 8px; pointer-events: none;
+            display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px;
+            transition: opacity 0.2s;
+        }
+        .page-text-wrap .page-text-fade::after {
+            content: '▾';
+            font-size: 0.9rem; color: var(--rm-accent); opacity: 0.7;
+            animation: fadeChevron 1.4s ease-in-out infinite;
+        }
+        .page-text-wrap.scrolled-to-end .page-text-fade { opacity: 0; pointer-events: none; }
+        @keyframes fadeChevron { 0%,100%{transform:translateY(0)} 50%{transform:translateY(3px)} }
+        @media (min-width: 1025px) {
+            .page-text-wrap .page-text-fade { display: none; }
         }
         #reading-mode .top-btn {
             background: var(--rm-btn-bg); border: none; border-radius: 8px;
