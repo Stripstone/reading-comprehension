@@ -51,10 +51,22 @@
             --secondary-bg: #ffffff;
             --text-primary: #1E293B;
             --accent:       #6344F5;
+            /* Reading-mode variable bridge — lets themes restyle page cards and TTS
+               highlights without touching engine JS. Default matches jubly purple. */
+            --rm-accent:      var(--jubly-purple);
+            --rm-accent-soft: #ede9fe;
+            --rm-card-bg:     #ffffff;
+            --rm-page-bg:     #f5f3ff;
+            --rm-text:        #1e293b;
+            --rm-text-2:      #64748b;
+            --rm-border:      #e2e8f0;
+            --rm-shadow:      0 4px 16px rgba(99,68,245,0.08);
+            --rm-btn-bg:      rgba(99,68,245,0.07);
+            --rm-btn-hover:   rgba(99,68,245,0.14);
         }
         /* Theme overrides — applied as body class by setTheme() */
-        body.theme-green  { --theme-accent: #22c55e; --theme-accent-deep: #16a34a; --theme-accent-soft: #dcfce7; }
-        body.theme-purple { --theme-accent: #a78bfa; --theme-accent-deep: #7c3aed; --theme-accent-soft: #ede9fe; }
+        body.theme-green  { --theme-accent: #22c55e; --theme-accent-deep: #16a34a; --theme-accent-soft: #dcfce7; --rm-accent:#22c55e; --rm-accent-soft:#dcfce7; --rm-btn-bg:rgba(34,197,94,0.08); --rm-btn-hover:rgba(34,197,94,0.15); --rm-page-bg:#f0fdf4; --rm-shadow:0 4px 16px rgba(34,197,94,0.10); }
+        body.theme-purple { --theme-accent: #a78bfa; --theme-accent-deep: #7c3aed; --theme-accent-soft: #ede9fe; --rm-accent:#a78bfa; --rm-accent-soft:#ede9fe; --rm-btn-bg:rgba(167,139,250,0.08); --rm-btn-hover:rgba(167,139,250,0.15); --rm-page-bg:#faf5ff; --rm-shadow:0 4px 16px rgba(167,139,250,0.10); }
         /*
          * Explorer theme — Pro/Premium only. Activates parchment aesthetic + ember particles.
          * Full texture/typography overhaul ships separately via theme.css / components.css.
@@ -65,6 +77,16 @@
             --theme-accent-deep: #8B2500;
             --theme-accent-soft: #f5ede4;
             --accent:            #c17d4a;
+            --rm-accent:      #c17d4a;
+            --rm-accent-soft: #f5ede0;
+            --rm-card-bg:     #f5f1e8;
+            --rm-page-bg:     #ebe7de;
+            --rm-text:        #2b2520;
+            --rm-text-2:      #6b5d54;
+            --rm-border:      #e8dfd4;
+            --rm-shadow:      0 4px 16px rgba(139,111,87,0.12);
+            --rm-btn-bg:      rgba(193,125,74,0.10);
+            --rm-btn-hover:   rgba(193,125,74,0.18);
         }
         body.theme-explorer #reading-mode {
             background:      #d8d6d1;
@@ -120,12 +142,9 @@
         .sidebar-btn:hover { background: #f1f5f9; color: var(--jubly-purple); }
         .sidebar-btn.active { color: var(--jubly-purple); background: #f5f3ff; }
         /* Sidebar offset: !important overrides Tailwind's mx-auto */
-        .with-sidebar { margin-left: 68px !important; }
-        @media (max-width: 640px) { .with-sidebar { margin-left: 0 !important; } #app-sidebar { display: none !important; } }
-        /* Support footer is fixed to viewport bottom, clearing the sidebar */
-        #supportFooter { position: fixed; bottom: 0; left: 68px; right: 0; z-index: 40; }
-        @media (max-width: 640px) { #supportFooter { left: 0; } }
-        #dashboard, #profile-page { padding-bottom: var(--support-footer-height); }
+        .with-sidebar { padding-left: 68px !important; }
+        @media (max-width: 640px) { .with-sidebar { padding-left: 0 !important; } #app-sidebar { display: none !important; } }
+        /* Support footer flows at the bottom of the document (no fixed overlay) */
         /* ── Explorer theme swatch ── */
         .explorer-locked { position: relative; }
         .explorer-locked::after { content: 'Pro+'; position: absolute; top: -4px; right: -4px; background: var(--jubly-purple); color: white; font-size: 0.5rem; font-weight: 800; padding: 1px 4px; border-radius: 999px; letter-spacing: 0.04em; }
@@ -143,7 +162,7 @@
         .reading-bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,0.97); border-top: 1px solid var(--jubly-border); backdrop-filter: blur(8px); box-shadow: 0 -4px 24px rgba(0,0,0,0.06); }
         .reading-bottom-left { display: flex; align-items: center; gap: 4px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; justify-content: center; }
         .reading-bottom-left::-webkit-scrollbar { display: none; }
-        .reading-content { max-width: 56rem; margin: 0 auto; padding: 80px 0 96px; }
+        .reading-content { padding: 80px 0 96px; }
         .reading-select { font-size: 0.75rem; font-weight: 700; color: #475569; background: transparent; border: none; outline: none; cursor: pointer; padding: 4px 2px; white-space: nowrap; }
         .reading-select:hover { color: var(--jubly-purple); }
         .reading-divider { width: 1px; height: 16px; background: #e2e8f0; flex-shrink: 0; }
@@ -156,12 +175,61 @@
         @keyframes pageAdvancePulse { 0%,100% { color: #94a3b8; } 50% { color: var(--theme-accent); } }
         .page-advance-pulse { animation: pageAdvancePulse 0.5s ease; }
         /* ── F4: Reading surface quality — responsive pages container ── */
-        #reading-mode #pages { padding: 0 2rem; }
+        #reading-mode #pages { max-width: 900px; margin: 0 auto; padding: 0 2rem; }
         @media (max-width: 1024px) { #reading-mode #pages { padding: 0 1.5rem; } }
         @media (max-width: 768px)  { #reading-mode #pages { padding: 0 1rem; } }
-        #session-complete { padding: 0 2rem; }
+        #session-complete { max-width: 900px; margin: 0 auto; padding: 0 2rem; }
         .page-text { line-height: 1.75; font-size: 1rem; }
-        @media (min-width: 1200px) { #reading-mode #pages { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; } #reading-mode .page { break-inside: avoid; } }
+
+        /* ── Reading mode page card styles (scoped; zero effect outside reading mode) ── */
+        #reading-mode .page {
+            background: var(--rm-card-bg); border: 1px solid var(--rm-border);
+            border-left: 4px solid var(--rm-accent); border-radius: 12px;
+            padding: 28px; margin-bottom: 24px; box-shadow: var(--rm-shadow);
+            position: relative; overflow: hidden;
+            animation: rmSlideIn 0.4s ease-out backwards;
+            transition: border-left-color 0.3s, box-shadow 0.3s;
+        }
+        @media (max-width: 1024px) { #reading-mode .page { padding: 22px 20px; } }
+        @media (max-width: 768px)  { #reading-mode .page { padding: 18px 16px; } }
+        #reading-mode .page.page-active {
+            border-left-width: 6px;
+            box-shadow: var(--rm-shadow), -6px 0 12px -2px rgba(99,68,245,0.20);
+        }
+        body.theme-explorer #reading-mode .page.page-active {
+            box-shadow: var(--rm-shadow), -6px 0 12px -2px rgba(193,125,74,0.35);
+        }
+        @keyframes rmSlideIn { from { opacity:0; transform:translateX(-16px); } to { opacity:1; transform:translateX(0); } }
+        #reading-mode .page-header {
+            font-size: 0.78rem; font-weight: 800; text-transform: uppercase;
+            letter-spacing: 0.06em; color: var(--rm-accent); margin-bottom: 12px;
+        }
+        #reading-mode .page-text {
+            background: var(--rm-page-bg); border-radius: 8px; padding: 16px 18px;
+            margin-bottom: 14px; line-height: 1.7; font-size: 1rem;
+            color: var(--rm-text); font-family: 'Lora', serif;
+            overflow-wrap: anywhere; word-break: break-word; overflow-x: hidden;
+        }
+        #reading-mode .top-btn {
+            background: var(--rm-btn-bg); border: none; border-radius: 8px;
+            font-family: 'Inter', sans-serif; font-size: 0.82rem; font-weight: 700;
+            color: var(--rm-accent); cursor: pointer; padding: 8px 14px;
+            transition: background 0.15s, transform 0.12s;
+        }
+        #reading-mode .top-btn:hover  { background: var(--rm-btn-hover); transform: translateY(-1px); }
+        #reading-mode .top-btn:active { transform: translateY(0); }
+        #reading-mode .top-btn.tts-active { background: var(--rm-btn-hover); box-shadow: 0 0 0 2px var(--rm-accent); }
+        #reading-mode .hint-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+        #reading-mode .page-actions { display: flex; justify-content: flex-end; gap: 8px; margin: 6px 0 4px; }
+        #reading-mode .anchors-row   { display: flex; justify-content: flex-end; margin: 4px 0 2px; }
+        #reading-mode .anchors-nav   { display: flex; justify-content: flex-end; margin: 4px 0 14px; }
+        /* TTS sentence highlight — --tts-alpha is set by tts.js at runtime */
+        #reading-mode .tts-sentence {
+            --tts-alpha: 0;
+            border-radius: 6px; padding: 0 2px;
+            background-color: rgba(255, 230, 120, var(--tts-alpha));
+            transition: background-color 220ms ease;
+        }
     </style>
 </head>
 <body class="bg-white">
@@ -182,12 +250,9 @@
 <audio id="evaluateSound"     preload="auto"><source src="assets/evaluate.mp3"   type="audio/mpeg"></audio>
 <audio id="bgMusic"      loop preload="auto"><source src="assets/song.mp3"       type="audio/mpeg"></audio>
 
-<!-- musicToggle — wired by app's initUtilityPanels() to open volumePanel.
-     Positioned off-screen; the shell's visible "Sound & Voice" button delegates to it.
-     The app's footer-scroll position code runs harmlessly on this hidden element. -->
-<button id="musicToggle" title="Sound &amp; Voice" style="position:fixed; bottom:-200px; right:20px; z-index:31; opacity:0; pointer-events:none;" aria-hidden="true">
-    <span id="musicIcon">🔇</span>
-</button>
+<!-- musicIcon span — read by audio.js to reflect mute state (🔇/🔊). Hidden span; visual
+     mute state is not displayed in the shell since the button text is always "Sound & Voice". -->
+<span id="musicIcon" style="display:none;" aria-hidden="true">🔇</span>
 
 <!-- Volume panel — positioned and shown by app's initUtilityPanels() -->
 <div id="volumePanel" style="display:none; position:fixed; z-index:1000; width:300px; max-width:92vw;">
@@ -529,7 +594,7 @@
 
     <!-- POPULATED STATE — book rows injected dynamically by refreshShellLibrary() -->
     <div id="library-populated" class="hidden-section">
-        <div id="library-table" class="glass-card overflow-hidden shadow-sm">
+        <div id="library-rows" class="glass-card overflow-hidden shadow-sm">
             <div class="bg-slate-50 border-b border-slate-200 px-6 py-3 flex text-xs font-bold text-slate-400 uppercase tracking-wider">
                 <div class="flex-grow">Document Name</div>
                 <div class="w-32">Status</div>
@@ -776,7 +841,7 @@
     <!-- CONTENT -->
     <div class="reading-content">
         <!-- #pages — app's render() (library.js) writes .page card elements here -->
-        <div id="pages" class="space-y-8"></div>
+        <div id="pages"></div>
 
         <!-- END-OF-SESSION SIGNAL (shown by showSessionComplete() when last page done) -->
         <div id="session-complete" class="hidden-section mt-12 mb-4">
@@ -793,10 +858,11 @@
     <div class="reading-bottom-bar">
         <div class="reading-bottom-left">
             <!-- Speed — shell-controlled; applies to cloud audio + browser TTS via shellSetSpeed() -->
-            <select id="shell-speed-select" class="reading-select" onchange="shellSetSpeed(this.value)">
+            <select id="shell-speed" class="reading-select" onchange="shellSetSpeed(this.value)">
                 <option value="1.0">Speed: 1.0×</option>
                 <option value="1.25">Speed: 1.25×</option>
                 <option value="1.5">Speed: 1.5×</option>
+                <option value="1.75">Speed: 1.75×</option>
                 <option value="2.0">Speed: 2.0×</option>
             </select>
             <div class="reading-divider mx-1"></div>
@@ -812,8 +878,9 @@
                 Autoplay
             </button>
             <div class="reading-divider mx-1"></div>
-            <!-- Sound & Voice — delegates click to hidden musicToggle (wired by app's initUtilityPanels) -->
-            <button onclick="document.getElementById('musicToggle').click()" class="pb-icon-btn" title="Sound &amp; voice settings">
+            <!-- Sound & Voice — id="musicToggle" wired directly by app's initUtilityPanels()
+                 to open the volumePanel; position measured from this element's real coords. -->
+            <button id="musicToggle" class="pb-icon-btn" title="Sound &amp; voice settings">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
                 Sound &amp; Voice
             </button>
@@ -943,6 +1010,10 @@
             syncShellDisplays();
             updateProgressBar();
         }
+        if (id === 'dashboard') {
+            // Refresh library list whenever user navigates to dashboard
+            try { refreshShellLibrary(); } catch(_) {}
+        }
 
         window.scrollTo(0, 0);
     }
@@ -956,7 +1027,7 @@
         try {
             const savedSpeed = localStorage.getItem('rc_tts_speed');
             if (savedSpeed) {
-                const sel = document.getElementById('shell-speed-select');
+                const sel = document.getElementById('shell-speed');
                 if (sel) sel.value = savedSpeed;
                 shellSetSpeed(savedSpeed);
             }
@@ -1091,22 +1162,30 @@
 
     // ── Bottom bar controls ──────────────────────────────────────
 
-    // Pause/Play — calls app's tts.js functions if available
+    // Pause/Play — calls app's tts.js functions if available.
+    // Guards against first-use case where TTS was never started (TTS_STATE.activeKey is null).
     function handlePausePlay() {
         const btn = document.getElementById('shell-pause-btn');
         if (!btn) return;
-        const isPaused = btn.classList.contains('active');
-        if (isPaused) {
-            // Resume
-            btn.classList.remove('active');
-            btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause';
-            try { if (typeof ttsResume === 'function') ttsResume(); } catch(_) {}
-        } else {
-            // Pause
-            btn.classList.add('active');
-            btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Play';
-            try { if (typeof ttsPause === 'function') ttsPause(); } catch(_) {}
-        }
+        try {
+            const isActive    = (typeof TTS_STATE !== 'undefined') && !!TTS_STATE.activeKey;
+            const isPausedView = btn.classList.contains('active'); // button shows "Play" = user paused
+            if (!isActive && !isPausedView) {
+                // TTS was never started — do nothing (avoids spurious ttsResume calls)
+                return;
+            }
+            if (isPausedView) {
+                // Resume from pause
+                btn.classList.remove('active');
+                btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause';
+                if (typeof ttsResume === 'function') ttsResume();
+            } else {
+                // Pause active TTS
+                btn.classList.add('active');
+                btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Play';
+                if (typeof ttsPause === 'function') ttsPause();
+            }
+        } catch(_) {}
     }
 
     // Autoplay button — syncs with #autoplayToggle checkbox inside volumePanel
@@ -1141,7 +1220,7 @@
         const bookSel   = document.getElementById('bookSelect');
         const populated = document.getElementById('library-populated');
         const empty     = document.getElementById('library-empty');
-        const table     = document.getElementById('library-table');
+        const table     = document.getElementById('library-rows');
         if (!populated || !empty || !table) return;
 
         // Collect all books (skip the blank placeholder option)
