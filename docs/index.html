@@ -142,11 +142,12 @@
         .sidebar-btn:hover { background: #f1f5f9; color: var(--jubly-purple); }
         .sidebar-btn.active { color: var(--jubly-purple); background: #f5f3ff; }
         /* Sidebar offset: !important overrides Tailwind's mx-auto */
-        .with-sidebar { padding-left: 68px !important; }
-        @media (max-width: 640px) { .with-sidebar { padding-left: 0 !important; } #app-sidebar { display: none !important; } }
-        /* Footer pinned to bottom, aligned to sidebar width */
-        #supportFooter { position: fixed; bottom: 0; left: 0; right: 0; z-index: 40; }
-        @media (max-width:640px) { #supportFooter { left:0; } }
+        .with-sidebar { margin-left: 68px !important; }
+        @media (max-width: 640px) { .with-sidebar { margin-left: 0 !important; } #app-sidebar { display: none !important; } }
+        /* Support footer is fixed to viewport bottom, clearing the sidebar */
+        #supportFooter { position: fixed; bottom: 0; left: 68px; right: 0; z-index: 40; }
+        @media (max-width: 640px) { #supportFooter { left: 0; } }
+        #dashboard, #profile-page { padding-bottom: calc(var(--support-footer-height) + 24px); }
         /* ── Explorer theme swatch ── */
         .explorer-locked { position: relative; }
         .explorer-locked::after { content: 'Pro+'; position: absolute; top: -4px; right: -4px; background: var(--jubly-purple); color: white; font-size: 0.5rem; font-weight: 800; padding: 1px 4px; border-radius: 999px; letter-spacing: 0.04em; }
@@ -233,10 +234,6 @@
             transition: background-color 220ms ease;
         }
         /* Only these pages need padding so they never slide behind footer */
-        #dashboard,
-        #profile-page {
-            padding-bottom: calc(var(--support-footer-height) + 24px);
-        }
     </style>
 </head>
 <body class="bg-white">
