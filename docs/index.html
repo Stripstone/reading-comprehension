@@ -572,6 +572,50 @@
     </div>
 </div>
 
+<!--
+    Hidden app controls — wired by app JS, not directly visible in shell UI.
+    These must exist in the DOM for the app to function correctly.
+-->
+<div id="app-hidden-controls" style="display:none; visibility:hidden; position:absolute; left:-9999px;" aria-hidden="true">
+    <select id="importSource"><option value="book" selected>Book</option><option value="text">Text</option></select>
+    <select id="tierSelect">
+        <option value="free" selected>Basic</option>
+        <option value="paid">Pro</option>
+        <option value="premium">Premium</option>
+    </select>
+    <div id="thesisRow"><textarea id="thesisInput" placeholder="Enter your research thesis…"></textarea></div>
+    <div id="pageControls">
+        <select id="pageStart"><option value="">Loading…</option></select>
+        <select id="pageEnd"><option value="">Loading…</option></select>
+    </div>
+    <div id="textControls"><textarea id="bulkInput" placeholder="Paste text here…"></textarea></div>
+    <div class="goal-time-row">
+        <input type="number" id="goalTimeInput" min="5">
+        <input type="number" id="goalCharInput" min="10">
+        <div class="difficulty-toggle">
+            <button id="difficultyEasy" type="button" class="difficulty-btn" aria-pressed="false">Easy</button>
+            <button id="difficultyMedium" type="button" class="difficulty-btn" aria-pressed="false">Medium</button>
+            <button id="difficultyHard" type="button" class="difficulty-btn" aria-pressed="false">Hard</button>
+        </div>
+    </div>
+    <div class="goal-actions">
+        <button id="loadBookSelection" type="button">Load Pages</button>
+        <button id="appendBookSelection" type="button">Add Pages</button>
+        <button type="button" onclick="if(typeof clearPages==='function')clearPages()">Clear Pages</button>
+    </div>
+    <button id="howItWorksBtn" type="button">How This Works</button>
+    <div class="controls"><button class="submit-btn" id="submitBtn" onclick="if(typeof submitEvaluation==='function')submitEvaluation()" disabled>Submit for Evaluation</button></div>
+    <div class="verdict-section" id="verdictSection" style="display:none;">
+        <div class="tier-name" id="tierName"></div>
+        <div class="score-breakdown">
+            <div class="score-item"><div class="score-label">Completion</div><div class="score-value" id="completionScore">0</div></div>
+            <div class="score-item"><div class="score-label">Depth</div><div class="score-value" id="depthScore">0</div></div>
+            <div class="score-item"><div class="score-label">Clarity</div><div class="score-value" id="clarityScore">0</div></div>
+        </div>
+        <div class="verdict-text" id="verdictText"></div>
+    </div>
+</div>
+
 <nav class="bg-white border-b border-slate-200 sticky top-0 z-50 px-6 py-3">
     <div class="max-w-5xl mx-auto flex justify-between items-center">
         <div class="flex items-center gap-8">
@@ -1194,6 +1238,12 @@
         pill.textContent = map[sel.value] || 'Basic';
     }
 
+    function getCurrentTier() {
+        const sel = document.getElementById('tierSelect');
+        if (sel && sel.value) return sel.value;
+        return (typeof appTier !== 'undefined' && appTier) ? appTier : 'free';
+    }
+
     // ── Theme ────────────────────────────────────────────────────
     function setTheme(theme, btn) {
         document.body.classList.remove('theme-green', 'theme-purple', 'theme-explorer');
@@ -1204,7 +1254,7 @@
 
     // Explorer swatch: unlock for paid/premium, gate for free
     function handleExplorerSwatch() {
-        const tier = (typeof appTier !== 'undefined') ? appTier : 'free';
+        const tier = getCurrentTier();
         if (tier === 'free') {
             openModal('pricing-modal');
         } else {
@@ -1214,7 +1264,7 @@
 
     function updateExplorerSwatchState() {
         const btn  = document.getElementById('explorer-swatch-btn');
-        const tier = (typeof appTier !== 'undefined') ? appTier : 'free';
+        const tier = getCurrentTier();
         if (!btn) return;
         if (tier === 'free') {
             btn.classList.add('explorer-locked');
@@ -1298,6 +1348,38 @@
         // Sync tier pill and explorer swatch once app has loaded
         setTimeout(() => { updateTierPill(); updateExplorerSwatchState(); }, 500);
         patchRefreshHook();
+
+        const bookSel = document.getElementById('bookSelect');
+        const chSel   = document.getElementById('chapterSelect');
+        const loadBtn = document.getElementById('loadBookSelection');
+        const pageStart = document.getElementById('pageStart');
+        const pageEnd   = document.getElementById('pageEnd');
+        if (bookSel && chSel && loadBtn && pageStart && pageEnd) {
+            const waitForPages = (timeout = 2500) => new Promise(resolve => {
+                const started = Date.now();
+                (function poll() {
+                    if (pageStart.options.length > 0 && pageEnd.options.length > 0 && pageStart.value !== '' && pageEnd.value !== '') return resolve(true);
+                    if (Date.now() - started > timeout) return resolve(false);
+                    setTimeout(poll, 50);
+                })();
+            });
+            bookSel.addEventListener('change', async () => {
+                if (document.getElementById('reading-mode')?.classList.contains('hidden-section')) return;
+                const ready = await waitForPages();
+                if (ready) {
+                    loadBtn.click();
+                    setTimeout(() => { try { if (typeof window.__jublyAfterRender === 'function') window.__jublyAfterRender(); } catch(_) {} }, 120);
+                }
+            });
+            chSel.addEventListener('change', async () => {
+                if (document.getElementById('reading-mode')?.classList.contains('hidden-section')) return;
+                const ready = await waitForPages();
+                if (ready) {
+                    loadBtn.click();
+                    setTimeout(() => { try { if (typeof window.__jublyAfterRender === 'function') window.__jublyAfterRender(); } catch(_) {} }, 120);
+                }
+            });
+        }
     });
 
     // ── Library table — populated by __jublyLibraryRefresh hook called from library.js ──
@@ -1320,7 +1402,7 @@
             const pages   = (String(b.markdown||'').match(/^\s*##\s+/gm)||[]).length;
             const date    = new Date(b.createdAt||Date.now()).toLocaleDateString();
             const estMins = Math.max(1, Math.round(pages * 1.5));
-            const id      = String(b.id).replace(/'/g,"\\'");
+            const id      = ('local:' + String(b.id)).replace(/'/g,"\\'");
             const title   = escHtml(b.title||'Untitled');
             return `<div onclick="openPreview('${id}','${title.replace(/'/g,"\\'")}')" class="px-6 py-4 flex items-center hover:bg-slate-50 cursor-pointer transition-colors border-b border-slate-100">
                 <div class="flex-grow flex items-center gap-3"><div class="w-8 h-8 rounded flex items-center justify-center text-lg bg-accent-soft text-accent flex-shrink-0">📄</div><div><p class="font-semibold text-slate-800 text-sm">${title}</p><p class="text-xs text-slate-400">Added ${date}</p></div></div>
@@ -1384,9 +1466,22 @@
         const signal = document.getElementById('session-complete');
         if (signal) signal.classList.add('hidden-section');
         showSection('reading-mode');
-        if (_previewBookId && typeof window.__jublyStartReading === 'function') {
-            window.__jublyStartReading(_previewBookId);
-        }
+        if (!_previewBookId) return;
+
+        const sourceSel = document.getElementById('importSource');
+        const bookSel   = document.getElementById('bookSelect');
+        if (!sourceSel || !bookSel) return;
+
+        sourceSel.value = 'book';
+        sourceSel.dispatchEvent(new Event('change', { bubbles: true }));
+
+        const optionValues = Array.from(bookSel.options || []).map(opt => String(opt.value || ''));
+        const desiredBookId = optionValues.includes(String(_previewBookId))
+            ? String(_previewBookId)
+            : (optionValues.includes(`local:${_previewBookId}`) ? `local:${_previewBookId}` : String(_previewBookId));
+
+        bookSel.value = desiredBookId;
+        bookSel.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
     // Empty state drag/drop
