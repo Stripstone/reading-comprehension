@@ -206,33 +206,9 @@
       setAdvancedMode(false);
     }
 
-    function resetImporterState() {
-      _file = null;
-      _zip = null;
-      _needsConversion = false;
-      _inputFormat = '';
-      _tocItems = [];
-      _activeId = null;
-      _spineHrefs = [];
-      _bookTitle = '';
-      if (fileInput) fileInput.value = '';
-      if (filterInput) filterInput.value = '';
-      if (previewTitle) previewTitle.textContent = 'Imported book';
-      if (previewBody) previewBody.textContent = 'Select a section on the left to preview it.';
-      if (tocList) tocList.innerHTML = '';
-      updateSelectionMeta();
-      setStatus('');
-      setProgress(0, '', '');
-      showStage('upload');
-      setAdvancedMode(false);
-      if (scanBtn) scanBtn.disabled = true;
-      if (doneBtn) doneBtn.style.display = 'none';
-    }
-
-    function hideModal({ reset = true } = {}) {
+    function hideModal() {
       modal.style.display = 'none';
       modal.setAttribute('aria-hidden', 'true');
-      if (reset) resetImporterState();
     }
 
     function showStage(which) {
@@ -691,7 +667,6 @@
     }
 
     // Open/close
-    window.resetImporterState = resetImporterState;
     openBtn.addEventListener('click', showModal);
     closeBtn?.addEventListener('click', hideModal);
     modal.addEventListener('click', (e) => { if (e.target === modal) hideModal(); });

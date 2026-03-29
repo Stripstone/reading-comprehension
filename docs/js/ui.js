@@ -711,9 +711,25 @@ try {
   if (loadPersistedSessionIfAny()) {
     render();
     updateDiagnostics();
-    try { if (typeof restoreReadingPosition === 'function') restoreReadingPosition(); } catch (_) {}
     // Ensure we can rehydrate per-page saved work even if the session snapshot lacked hashes.
     ensurePageHashesAndRehydrate();
+
+    const restoreLastReadPage = () => {
+      try {
+        if (!Number.isFinite(restoredLastReadPageIndex) || restoredLastReadPageIndex < 0) return;
+        const pageEls = document.querySelectorAll('.page');
+        const pageEl = pageEls[restoredLastReadPageIndex];
+        if (!pageEl) return;
+        lastFocusedPageIndex = restoredLastReadPageIndex;
+        pageEl.scrollIntoView({ behavior: 'auto', block: 'start' });
+      } catch (_) {}
+    };
+
+    if (document.readyState === 'complete') {
+      setTimeout(restoreLastReadPage, 300);
+    } else {
+      window.addEventListener('load', () => setTimeout(restoreLastReadPage, 300), { once: true });
+    }
   }
 } catch (_) {}
 // ===================================
