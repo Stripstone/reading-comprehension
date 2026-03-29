@@ -133,7 +133,7 @@ function persistSessionNow() {
       lastReadPageIndex,
       goalTime,
       goalCharCount,
-      appMode,
+      appMode
     };
     localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(payload));
     localStorage.setItem(STORAGE_KEY_META, JSON.stringify({ savedAt: payload.savedAt }));

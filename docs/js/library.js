@@ -1859,6 +1859,9 @@
     
     applyModeVisibility();
     if (typeof applyTierAccess === 'function') applyTierAccess();
+    try { if (typeof window.__jublyAfterRender === 'function') window.__jublyAfterRender(); } catch (_) {}
+    try { if (typeof window.__jublyOnReadingPagesRendered === 'function') window.__jublyOnReadingPagesRendered(); } catch (_) {}
+    try { if (typeof updateProgressBar === 'function') updateProgressBar(); } catch (_) {}
   }
 
   function applyModeVisibility() {

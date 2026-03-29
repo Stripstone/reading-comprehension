@@ -715,6 +715,7 @@ try {
     ensurePageHashesAndRehydrate();
 
     const restoreLastReadPage = () => {
+      try { if (typeof window.__jublyAfterRender === 'function') window.__jublyAfterRender(); } catch (_) {}
       try {
         if (!Number.isFinite(restoredLastReadPageIndex) || restoredLastReadPageIndex < 0) return;
         const pageEls = document.querySelectorAll('.page');
@@ -722,6 +723,7 @@ try {
         if (!pageEl) return;
         lastFocusedPageIndex = restoredLastReadPageIndex;
         pageEl.scrollIntoView({ behavior: 'auto', block: 'start' });
+        try { if (typeof updateProgressBar === 'function') updateProgressBar(); } catch (_) {}
       } catch (_) {}
     };
 

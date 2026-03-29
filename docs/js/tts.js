@@ -23,6 +23,18 @@ const TTS_STATE = {
   highlightSpans: null,
   highlightMarks: null,
   highlightEnds: null,
+  playbackRate: (() => {
+    try {
+      const saved = parseFloat(localStorage.getItem('rc_tts_speed') || '1');
+      return Number.isFinite(saved) && saved > 0 ? saved : 1;
+    } catch (_) {
+      return 1;
+    }
+  })(),
+  currentQueueKey: null,
+  currentQueueParts: null,
+  currentSource: null,
+  pendingBrowserReplayOnResume: false,
 };
 
 // Safari/iOS requires a user gesture before audio.play() is allowed.
@@ -31,6 +43,7 @@ let TTS_AUDIO_UNLOCKED = false;
 // Persistent audio element (Safari requires reuse for autoplay chains)
 const TTS_AUDIO_ELEMENT = new Audio();
 TTS_AUDIO_ELEMENT.preload = "auto";
+try { TTS_AUDIO_ELEMENT.playbackRate = ttsGetPlaybackRate(); } catch (_) {}
 
 // Tiny silent MP3 used to prime TTS_AUDIO_ELEMENT within a user gesture.
 const TTS_SILENT_SRC = "data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAA";
@@ -87,6 +100,44 @@ function ttsKeepWarmForAutoplay() {
     TTS_AUDIO_ELEMENT.volume = 0;
     TTS_AUDIO_ELEMENT.play().catch(() => {});
   } catch (_) {}
+}
+
+
+function ttsGetPlaybackRate() {
+  const rate = Number(TTS_STATE.playbackRate);
+  return Number.isFinite(rate) && rate > 0 ? rate : 1;
+}
+
+function ttsApplyPlaybackRate(rate) {
+  const parsed = Number(rate);
+  const nextRate = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  TTS_STATE.playbackRate = nextRate;
+  try { localStorage.setItem('rc_tts_speed', String(nextRate)); } catch (_) {}
+  try { TTS_AUDIO_ELEMENT.playbackRate = nextRate; } catch (_) {}
+  try { if (TTS_STATE.audio) TTS_STATE.audio.playbackRate = nextRate; } catch (_) {}
+  return nextRate;
+}
+
+function ttsReplayActiveAtCurrentRate() {
+  try {
+    const key = TTS_STATE.activeKey;
+    const parts = Array.isArray(TTS_STATE.currentQueueParts) ? TTS_STATE.currentQueueParts.slice() : null;
+    if (!key || !parts || !parts.length) return false;
+    const browserSpeaking = browserTtsSupported() && window.speechSynthesis && (window.speechSynthesis.speaking || window.speechSynthesis.pending);
+    const browserPaused = browserTtsSupported() && window.speechSynthesis && window.speechSynthesis.paused;
+    if (!browserSpeaking && !browserPaused) return false;
+    if (browserPaused) {
+      TTS_STATE.pendingBrowserReplayOnResume = true;
+      return true;
+    }
+    ttsStop();
+    setTimeout(() => {
+      try { ttsSpeakQueue(key, parts); } catch (_) {}
+    }, 20);
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 function ttsSetButtonActive(key, active) {
@@ -541,7 +592,12 @@ function ttsStop() {
   ttsClearSentenceHighlight();
   TTS_STATE.activeKey = null;
   TTS_STATE.activeBrowserVoiceName = null;
+  TTS_STATE.currentQueueKey = null;
+  TTS_STATE.currentQueueParts = null;
+  TTS_STATE.currentSource = null;
+  TTS_STATE.pendingBrowserReplayOnResume = false;
 }
+
 
 function ttsPause() {
   if (!TTS_STATE.activeKey) return;
@@ -562,6 +618,18 @@ function ttsPause() {
 
 function ttsResume() {
   if (!TTS_STATE.activeKey) return;
+  if (TTS_STATE.pendingBrowserReplayOnResume) {
+    const key = TTS_STATE.currentQueueKey || TTS_STATE.activeKey;
+    const parts = Array.isArray(TTS_STATE.currentQueueParts) ? TTS_STATE.currentQueueParts.slice() : null;
+    TTS_STATE.pendingBrowserReplayOnResume = false;
+    if (key && parts && parts.length) {
+      ttsStop();
+      setTimeout(() => {
+        try { ttsSpeakQueue(key, parts); } catch (_) {}
+      }, 20);
+      return;
+    }
+  }
   // Cloud TTS: resume HTML Audio element and restart highlight loop
   if (TTS_STATE.audio && TTS_STATE.audio.paused) {
     try {
@@ -666,6 +734,10 @@ function browserSpeakQueue(key, parts) {
   }
 
   TTS_STATE.activeKey = key;
+  TTS_STATE.currentQueueKey = key;
+  TTS_STATE.currentQueueParts = queue.slice();
+  TTS_STATE.currentSource = 'browser';
+  TTS_STATE.pendingBrowserReplayOnResume = false;
   ttsSetButtonActive(key, true);
   ttsSetHintButton(key, true);
   let idx = 0;
@@ -764,7 +836,7 @@ function browserSpeakQueue(key, parts) {
     }
     const utter = new SpeechSynthesisUtterance(queue[idx]);
     utter.lang = "en-US";
-    utter.rate = 1;
+    utter.rate = ttsGetPlaybackRate();
     utter.pitch = 1;
     try { utter.volume = Math.max(0, Math.min(1, Number(TTS_STATE.volume ?? 1))); } catch (_) {}
     if (voice) utter.voice = voice;
@@ -836,6 +908,10 @@ async function ttsSpeakQueue(key, parts) {
 
   const queue = (parts || []).map(t => String(t || "").trim()).filter(Boolean);
   if (!queue.length) return;
+  TTS_STATE.currentQueueKey = key;
+  TTS_STATE.currentQueueParts = queue.slice();
+  TTS_STATE.currentSource = 'cloud';
+  TTS_STATE.pendingBrowserReplayOnResume = false;
 
   // Toggle behavior:
   // - Clicking the same action stops (even if we're still fetching).
@@ -883,6 +959,7 @@ async function ttsSpeakQueue(key, parts) {
         TTS_STATE.audio = audio;
         // Polly audio volume (0..1). Persisted via the Voices slider.
         try { audio.volume = Math.max(0, Math.min(1, Number(TTS_STATE.volume ?? 1))); } catch (_) {}
+        try { audio.playbackRate = ttsGetPlaybackRate(); } catch (_) {}
         // Start sentence highlight loop if prepared for this action.
         ttsStartHighlightLoop(audio);
         audio.onended = () => { ttsClearSentenceHighlight(); resolve(); };
