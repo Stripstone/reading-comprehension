@@ -77,7 +77,6 @@
 // Also persist the last-opened session so refresh restores the current view.
 const STORAGE_KEY_SESSION = "rc_session_v2";
 const STORAGE_KEY_META = "rc_session_meta_v2"; // small future-proof hook
-let restoredLastReadPageIndex = -1;
 
 function getConsolidationCacheKey(pageHash) {
   return `rc_consolidation_${pageHash}`;
@@ -119,21 +118,12 @@ function persistSessionNow() {
     }
 
     // 2) Persist a lightweight snapshot of the last-opened session for refresh restore.
-    const inferredIndex = inferCurrentPageIndex();
-    const lastReadPageIndex = Number.isFinite(inferredIndex) && inferredIndex >= 0
-      ? inferredIndex
-      : (Number.isFinite(lastFocusedPageIndex) && lastFocusedPageIndex >= 0 ? lastFocusedPageIndex : 0);
-
     const payload = {
       v: 2,
       savedAt: Date.now(),
       pages: pages.slice(),
       pageHashes: pageData.map(p => p?.pageHash || ""),
-      consolidations: pageData.map(p => p?.consolidation || ""),
-      lastReadPageIndex,
-      goalTime,
-      goalCharCount,
-      appMode
+      consolidations: pageData.map(p => p?.consolidation || "")
     };
     localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(payload));
     localStorage.setItem(STORAGE_KEY_META, JSON.stringify({ savedAt: payload.savedAt }));
@@ -222,20 +212,7 @@ function loadPersistedSessionIfAny() {
       pageData = pageData.slice(0, n);
     }
 
-    const parsedLastReadPageIndex = Number(parsed?.lastReadPageIndex);
-    restoredLastReadPageIndex = Number.isFinite(parsedLastReadPageIndex)
-      ? Math.max(0, Math.min(parsedLastReadPageIndex, Math.max(0, pages.length - 1)))
-      : -1;
-    lastFocusedPageIndex = restoredLastReadPageIndex;
-
-    const parsedGoalTime = parseInt(parsed?.goalTime, 10);
-    if (Number.isFinite(parsedGoalTime) && parsedGoalTime > 0) goalTime = parsedGoalTime;
-
-    const parsedGoalCharCount = parseInt(parsed?.goalCharCount, 10);
-    if (Number.isFinite(parsedGoalCharCount) && parsedGoalCharCount > 0) goalCharCount = parsedGoalCharCount;
-
-    if (typeof parsed?.appMode === 'string' && parsed.appMode) appMode = parsed.appMode;
-
+    currentPageIndex = Math.min(currentPageIndex, Math.max(0, pages.length - 1));
     return pages.length > 0;
   } catch (e) {
     return false;
