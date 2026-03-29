@@ -2162,97 +2162,12 @@ body {
   transition: background-color 220ms ease;
 }
 
+/* ========================================
+   Shell structure/styles extracted from docs/index.html
+   Keep shell markup intact while moving reusable structure out of the monolith.
+   ======================================== */
 
-/* ===== Extracted from docs/index.html shell styles to thin the shell without changing behavior ===== */
-        /*
-         * ── COLOR SYSTEM ────────────────────────────────────────────────────────
-         *
-         * Two parallel sets of CSS variables are intentional:
-         *
-         *   --jubly-*      Brand constants. Never change. Used for permanent UI
-         *                  elements (logo, buttons, borders, focus rings).
-         *
-         *   --theme-*      User-switchable. Change when the user picks a theme.
-         *                  Used for reading mode accents, active states, highlights.
-         *                  Default values match --jubly-purple so both systems look
-         *                  identical until the user selects a different theme.
-         *
-         *   --jubly-brand-blue / --jubly-brand-yellow
-         *                  Decorative illustration colors (landing hero only).
-         *                  Not theme-switchable. Do not use elsewhere.
-         *
-         * ── MERGE NOTES ─────────────────────────────────────────────────────────
-         * Search "MERGE:" throughout this file for every app handoff point.
-         * ────────────────────────────────────────────────────────────────────────
-         */
-        :root {
-            /* Brand constants */
-            --jubly-purple:      #6344F5;
-            --jubly-purple-deep: #4b32bc;
-            --jubly-light:       #F8F7FF;
-            --jubly-border:      #E2E8F0;
-            --text-dark:         #1E293B;
-            /* Decorative illustration colors — landing hero only */
-            --jubly-brand-blue:   #1cb0f6;
-            --jubly-brand-yellow: #ffc800;
-            /* Theme accent — default matches brand purple, overridden per theme */
-            --theme-accent:      #6344F5;
-            --theme-accent-deep: #4b32bc;
-            --theme-accent-soft: #ede9fe;
-            /* Support footer height — used by app's music button position logic */
-            --support-footer-height: 52px;
-            /* App CSS variable aliases — bridge between app's var names and shell's */
-            --border:       #E2E8F0;
-            --secondary-bg: #ffffff;
-            --text-primary: #1E293B;
-            --accent:       #6344F5;
-            /* Reading-mode variable bridge — lets themes restyle page cards and TTS
-               highlights without touching engine JS. Default matches jubly purple. */
-            --rm-accent:      var(--jubly-purple);
-            --rm-accent-soft: #ede9fe;
-            --rm-card-bg:     #ffffff;
-            --rm-page-bg:     #f5f3ff;
-            --rm-text:        #1e293b;
-            --rm-text-2:      #64748b;
-            --rm-border:      #e2e8f0;
-            --rm-shadow:      0 4px 16px rgba(99,68,245,0.08);
-            --rm-btn-bg:      rgba(99,68,245,0.07);
-            --rm-btn-hover:   rgba(99,68,245,0.14);
-            --sand-drift-duration: 4s;
-        }
-        /* Theme overrides — applied as body class by setTheme() */
-        body.theme-green  { --theme-accent: #22c55e; --theme-accent-deep: #16a34a; --theme-accent-soft: #dcfce7; --rm-accent:#22c55e; --rm-accent-soft:#dcfce7; --rm-btn-bg:rgba(34,197,94,0.08); --rm-btn-hover:rgba(34,197,94,0.15); --rm-page-bg:#f0fdf4; --rm-shadow:0 4px 16px rgba(34,197,94,0.10); }
-        body.theme-purple { --theme-accent: #a78bfa; --theme-accent-deep: #7c3aed; --theme-accent-soft: #ede9fe; --rm-accent:#a78bfa; --rm-accent-soft:#ede9fe; --rm-btn-bg:rgba(167,139,250,0.08); --rm-btn-hover:rgba(167,139,250,0.15); --rm-page-bg:#faf5ff; --rm-shadow:0 4px 16px rgba(167,139,250,0.10); }
-        /*
-         * Explorer theme — Pro/Premium only. Activates parchment aesthetic + ember particles.
-         * Full texture/typography overhaul ships separately via theme.css / components.css.
-         * This block covers the color system bridge so app features respond correctly.
-         */
-        body.theme-explorer {
-            --theme-accent:      #c17d4a;
-            --theme-accent-deep: #8B2500;
-            --theme-accent-soft: #f5ede4;
-            --accent:            #c17d4a;
-            --rm-accent:      #c17d4a;
-            --rm-accent-soft: #f5ede0;
-            --rm-card-bg:     #f5f1e8;
-            --rm-page-bg:     #ebe7de;
-            --rm-text:        #2b2520;
-            --rm-text-2:      #6b5d54;
-            --rm-border:      #e8dfd4;
-            --rm-shadow:      0 4px 16px rgba(139,111,87,0.12);
-            --rm-btn-bg:      rgba(193,125,74,0.10);
-            --rm-btn-hover:   rgba(193,125,74,0.18);
-        }
-        body.theme-explorer #reading-mode {
-            background:      #d8d6d1;
-            --border:        #e8dfd4;
-            --secondary-bg:  #dfddd8;
-            --text-primary:  #2b2520;
-        }
-        body.theme-explorer #fireCanvas   { display: block !important; }
-
-        /* Utility classes for consistent brand/theme color usage */
+/* Utility classes for consistent brand/theme color usage */
         .text-brand      { color: var(--jubly-purple); }
         .bg-brand        { background-color: var(--jubly-purple); }
         .text-accent     { color: var(--theme-accent); }
