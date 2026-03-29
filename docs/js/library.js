@@ -1454,9 +1454,61 @@
     window.__rcRefreshBookSelect = async () => {
       try { await populateBookSelectWithLocal(); } catch (_) {}
     };
+
+    window.startReadingFromPreview = async function startReadingFromPreview(bookId) {
+      const desired = String(bookId || '').trim();
+      if (!desired) return false;
+      const optionValues = Array.from(bookSelect.options || []).map(opt => String(opt.value || ''));
+      const resolvedBookId = optionValues.includes(desired)
+        ? desired
+        : (optionValues.includes(`local:${desired}`) ? `local:${desired}` : desired);
+      if (!resolvedBookId || !optionValues.includes(resolvedBookId)) return false;
+
+      sourceSel.value = 'book';
+      setSourceUI();
+      bookSelect.value = resolvedBookId;
+      await loadBook(resolvedBookId);
+
+      if (chapterSelect && hasExplicitChapters && chapterSelect.value === '' && chapterSelect.options.length > 1) {
+        chapterSelect.value = '0';
+        currentChapterIndex = 0;
+        const nextPages = parsePagesWithTitles(getCurrentChapterRaw());
+        populatePagesSelect(nextPages);
+      }
+
+      if (pageStart && pageStart.options.length > 1 && !pageStart.value) pageStart.value = '0';
+      if (pageEnd && pageEnd.options.length > 1 && !pageEnd.value) pageEnd.value = String(Math.max(0, pageEnd.options.length - 2));
+
+      loadBtn.click();
+      return true;
+    };
   }
 
+  function scrollToLastReadPage(options = {}) {
+    const behavior = options.behavior || 'auto';
+    const allowHidden = !!options.allowHidden;
+    const readingMode = document.getElementById('reading-mode');
+    if (!allowHidden && readingMode && readingMode.classList.contains('hidden-section')) return false;
+    if (!Number.isFinite(lastFocusedPageIndex) || lastFocusedPageIndex < 0) return false;
+    const pageEl = document.querySelector(`#pages .page[data-page-index="${lastFocusedPageIndex}"]`);
+    if (!pageEl) return false;
+    try {
+      pageEl.scrollIntoView({ behavior, block: 'start', inline: 'nearest' });
+      pageEl.classList.add('page-active');
+      setTimeout(() => {
+        try { pageEl.classList.remove('page-active'); } catch (_) {}
+      }, 800);
+    } catch (_) {}
+    return true;
+  }
 
+  window.restoreReadingPosition = scrollToLastReadPage;
+  window.exitReadingSession = function exitReadingSession() {
+    try { if (typeof ttsStop === 'function') ttsStop(); } catch (_) {}
+    try { if (typeof ttsAutoplayCancelCountdown === 'function') ttsAutoplayCancelCountdown(); } catch (_) {}
+    try { if (typeof window.stopReadingAudioSession === 'function') window.stopReadingAudioSession(); } catch (_) {}
+    return true;
+  };
 
   async function addPages() {
     const input = document.getElementById("bulkInput").value;

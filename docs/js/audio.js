@@ -121,6 +121,12 @@
   // ===================================
   // 🔊 MUSIC TOGGLE
   // ===================================
+  window.stopReadingAudioSession = function stopReadingAudioSession() {
+    audioEls.forEach((el) => {
+      try { el.pause(); } catch (_) {}
+    });
+  };
+
   window.toggleMusic = async function toggleMusic() {
     window.allSoundsMuted = !window.allSoundsMuted;
 

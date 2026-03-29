@@ -198,17 +198,45 @@
       if (advancedToggleBtn) advancedToggleBtn.textContent = _advancedMode ? 'Contents' : 'Advanced';
     }
 
-    function showModal() {
-      modal.style.display = 'flex';
-      modal.setAttribute('aria-hidden', 'false');
-      // reset view
+    function resetImporterState() {
+      _file = null;
+      _zip = null;
+      _needsConversion = false;
+      _inputFormat = '';
+      _tocItems = [];
+      _activeId = null;
+      _spineHrefs = [];
+      _bookTitle = '';
+      _advancedMode = false;
+
+      if (fileInput) fileInput.value = '';
+      if (dropzone) dropzone.classList.remove('is-dragover');
+      if (scanBtn) scanBtn.disabled = true;
+      setStatus('');
       showStage('upload');
       setAdvancedMode(false);
+      if (selectionMeta) selectionMeta.textContent = 'Selected: 0/0';
+      if (filterInput) filterInput.value = '';
+      if (tocList) tocList.innerHTML = '';
+      if (previewTitle) previewTitle.textContent = 'Select a section';
+      if (previewBody) previewBody.textContent = "You'll see a short preview here.";
+      if (progFill) progFill.style.width = '0%';
+      if (progMeta) progMeta.textContent = 'Preparing';
+      if (progDetail) progDetail.textContent = '0 pages created';
+      if (doneBtn) doneBtn.style.display = 'none';
+      if (doImportBtn) doImportBtn.disabled = true;
     }
 
-    function hideModal() {
+    function showModal() {
+      resetImporterState();
+      modal.style.display = 'flex';
+      modal.setAttribute('aria-hidden', 'false');
+    }
+
+    function hideModal({ reset = true } = {}) {
       modal.style.display = 'none';
       modal.setAttribute('aria-hidden', 'true');
+      if (reset) resetImporterState();
     }
 
     function showStage(which) {
@@ -711,7 +739,9 @@
     selectMainBtn?.addEventListener('click', selectMain);
     advancedToggleBtn?.addEventListener('click', () => setAdvancedMode(!_advancedMode));
     doImportBtn?.addEventListener('click', doImportSelected);
-    doneBtn?.addEventListener('click', hideModal);
+    doneBtn?.addEventListener('click', () => hideModal({ reset: true }));
+
+    window.resetImporterState = resetImporterState;
   })();
 
   // ===================================

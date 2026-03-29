@@ -195,8 +195,9 @@
         .sidebar-btn.active { color: var(--jubly-purple); background: #f5f3ff; }
         /* Sidebar offset: !important overrides Tailwind's mx-auto */
         /* Sidebar offset — pad the body left so content stays centered within remaining space */
-        .with-sidebar { padding-left: 68px !important; }
-        @media (max-width: 640px) { .with-sidebar { padding-left: 0 !important; } #app-sidebar { display: none !important; } }
+        .with-sidebar { padding-left: calc(68px + 1.5rem) !important; padding-right: 1.5rem !important; box-sizing: border-box; }
+        @media (max-width: 1024px) { .with-sidebar { padding-left: calc(68px + 1rem) !important; padding-right: 1rem !important; } }
+        @media (max-width: 640px) { .with-sidebar { padding-left: 1rem !important; padding-right: 1rem !important; } #app-sidebar { display: none !important; } }
         /* Support footer is fixed to viewport bottom, clearing the sidebar */
         #supportFooter { position: fixed; bottom: 0; right: 0; z-index: 40; }
         @media (max-width: 640px) { #supportFooter { left: 0; } }
@@ -318,6 +319,72 @@
             .page-progress { font-size: 0.66rem; }
         }
 
+
+        @media (max-width: 768px) {
+            .reading-top-bar {
+                align-items: flex-start;
+                flex-wrap: wrap;
+                gap: 6px;
+                padding: 8px 10px;
+            }
+            .reading-top-left {
+                order: 2;
+                width: 100%;
+                justify-content: flex-start;
+                padding-right: 0;
+            }
+            .reading-top-exit {
+                order: 1;
+                margin-left: auto;
+            }
+            .reading-bottom-bar {
+                padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+            }
+            .reading-bottom-left {
+                width: 100%;
+                justify-content: flex-start;
+                padding-right: 0;
+                gap: 6px;
+            }
+            #reading-mode #pages { padding: 0 0.875rem; }
+            #reading-mode .page { padding: 16px 14px; border-radius: 10px; }
+            #reading-mode .page-text { max-height: 38vh; padding: 14px; font-size: 0.95rem; }
+            #reading-mode .anchors-row,
+            #reading-mode .page-actions,
+            #reading-mode .anchors-nav,
+            #reading-mode .info-row {
+                gap: 10px;
+            }
+            #reading-mode .anchors-row,
+            #reading-mode .page-actions,
+            #reading-mode .anchors-nav {
+                justify-content: stretch;
+            }
+            #reading-mode .anchors-ui,
+            #reading-mode .counter-section,
+            #reading-mode .evaluation-section,
+            #reading-mode .action-buttons {
+                width: 100%;
+            }
+            #reading-mode .action-buttons {
+                align-items: stretch;
+            }
+            #reading-mode .page-actions .top-btn,
+            #reading-mode .anchors-nav .top-btn,
+            #reading-mode .action-buttons .ai-btn {
+                width: 100%;
+                justify-content: center;
+                text-align: center;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .reading-select { font-size: 0.8rem; padding: 6px 2px; }
+            .pb-icon-btn { padding: 8px 10px; font-size: 0.75rem; }
+            .page-progress { font-size: 0.68rem; }
+            #reading-mode .page-text { max-height: 40vh; line-height: 1.7; }
+        }
+
         /* TTS word/sentence highlights */
         #reading-mode .speaking-word { background-color:var(--rm-accent-soft); border-bottom:2px solid var(--rm-accent); border-radius:2px; }
         #reading-mode .page-text .anchor { color:inherit; background-color:rgba(255,241,118,var(--anchor-alpha,0)); border-radius:3px; padding:0 2px; transition:background-color 0.35s; }
@@ -387,3 +454,4 @@
             transition: background-color 220ms ease;
         }
         /* Only these pages need padding so they never slide behind footer */
+    

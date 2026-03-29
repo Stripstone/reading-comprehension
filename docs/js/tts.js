@@ -15,6 +15,7 @@ const TTS_STATE = {
   voiceVariant: 'female',
   // Name of the browser voice currently in use (set by browserSpeakQueue, cleared on stop)
   activeBrowserVoiceName: null,
+  playbackRate: 1,
   // sentence highlight state (page read)
   highlightPageKey: null,
   highlightPageEl: null,
@@ -31,9 +32,95 @@ let TTS_AUDIO_UNLOCKED = false;
 // Persistent audio element (Safari requires reuse for autoplay chains)
 const TTS_AUDIO_ELEMENT = new Audio();
 TTS_AUDIO_ELEMENT.preload = "auto";
+setPlaybackRate(ttsLoadPlaybackRate());
 
 // Tiny silent MP3 used to prime TTS_AUDIO_ELEMENT within a user gesture.
 const TTS_SILENT_SRC = "data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAA";
+
+
+function ttsNormalizePlaybackRate(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 1;
+  return Math.max(0.5, Math.min(2, n));
+}
+
+function ttsLoadPlaybackRate() {
+  try {
+    const saved = localStorage.getItem('rc_tts_speed');
+    if (saved == null || saved === '') return 1;
+    return ttsNormalizePlaybackRate(saved);
+  } catch (_) {
+    return 1;
+  }
+}
+
+function setPlaybackRate(value) {
+  const rate = ttsNormalizePlaybackRate(value);
+  TTS_STATE.playbackRate = rate;
+  try { localStorage.setItem('rc_tts_speed', String(rate)); } catch (_) {}
+  try {
+    TTS_AUDIO_ELEMENT.defaultPlaybackRate = rate;
+    TTS_AUDIO_ELEMENT.playbackRate = rate;
+  } catch (_) {}
+  return rate;
+}
+
+function getPlaybackRate() {
+  if (!Number.isFinite(TTS_STATE.playbackRate) || TTS_STATE.playbackRate <= 0) {
+    TTS_STATE.playbackRate = ttsLoadPlaybackRate();
+  }
+  return ttsNormalizePlaybackRate(TTS_STATE.playbackRate);
+}
+
+function getPlaybackStatus() {
+  let paused = false;
+  try {
+    if (TTS_STATE.audio) {
+      paused = !!TTS_STATE.audio.paused;
+    } else if (browserTtsSupported()) {
+      paused = !!window.speechSynthesis.paused;
+    }
+  } catch (_) {}
+  return {
+    active: !!TTS_STATE.activeKey,
+    paused,
+    key: TTS_STATE.activeKey || null,
+    playbackRate: getPlaybackRate()
+  };
+}
+
+function getAutoplayStatus() {
+  return { enabled: !!AUTOPLAY_STATE.enabled };
+}
+
+function getCountdownStatus() {
+  return {
+    pageIndex: Number(AUTOPLAY_STATE.countdownPageIndex ?? -1),
+    seconds: Number(AUTOPLAY_STATE.countdownSec ?? 0) || 0,
+    active: Number(AUTOPLAY_STATE.countdownPageIndex ?? -1) !== -1 && Number(AUTOPLAY_STATE.countdownSec ?? 0) > 0
+  };
+}
+
+function pauseOrResumeReading() {
+  const status = getPlaybackStatus();
+  if (!status.active) return status;
+  if (status.paused) ttsResume();
+  else ttsPause();
+  return getPlaybackStatus();
+}
+
+function toggleAutoplay(force) {
+  const next = typeof force === 'boolean' ? force : !AUTOPLAY_STATE.enabled;
+  AUTOPLAY_STATE.enabled = !!next;
+  try {
+    const checkbox = document.getElementById('autoplayToggle');
+    if (checkbox) checkbox.checked = AUTOPLAY_STATE.enabled;
+  } catch (_) {}
+  try { localStorage.setItem('rc_autoplay', AUTOPLAY_STATE.enabled ? '1' : '0'); } catch (_) {}
+  if (!AUTOPLAY_STATE.enabled) ttsAutoplayCancelCountdown();
+  return getAutoplayStatus();
+}
+
 
 function ttsUnlockAudio() {
   // Prime TTS_AUDIO_ELEMENT — the actual playback element — synchronously
@@ -565,6 +652,10 @@ function ttsResume() {
   // Cloud TTS: resume HTML Audio element and restart highlight loop
   if (TTS_STATE.audio && TTS_STATE.audio.paused) {
     try {
+      try {
+        TTS_STATE.audio.defaultPlaybackRate = getPlaybackRate();
+        TTS_STATE.audio.playbackRate = getPlaybackRate();
+      } catch (_) {}
       TTS_STATE.audio.play().catch(() => {});
       ttsStartHighlightLoop(TTS_STATE.audio);
     } catch (_) {}
@@ -764,7 +855,7 @@ function browserSpeakQueue(key, parts) {
     }
     const utter = new SpeechSynthesisUtterance(queue[idx]);
     utter.lang = "en-US";
-    utter.rate = 1;
+    utter.rate = getPlaybackRate();
     utter.pitch = 1;
     try { utter.volume = Math.max(0, Math.min(1, Number(TTS_STATE.volume ?? 1))); } catch (_) {}
     if (voice) utter.voice = voice;
@@ -880,6 +971,10 @@ async function ttsSpeakQueue(key, parts) {
         // here from autoplay, loop=true is still set from ttsKeepWarmForAutoplay.
         try { audio.loop = false; audio.pause(); } catch (_) {}
         audio.src = url;
+        try {
+          audio.defaultPlaybackRate = getPlaybackRate();
+          audio.playbackRate = getPlaybackRate();
+        } catch (_) {}
         TTS_STATE.audio = audio;
         // Polly audio volume (0..1). Persisted via the Voices slider.
         try { audio.volume = Math.max(0, Math.min(1, Number(TTS_STATE.volume ?? 1))); } catch (_) {}
@@ -925,6 +1020,15 @@ if (browserTtsSupported()) {
   };
 }
 
+
+
+window.setPlaybackRate = setPlaybackRate;
+window.getPlaybackRate = getPlaybackRate;
+window.getPlaybackStatus = getPlaybackStatus;
+window.getAutoplayStatus = getAutoplayStatus;
+window.getCountdownStatus = getCountdownStatus;
+window.pauseOrResumeReading = pauseOrResumeReading;
+window.toggleAutoplay = toggleAutoplay;
 
 // Best-practice stop conditions:
 // - If the user navigates away or the page is unloaded, stop speaking.

@@ -123,7 +123,14 @@ function persistSessionNow() {
       savedAt: Date.now(),
       pages: pages.slice(),
       pageHashes: pageData.map(p => p?.pageHash || ""),
-      consolidations: pageData.map(p => p?.consolidation || "")
+      consolidations: pageData.map(p => p?.consolidation || ""),
+      lastReadPageIndex: (() => {
+        const inferred = typeof inferCurrentPageIndex === 'function' ? inferCurrentPageIndex() : -1;
+        const idx = inferred >= 0 ? inferred : lastFocusedPageIndex;
+        return Number.isFinite(idx) ? idx : -1;
+      })(),
+      goalTime: Number.isFinite(goalTime) ? goalTime : DEFAULT_TIME_GOAL,
+      goalCharCount: Number.isFinite(goalCharCount) ? goalCharCount : DEFAULT_CHAR_GOAL
     };
     localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(payload));
     localStorage.setItem(STORAGE_KEY_META, JSON.stringify({ savedAt: payload.savedAt }));
@@ -212,7 +219,16 @@ function loadPersistedSessionIfAny() {
       pageData = pageData.slice(0, n);
     }
 
-    currentPageIndex = Math.min(currentPageIndex, Math.max(0, pages.length - 1));
+    const restoredPageIndex = Number(parsed.lastReadPageIndex);
+    lastFocusedPageIndex = Number.isFinite(restoredPageIndex)
+      ? Math.max(0, Math.min(restoredPageIndex, Math.max(0, pages.length - 1)))
+      : -1;
+
+    const restoredGoalTime = Number(parsed.goalTime);
+    if (Number.isFinite(restoredGoalTime) && restoredGoalTime > 0) goalTime = restoredGoalTime;
+    const restoredGoalChars = Number(parsed.goalCharCount);
+    if (Number.isFinite(restoredGoalChars) && restoredGoalChars > 0) goalCharCount = restoredGoalChars;
+
     return pages.length > 0;
   } catch (e) {
     return false;
