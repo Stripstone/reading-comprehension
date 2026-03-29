@@ -1,4 +1,4 @@
-        /*
+/*
          * ── COLOR SYSTEM ────────────────────────────────────────────────────────
          *
          * Two parallel sets of CSS variables are intentional:
@@ -387,4 +387,3 @@
             transition: background-color 220ms ease;
         }
         /* Only these pages need padding so they never slide behind footer */
-    
