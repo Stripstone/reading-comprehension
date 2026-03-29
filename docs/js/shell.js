@@ -1,9 +1,4 @@
-// Extracted from docs/index.html to keep the shell thin while preserving
-// the existing shell/runtime bridge behavior and load order.
-// Runtime behavior remains in docs/js/*.js; this file keeps shell routing,
-// presentation wiring, and thin bridge calls intact.
-
-// ============================================================
+    // ============================================================
     // jubly — Shell + App bridge
     // ============================================================
     //
