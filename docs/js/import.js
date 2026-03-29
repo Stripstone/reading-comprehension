@@ -206,37 +206,10 @@
       setAdvancedMode(false);
     }
 
-    function resetImporterState() {
-      _file = null;
-      _zip = null;
-      _needsConversion = false;
-      _inputFormat = '';
-      _tocItems = [];
-      _activeId = null;
-      _spineHrefs = [];
-      _bookTitle = '';
-      if (fileInput) fileInput.value = '';
-      if (dropzone) dropzone.classList.remove('is-dragover');
-      if (tocList) tocList.innerHTML = '';
-      if (filterInput) filterInput.value = '';
-      if (previewTitle) previewTitle.textContent = 'Select a section';
-      if (previewBody) previewBody.textContent = 'Select a section on the left to preview it.';
-      if (doImportBtn) doImportBtn.disabled = true;
-      setStatus('');
-      setProgress(0, '', '');
-      updateSelectionMeta();
-      showStage('upload');
-      setAdvancedMode(false);
-    }
-
     function hideModal() {
       modal.style.display = 'none';
       modal.setAttribute('aria-hidden', 'true');
-      resetImporterState();
     }
-
-    window.resetImporterState = resetImporterState;
-    window.closeImportBookModal = hideModal;
 
     function showStage(which) {
       if (stageUpload) stageUpload.style.display = (which === 'upload') ? 'block' : 'none';

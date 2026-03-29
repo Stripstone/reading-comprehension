@@ -2163,7 +2163,7 @@ body {
 }
 
 
-/* ===== Extracted from docs/index.html shell styles ===== */
+/* ===== Extracted from docs/index.html shell styles to thin the shell without changing behavior ===== */
         /*
          * ── COLOR SYSTEM ────────────────────────────────────────────────────────
          *
@@ -2553,4 +2553,3 @@ body {
             transition: background-color 220ms ease;
         }
         /* Only these pages need padding so they never slide behind footer */
-    

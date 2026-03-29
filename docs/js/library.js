@@ -2067,25 +2067,3 @@
   })();
 
   // ===================================
-
-
-window.startReadingFromSource = function startReadingFromSource(bookId, opts = {}) {
-  const source = opts && opts.source ? String(opts.source) : 'book';
-  const sourceSel = document.getElementById('importSource');
-  const bookSel = document.getElementById('bookSelect');
-  if (!sourceSel || !bookSel) return false;
-
-  sourceSel.value = source;
-  sourceSel.dispatchEvent(new Event('change', { bubbles: true }));
-
-  const desired = String(bookId || '');
-  const optionValues = Array.from(bookSel.options || []).map(opt => String(opt.value || ''));
-  const resolved = optionValues.includes(desired)
-    ? desired
-    : (optionValues.includes(`local:${desired}`) ? `local:${desired}` : desired);
-
-  if (!resolved) return false;
-  bookSel.value = resolved;
-  bookSel.dispatchEvent(new Event('change', { bubbles: true }));
-  return true;
-};
