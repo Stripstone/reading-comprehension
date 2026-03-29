@@ -223,11 +223,11 @@
         .reading-top-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,0.96); border-bottom: 1px solid #e2e8f0; backdrop-filter: blur(8px); transition: opacity 0.5s ease, transform 0.5s ease; }
         .reading-top-bar.faded { opacity: 0; pointer-events: none; transform: translateY(-6px); }
         /* Controls centred; exit pinned right */
-        .reading-top-left { display: flex; align-items: center; gap: 6px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; justify-content: center; }
+        .reading-top-left { display: flex; align-items: center; gap: 6px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; justify-content: center; padding-right: 6px; -webkit-overflow-scrolling: touch; }
         .reading-top-left::-webkit-scrollbar { display: none; }
         .reading-top-exit { flex-shrink: 0; }
         .reading-bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,0.97); border-top: 1px solid var(--jubly-border); backdrop-filter: blur(8px); box-shadow: 0 -4px 24px rgba(0,0,0,0.06); }
-        .reading-bottom-left { display: flex; align-items: center; gap: 4px; overflow-x: auto; flex: 1; min-width: 0; flex-shrink: 1; scrollbar-width: none; -webkit-overflow-scrolling: touch; justify-content: center; }
+        .reading-bottom-left { display: flex; align-items: center; gap: 4px; overflow-x: auto; flex: 1; min-width: 0; flex-shrink: 1; scrollbar-width: none; -webkit-overflow-scrolling: touch; justify-content: center; padding-right: 6px; }
         .reading-bottom-left::-webkit-scrollbar { display: none; }
         /* Reading content wrapper — unconstrained on desktop, centred column on tablet/mobile */
         .reading-content { padding: 80px 0 96px; }
@@ -301,7 +301,7 @@
         }
         @media (max-width: 768px) {
             #reading-mode .page-text {
-                max-height: 40vh; overflow-y: auto; overscroll-behavior: contain;
+                max-height: 34vh; overflow-y: auto; overscroll-behavior: contain;
                 font-size: 0.93rem; line-height: 1.65;
             }
         }
@@ -322,6 +322,12 @@
         .page-text-wrap.scrolled-to-end .page-text-fade { opacity: 0; pointer-events: none; }
         @keyframes fadeChevron { 0%,100%{transform:translateY(0)} 50%{transform:translateY(3px)} }
         @media (min-width: 1025px) { .page-text-wrap .page-text-fade { display: none; } }
+        @media (max-width: 640px) {
+            .reading-top-bar, .reading-bottom-bar { padding-left: 10px; padding-right: 10px; }
+            .reading-top-left, .reading-bottom-left { justify-content: flex-start; }
+            .reading-top-exit { padding-left: 10px; padding-right: 10px; }
+            .page-progress { font-size: 0.66rem; }
+        }
 
         /* TTS word/sentence highlights */
         #reading-mode .speaking-word { background-color:var(--rm-accent-soft); border-bottom:2px solid var(--rm-accent); border-radius:2px; }
@@ -1124,6 +1130,9 @@
     const SIDEBAR_SECTIONS = ['dashboard', 'profile-page'];
 
     function showSection(id) {
+        const readingModeEl = document.getElementById('reading-mode');
+        const wasReading = readingModeEl && !readingModeEl.classList.contains('hidden-section');
+
         ALL_SECTIONS.forEach(s => document.getElementById(s).classList.add('hidden-section'));
         document.getElementById(id).classList.remove('hidden-section');
 
@@ -1149,9 +1158,11 @@
         // Reading mode: hide nav for focus, restore on exit
         const mainNav = document.querySelector('nav');
         if (mainNav) mainNav.style.display = id === 'reading-mode' ? 'none' : '';
+        if (wasReading && id !== 'reading-mode') cleanupReadingTransientState();
         if (id === 'reading-mode') {
             initFocusMode();
-            syncShellDisplays();
+            updateTierPill();
+            updateExplorerSwatchState();
             updateProgressBar();
         }
         if (id === 'dashboard') refreshLibrary();
@@ -1202,10 +1213,8 @@
     // ── Auth (SCAFFOLD) ──────────────────────────────────────────
     // SCAFFOLD: replace login() with real Supabase auth flow
     function login() {
-        showSection('profile-page');
-        // Use real pages array once app is loaded; fall back to mock state
-        const hasPages = (typeof pages !== 'undefined' && Array.isArray(pages) && pages.length > 0);
-        renderDashboard(hasPages);
+        showSection('dashboard');
+        try { refreshLibrary(); } catch(_) {}
     }
 
     // ── Profile tabs ─────────────────────────────────────────────
@@ -1292,10 +1301,50 @@
     })();
 
     function shellSetSpeed(value) {
-        const rate = parseFloat(value) || 1;
+        const v = String(value ?? '1');
+        const hidden = document.getElementById('speedSelect');
+        if (hidden) hidden.value = v;
+        if (typeof setPlaybackRate === 'function') return setPlaybackRate(v);
+        const rate = parseFloat(v) || 1;
         try { localStorage.setItem('rc_tts_speed', String(rate)); } catch(_) {}
-        // Apply immediately to the engine's shared cloud audio element.
+        try { if (typeof TTS_STATE !== 'undefined') TTS_STATE.rate = rate; } catch(_) {}
         try { if (typeof TTS_AUDIO_ELEMENT !== 'undefined') TTS_AUDIO_ELEMENT.playbackRate = rate; } catch(_) {}
+        return rate;
+    }
+
+    function hasActiveReadingCards() {
+        const reading = document.getElementById('reading-mode');
+        const pagesEl = document.getElementById('pages');
+        return !!(reading && !reading.classList.contains('hidden-section') && pagesEl && pagesEl.querySelector('.page'));
+    }
+
+    function clearImporterTransientUI() {
+        if (typeof resetImporterState === 'function') return resetImporterState();
+    }
+
+    function cleanupReadingTransientState() {
+        try { if (typeof ttsStop === 'function') ttsStop(); } catch(_) {}
+        try {
+            if (typeof getAutoplayStatus === 'function' && typeof toggleAutoplay === 'function' && getAutoplayStatus().enabled) {
+                toggleAutoplay();
+            } else if (typeof ttsAutoplayCancelCountdown === 'function') {
+                ttsAutoplayCancelCountdown();
+            }
+        } catch(_) {}
+        try {
+            if (typeof window.toggleMusic === 'function' && typeof window.allSoundsMuted !== 'undefined' && !window.allSoundsMuted) {
+                window.toggleMusic();
+            }
+        } catch(_) {}
+        const vol = document.getElementById('volumePanel');
+        if (vol) vol.style.display = 'none';
+        const badge = document.getElementById('shell-countdown-badge');
+        if (badge) badge.remove();
+        const signal = document.getElementById('session-complete');
+        if (signal) signal.classList.add('hidden-section');
+        const prog = document.getElementById('shell-page-progress');
+        if (prog) prog.textContent = '—';
+        _readingStartTime = null;
     }
 
     // ── Bottom bar controls ──────────────────────────────────────
@@ -1304,36 +1353,26 @@
     // Guards against first-use case where TTS was never started (TTS_STATE.activeKey is null).
     function handlePausePlay() {
         const btn = document.getElementById('shell-pause-btn');
-        if (!btn) return;
-        try {
-            const isActive    = (typeof TTS_STATE !== 'undefined') && !!TTS_STATE.activeKey;
-            const isPausedView = btn.classList.contains('active'); // button shows "Play" = user paused
-            if (!isActive && !isPausedView) {
-                // TTS was never started — do nothing (avoids spurious ttsResume calls)
-                return;
-            }
-            if (isPausedView) {
-                // Resume from pause
-                btn.classList.remove('active');
-                btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause';
-                if (typeof ttsResume === 'function') ttsResume();
-            } else {
-                // Pause active TTS
-                btn.classList.add('active');
-                btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Play';
-                if (typeof ttsPause === 'function') ttsPause();
-            }
-        } catch(_) {}
+        const state = (typeof pauseOrResumeReading === 'function') ? pauseOrResumeReading() : 'idle';
+        if (!btn) return state;
+        if (state === 'playing') {
+            btn.classList.add('active');
+            btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause';
+        } else {
+            btn.classList.remove('active');
+            btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Play';
+        }
+        return state;
     }
 
     // Autoplay button — syncs with #autoplayToggle checkbox inside volumePanel
     function handleAutoplayToggle() {
         const checkbox = document.getElementById('autoplayToggle');
         const btn      = document.getElementById('shell-autoplay-btn');
-        if (!checkbox || !btn) return;
-        checkbox.checked = !checkbox.checked;
-        checkbox.dispatchEvent(new Event('change'));
-        btn.classList.toggle('active', checkbox.checked);
+        const enabled = (typeof toggleAutoplay === 'function') ? !!toggleAutoplay() : !!checkbox?.checked;
+        if (checkbox) checkbox.checked = enabled;
+        if (btn) btn.classList.toggle('active', enabled);
+        return enabled;
     }
 
     // Keep autoplay button in sync if checkbox changes (e.g. via volume panel)
@@ -1461,27 +1500,16 @@
         openModal('preview-modal');
     }
 
-    function startReading() {
+    async function startReading() {
         closeModal('preview-modal');
         const signal = document.getElementById('session-complete');
         if (signal) signal.classList.add('hidden-section');
         showSection('reading-mode');
         if (!_previewBookId) return;
-
-        const sourceSel = document.getElementById('importSource');
-        const bookSel   = document.getElementById('bookSelect');
-        if (!sourceSel || !bookSel) return;
-
-        sourceSel.value = 'book';
-        sourceSel.dispatchEvent(new Event('change', { bubbles: true }));
-
-        const optionValues = Array.from(bookSel.options || []).map(opt => String(opt.value || ''));
-        const desiredBookId = optionValues.includes(String(_previewBookId))
-            ? String(_previewBookId)
-            : (optionValues.includes(`local:${_previewBookId}`) ? `local:${_previewBookId}` : String(_previewBookId));
-
-        bookSel.value = desiredBookId;
-        bookSel.dispatchEvent(new Event('change', { bubbles: true }));
+        if (typeof startReadingFromSource === 'function') {
+            const restorePageIndex = (typeof getLastReadPageIndex === 'function') ? getLastReadPageIndex() : 0;
+            await startReadingFromSource({ sourceType: 'book', bookId: _previewBookId, restorePageIndex });
+        }
     }
 
     // Empty state drag/drop
@@ -1515,7 +1543,7 @@
     // Session complete signal — uses real pages[] and shell reading timer
     function showSessionComplete() {
         const signal = document.getElementById('session-complete');
-        if (!signal) return;
+        if (!signal || !hasActiveReadingCards()) return;
         const pageCount = (typeof pages !== 'undefined' && Array.isArray(pages)) ? pages.length : 0;
         const elapsed   = _readingStartTime ? Date.now() - _readingStartTime : 0;
         const mins      = elapsed > 0 ? Math.max(1, Math.round(elapsed / 60000)) : Math.max(1, Math.round(pageCount * 1.5));
@@ -1528,16 +1556,12 @@
     // Page progress bar — uses real pages[] from app state
     function updateProgressBar() {
         const prog  = document.getElementById('shell-page-progress');
-        const dots  = document.getElementById('shell-page-dots');
+        if (!prog) return;
+        if (!hasActiveReadingCards()) { prog.textContent = '—'; return; }
         const total = (typeof pages !== 'undefined' && Array.isArray(pages)) ? pages.length : 0;
         const cur   = (typeof lastFocusedPageIndex === 'number' && lastFocusedPageIndex >= 0)
                         ? lastFocusedPageIndex : 0;
-        if (prog) prog.textContent = total > 0 ? `Page ${cur + 1} / ${total}` : 'Page — / —';
-        if (dots && total > 0) {
-            dots.innerHTML = Array.from({ length: Math.min(total, 20) }, (_, i) =>
-                `<div class="w-2 h-2 rounded-full" style="background:${i <= cur ? 'var(--theme-accent)' : '#e2e8f0'}"></div>`
-            ).join('');
-        }
+        prog.textContent = total > 0 ? `Page ${cur + 1} / ${total}` : '—';
     }
 
     // ── App event bridge ─────────────────────────────────────────
@@ -1546,80 +1570,23 @@
     // this is a fallback shim for the transition period.
     window.jublySessionComplete = showSessionComplete;
 
-    // ── Pass 2 — Functional Wiring ───────────────────────────────
-    //
-    // BOOK / CHAPTER DISPLAY MIRRORS
-    // #bookSelect and #chapterSelect are canonical engine selects, hidden in
-    // #app-hidden-controls. The visible reading-bar selects (shell-book-display,
-    // shell-chapter-display) mirror their state in both directions:
-    //   Engine → Shell: MutationObserver copies options when engine populates them.
-    //   Shell → Engine: change event copies value and re-fires engine's own handler.
-    //
-    // EXIT READING CLEANUP
-    // The Exit button's inline onclick calls showSection('dashboard'). This listener
-    // fires on the same click to stop TTS and autoplay before the view switches.
-    // ─────────────────────────────────────────────────────────────
-
-    function _mirrorSelect(src, dst) {
-        if (!src || !dst) return;
-        dst.innerHTML = src.innerHTML;
-        dst.value     = src.value;
-    }
-
-    // Called after engine boot to sync initial state into shell displays.
-    function syncShellDisplays() {
-        _mirrorSelect(
-            document.getElementById('bookSelect'),
-            document.getElementById('shell-book-display')
-        );
-        _mirrorSelect(
-            document.getElementById('chapterSelect'),
-            document.getElementById('shell-chapter-display')
-        );
-    }
-
     document.addEventListener('DOMContentLoaded', () => {
-        const bookSrc = document.getElementById('bookSelect');
-        const bookDst = document.getElementById('shell-book-display');
-        const chSrc   = document.getElementById('chapterSelect');
-        const chDst   = document.getElementById('shell-chapter-display');
-
-        // Shell display → engine select: user picks from visible dropdown.
-        // Copy value to hidden canonical select and fire engine's own change handler.
-        if (bookSrc && bookDst) {
-            bookDst.addEventListener('change', () => {
-                bookSrc.value = bookDst.value;
-                bookSrc.dispatchEvent(new Event('change'));
-            });
-        }
-        if (chSrc && chDst) {
-            chDst.addEventListener('change', () => {
-                chSrc.value = chDst.value;
-                chSrc.dispatchEvent(new Event('change'));
-            });
-        }
-
-        // Engine select → shell display: engine populates options asynchronously
-        // after its dynamic script chain completes. MutationObserver catches every
-        // childList mutation (option add/remove) and keeps shell in sync.
-        // Also refreshes the visible library list whenever the book catalogue changes
-        // (e.g. after a successful import via window.__rcRefreshBookSelect).
-        if (bookSrc && bookDst) {
-            new MutationObserver(() => {
-                bookDst.innerHTML = bookSrc.innerHTML;
-                bookDst.value     = bookSrc.value;
-                refreshLibrary();
-            }).observe(bookSrc, { childList: true });
-        }
-        if (chSrc && chDst) {
-            new MutationObserver(() => _mirrorSelect(chSrc, chDst))
-                .observe(chSrc, { childList: true });
+        const tierSel = document.getElementById('tierSelect');
+        if (tierSel) {
+            tierSel.addEventListener('change', () => { updateTierPill(); updateExplorerSwatchState(); });
         }
 
         // After a successful import the engine fires Done; refresh shell library explicitly.
         const importDoneBtn = document.getElementById('importDoneBtn');
         if (importDoneBtn) {
-            importDoneBtn.addEventListener('click', () => refreshLibrary());
+            importDoneBtn.addEventListener('click', () => {
+                try { refreshLibrary(); } catch(_) {}
+                setTimeout(clearImporterTransientUI, 0);
+            });
+        }
+        const importCloseBtn = document.getElementById('importBookClose');
+        if (importCloseBtn) {
+            importCloseBtn.addEventListener('click', () => setTimeout(clearImporterTransientUI, 0));
         }
 
         // Keep progress bar in sync as the user scrolls or focuses pages.
@@ -1638,8 +1605,10 @@
                 if (!btn) return;
                 let badge = document.getElementById('shell-countdown-badge');
                 try {
-                    const idx = (typeof AUTOPLAY_STATE !== 'undefined') ? AUTOPLAY_STATE.countdownPageIndex : -1;
-                    const sec = (typeof AUTOPLAY_STATE !== 'undefined') ? AUTOPLAY_STATE.countdownSec      : 0;
+                    if (!hasActiveReadingCards()) { if (badge) badge.remove(); return; }
+                    const countdown = (typeof getCountdownStatus === 'function') ? getCountdownStatus() : { pageIndex: -1, secondsRemaining: 0 };
+                    const idx = countdown.pageIndex;
+                    const sec = countdown.secondsRemaining;
                     if (idx !== -1 && sec > 0) {
                         if (!badge) {
                             badge = document.createElement('span');
@@ -1669,6 +1638,7 @@
                 }
                 // Detect last page reached: active page is the last one.
                 try {
+                    if (!hasActiveReadingCards()) return;
                     const total = (typeof pages !== 'undefined' && Array.isArray(pages)) ? pages.length : 0;
                     if (total < 1) return;
                     const activeEl = _pagesContainer.querySelector('.page-active');
@@ -1682,7 +1652,7 @@
                             _sessionCompletePending = false;
                             const stillActive = _pagesContainer.querySelector('.page-active');
                             const stillLast   = stillActive && Array.from(_pagesContainer.querySelectorAll('.page')).indexOf(stillActive) === total - 1;
-                            const noCountdown = (typeof AUTOPLAY_STATE === 'undefined') || AUTOPLAY_STATE.countdownPageIndex === -1;
+                            const noCountdown = (typeof getCountdownStatus !== 'function') ? true : !getCountdownStatus().active;
                             if (stillLast && noCountdown) showSessionComplete();
                         }, 500);
                     }
@@ -1694,13 +1664,7 @@
         // The button's inline onclick still fires (showSection) — this just cleans up first.
         const exitBtn = document.querySelector('.reading-top-exit');
         if (exitBtn) {
-            exitBtn.addEventListener('click', () => {
-                try { if (typeof ttsStop === 'function') ttsStop(); } catch(_) {}
-                try { if (typeof ttsAutoplayCancelCountdown === 'function') ttsAutoplayCancelCountdown(); } catch(_) {}
-                if (_countdownInterval) { clearInterval(_countdownInterval); _countdownInterval = null; }
-                const badge = document.getElementById('shell-countdown-badge');
-                if (badge) badge.remove();
-            });
+            exitBtn.addEventListener('click', () => cleanupReadingTransientState());
         }
     });
 

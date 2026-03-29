@@ -1318,6 +1318,20 @@
       else addPages();
     }
 
+    function syncReadingContext({ start = null, end = null } = {}) {
+      const sourceType = sourceSel.value === 'book' ? 'book' : 'text';
+      const chapterIndex = Number.isFinite(parseInt(chapterSelect.value || '', 10)) ? parseInt(chapterSelect.value || '', 10) : null;
+      if (typeof setCurrentReadingContext === 'function') {
+        setCurrentReadingContext({
+          sourceType,
+          bookId: sourceType === 'book' ? String(bookSelect.value || '') : null,
+          chapterIndex,
+          pageStart: Number.isFinite(start) ? start : null,
+          pageEnd: Number.isFinite(end) ? end : null
+        });
+      }
+    }
+
     // Events
     sourceSel.addEventListener("change", setSourceUI);
     setSourceUI();
@@ -1366,6 +1380,7 @@
         .slice(s, e + 1)
         .map((p) => p.text)
         .filter(Boolean);
+      syncReadingContext({ start: s, end: e });
       // Keep delimiter in a single JS string line (prevents accidental raw-newline parse errors)
       applySelectionToBulkInput(slice.join("\n---\n"), { append: false });
     });
@@ -1389,6 +1404,7 @@
         .map((p) => p.text)
         .filter(Boolean);
 
+      syncReadingContext({ start: s, end: e });
       applySelectionToBulkInput(slice.join("\n---\n"), { append: true });
     });
 
@@ -1453,6 +1469,40 @@
     // Expose a tiny hook so the import modal can refresh the dropdown after import.
     window.__rcRefreshBookSelect = async () => {
       try { await populateBookSelectWithLocal(); } catch (_) {}
+    };
+
+
+    window.startReadingFromSource = async function startReadingFromSource(opts = {}) {
+      const sourceType = String(opts.sourceType || 'book');
+      const requestedBookId = opts.bookId == null ? '' : String(opts.bookId);
+      const requestedChapterIndex = Number.isFinite(Number(opts.chapterIndex)) ? Number(opts.chapterIndex) : null;
+      const restorePageIndex = Number.isFinite(Number(opts.restorePageIndex)) ? Number(opts.restorePageIndex) : null;
+
+      sourceSel.value = sourceType;
+      sourceSel.dispatchEvent(new Event('change', { bubbles: true }));
+
+      if (sourceType === 'book' && requestedBookId) {
+        const optionValues = Array.from(bookSelect.options || []).map(opt => String(opt.value || ''));
+        const desiredBookId = optionValues.includes(requestedBookId)
+          ? requestedBookId
+          : (optionValues.includes(`local:${requestedBookId}`) ? `local:${requestedBookId}` : requestedBookId);
+        bookSelect.value = desiredBookId;
+        await loadBook(desiredBookId);
+      }
+
+      if (requestedChapterIndex !== null && chapterSelect.options.length) {
+        chapterSelect.value = String(requestedChapterIndex);
+        chapterSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+
+      if (pageStart.options.length && pageEnd.options.length) {
+        pageStart.value = '0';
+        pageEnd.value = String(Math.max(0, pageEnd.options.length - 1));
+      }
+
+      if (sourceType === 'book') loadBtn.click();
+      if (typeof restoreReadingPosition === 'function') setTimeout(() => restoreReadingPosition(restorePageIndex), 120);
+      return true;
     };
   }
 

@@ -711,6 +711,7 @@ try {
   if (loadPersistedSessionIfAny()) {
     render();
     updateDiagnostics();
+    try { if (typeof restoreReadingPosition === 'function') restoreReadingPosition(); } catch (_) {}
     // Ensure we can rehydrate per-page saved work even if the session snapshot lacked hashes.
     ensurePageHashesAndRehydrate();
   }

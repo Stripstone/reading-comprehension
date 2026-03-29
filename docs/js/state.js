@@ -77,6 +77,7 @@
 // Also persist the last-opened session so refresh restores the current view.
 const STORAGE_KEY_SESSION = "rc_session_v2";
 const STORAGE_KEY_META = "rc_session_meta_v2"; // small future-proof hook
+let currentReadingContext = null; // runtime-owned source/book/chapter/page selection context
 
 function getConsolidationCacheKey(pageHash) {
   return `rc_consolidation_${pageHash}`;
@@ -95,6 +96,13 @@ function schedulePersistSession() {
 
 function persistSessionNow() {
   try {
+    const inferredPageIndex = (() => {
+      const inferred = inferCurrentPageIndex();
+      if (Number.isFinite(inferred) && inferred >= 0) return inferred;
+      if (Number.isFinite(lastFocusedPageIndex) && lastFocusedPageIndex >= 0) return lastFocusedPageIndex;
+      return 0;
+    })();
+
     // 1) Persist consolidations per pageHash so switching chapters doesn't wipe work.
     for (const p of (pageData || [])) {
       const h = p?.pageHash;
@@ -119,11 +127,16 @@ function persistSessionNow() {
 
     // 2) Persist a lightweight snapshot of the last-opened session for refresh restore.
     const payload = {
-      v: 2,
+      v: 3,
       savedAt: Date.now(),
       pages: pages.slice(),
       pageHashes: pageData.map(p => p?.pageHash || ""),
-      consolidations: pageData.map(p => p?.consolidation || "")
+      consolidations: pageData.map(p => p?.consolidation || ""),
+      lastReadPageIndex: inferredPageIndex,
+      goalTime,
+      goalCharCount,
+      appMode,
+      readingContext: currentReadingContext || null
     };
     localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(payload));
     localStorage.setItem(STORAGE_KEY_META, JSON.stringify({ savedAt: payload.savedAt }));
@@ -152,7 +165,7 @@ function loadPersistedSessionIfAny() {
     const raw = localStorage.getItem(STORAGE_KEY_SESSION);
     if (!raw) return false;
     const parsed = JSON.parse(raw);
-    if (!parsed || parsed.v !== 2) return false;
+    if (!parsed || ![2,3].includes(parsed.v)) return false;
     if (!Array.isArray(parsed.pages)) return false;
 
     pages = parsed.pages;
@@ -212,7 +225,18 @@ function loadPersistedSessionIfAny() {
       pageData = pageData.slice(0, n);
     }
 
-    currentPageIndex = Math.min(currentPageIndex, Math.max(0, pages.length - 1));
+    const restoredPageIndex = Number(parsed.lastReadPageIndex ?? 0);
+    lastFocusedPageIndex = Number.isFinite(restoredPageIndex)
+      ? Math.max(0, Math.min(restoredPageIndex, Math.max(0, pages.length - 1)))
+      : 0;
+
+    const restoredGoalTime = Number(parsed.goalTime);
+    if (Number.isFinite(restoredGoalTime) && restoredGoalTime > 0) goalTime = restoredGoalTime;
+    const restoredGoalChars = Number(parsed.goalCharCount);
+    if (Number.isFinite(restoredGoalChars) && restoredGoalChars > 0) goalCharCount = restoredGoalChars;
+    if (typeof parsed.appMode === 'string' && parsed.appMode) appMode = parsed.appMode;
+    currentReadingContext = (parsed.readingContext && typeof parsed.readingContext === 'object') ? parsed.readingContext : null;
+
     return pages.length > 0;
   } catch (e) {
     return false;
@@ -269,6 +293,47 @@ async function ensurePageHashesAndRehydrate() {
       try { updateDiagnostics(); } catch (_) {}
     }
   } catch (_) {}
+}
+
+
+function setCurrentReadingContext(ctx) {
+  currentReadingContext = (ctx && typeof ctx === 'object') ? { ...ctx } : null;
+  schedulePersistSession();
+}
+
+function getCurrentReadingContext() {
+  return currentReadingContext ? { ...currentReadingContext } : null;
+}
+
+function getLastReadPageIndex() {
+  const inferred = inferCurrentPageIndex();
+  if (Number.isFinite(inferred) && inferred >= 0) return inferred;
+  if (Number.isFinite(lastFocusedPageIndex) && lastFocusedPageIndex >= 0) return lastFocusedPageIndex;
+  return 0;
+}
+
+function restoreReadingPosition(pageIndex = null) {
+  const targetIndex = Number.isFinite(pageIndex) ? pageIndex : getLastReadPageIndex();
+  const clampedIndex = Math.max(0, targetIndex || 0);
+  const apply = () => {
+    const pageEls = Array.from(document.querySelectorAll('#pages .page'));
+    if (!pageEls.length) return false;
+    const target = pageEls[Math.min(clampedIndex, pageEls.length - 1)];
+    if (!target) return false;
+    lastFocusedPageIndex = Math.min(clampedIndex, pageEls.length - 1);
+    try { target.scrollIntoView({ behavior: 'instant', block: 'start', inline: 'nearest' }); } catch (_) {
+      try { target.scrollIntoView({ block: 'start', inline: 'nearest' }); } catch (_) {}
+    }
+    return true;
+  };
+
+  if (apply()) return true;
+  let tries = 0;
+  const timer = setInterval(() => {
+    tries += 1;
+    if (apply() || tries >= 30) clearInterval(timer);
+  }, 100);
+  return false;
 }
 
 // Stable-ish text hashing: must match the canonical pageHash used by anchors + cache keys.
