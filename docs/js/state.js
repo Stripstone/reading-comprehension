@@ -20,8 +20,6 @@
   
   let pages = [];
   let pageData = [];
-  let currentPageIndex = 0;
-  window.__rcPendingRestorePageIndex = -1;
   
   // Current mode: 'reading', 'comprehension', 'research'
   let appMode = 'reading';   // default mode
@@ -120,27 +118,19 @@ function persistSessionNow() {
     }
 
     // 2) Persist a lightweight snapshot of the last-opened session for refresh restore.
-    const inferredPageIndex = (() => {
-      try {
-        if (typeof lastFocusedPageIndex === 'number' && lastFocusedPageIndex >= 0) return lastFocusedPageIndex;
-      } catch (_) {}
-      try {
-        if (typeof inferCurrentPageIndex === 'function') {
-          const idx = inferCurrentPageIndex();
-          if (Number.isFinite(idx) && idx >= 0) return idx;
-        }
-      } catch (_) {}
-      return Number.isFinite(currentPageIndex) ? currentPageIndex : 0;
-    })();
-
     const payload = {
-      v: 3,
+      v: 2,
       savedAt: Date.now(),
       pages: pages.slice(),
       pageHashes: pageData.map(p => p?.pageHash || ""),
       consolidations: pageData.map(p => p?.consolidation || ""),
-      lastReadPageIndex: Math.max(0, inferredPageIndex),
-      appMode: typeof appMode !== 'undefined' ? appMode : 'reading'
+      lastReadPageIndex: (() => {
+        const inferred = typeof inferCurrentPageIndex === 'function' ? inferCurrentPageIndex() : -1;
+        const idx = inferred >= 0 ? inferred : lastFocusedPageIndex;
+        return Number.isFinite(idx) ? idx : -1;
+      })(),
+      goalTime: Number.isFinite(goalTime) ? goalTime : DEFAULT_TIME_GOAL,
+      goalCharCount: Number.isFinite(goalCharCount) ? goalCharCount : DEFAULT_CHAR_GOAL
     };
     localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(payload));
     localStorage.setItem(STORAGE_KEY_META, JSON.stringify({ savedAt: payload.savedAt }));
@@ -169,7 +159,7 @@ function loadPersistedSessionIfAny() {
     const raw = localStorage.getItem(STORAGE_KEY_SESSION);
     if (!raw) return false;
     const parsed = JSON.parse(raw);
-    if (!parsed || (parsed.v !== 2 && parsed.v !== 3)) return false;
+    if (!parsed || parsed.v !== 2) return false;
     if (!Array.isArray(parsed.pages)) return false;
 
     pages = parsed.pages;
@@ -229,9 +219,16 @@ function loadPersistedSessionIfAny() {
       pageData = pageData.slice(0, n);
     }
 
-    const restoredPage = Math.max(0, Math.min(Number(parsed?.lastReadPageIndex ?? 0) || 0, Math.max(0, pages.length - 1)));
-    currentPageIndex = restoredPage;
-    window.__rcPendingRestorePageIndex = restoredPage;
+    const restoredPageIndex = Number(parsed.lastReadPageIndex);
+    lastFocusedPageIndex = Number.isFinite(restoredPageIndex)
+      ? Math.max(0, Math.min(restoredPageIndex, Math.max(0, pages.length - 1)))
+      : -1;
+
+    const restoredGoalTime = Number(parsed.goalTime);
+    if (Number.isFinite(restoredGoalTime) && restoredGoalTime > 0) goalTime = restoredGoalTime;
+    const restoredGoalChars = Number(parsed.goalCharCount);
+    if (Number.isFinite(restoredGoalChars) && restoredGoalChars > 0) goalCharCount = restoredGoalChars;
+
     return pages.length > 0;
   } catch (e) {
     return false;
@@ -361,14 +358,3 @@ async function stableHashText(text) {
   // -----------------------------------
 // ==============================
 // TEXT TO SPEECH
-
-function getReadingRestoreStatus() {
-  return {
-    currentPageIndex: Number.isFinite(currentPageIndex) ? currentPageIndex : 0,
-    pendingRestorePageIndex: Number(window.__rcPendingRestorePageIndex ?? -1),
-    lastFocusedPageIndex: Number(typeof lastFocusedPageIndex === 'number' ? lastFocusedPageIndex : -1),
-    pageCount: Array.isArray(pages) ? pages.length : 0
-  };
-}
-
-window.getReadingRestoreStatus = getReadingRestoreStatus;

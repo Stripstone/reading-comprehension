@@ -5,36 +5,6 @@
   // LOCAL LIBRARY (IndexedDB)
   // ===================================
   const LOCAL_DB_NAME = 'rc_local_library_v1';
-
-  function getFocusedOrInferredReadingPageIndex() {
-    try {
-      if (typeof lastFocusedPageIndex === 'number' && lastFocusedPageIndex >= 0) return lastFocusedPageIndex;
-    } catch (_) {}
-    try {
-      if (typeof inferCurrentPageIndex === 'function') {
-        const idx = inferCurrentPageIndex();
-        if (Number.isFinite(idx) && idx >= 0) return idx;
-      }
-    } catch (_) {}
-    return 0;
-  }
-
-  function applyPendingReadingRestore() {
-    try {
-      const idx = Number(window.__rcPendingRestorePageIndex ?? -1);
-      if (!Number.isFinite(idx) || idx < 0) return false;
-      const pageEls = document.querySelectorAll('.page');
-      const target = pageEls[idx];
-      if (!target) return false;
-      target.scrollIntoView({ behavior: 'auto', block: 'start' });
-      lastFocusedPageIndex = idx;
-      try { currentPageIndex = idx; } catch (_) {}
-      window.__rcPendingRestorePageIndex = -1;
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
   const LOCAL_DB_VERSION = 1;
   const LOCAL_STORE_BOOKS = 'books';
 
@@ -1484,9 +1454,124 @@
     window.__rcRefreshBookSelect = async () => {
       try { await populateBookSelectWithLocal(); } catch (_) {}
     };
+
+
+  function scrollPageIntoViewWithOffset(target, options = {}) {
+    if (!target) return false;
+    const behavior = options.behavior || 'smooth';
+    const topBar = document.getElementById('reading-top-bar');
+    const topOffset = (topBar ? topBar.getBoundingClientRect().height : 0) + 12;
+    try {
+      const rect = target.getBoundingClientRect();
+      const absoluteTop = rect.top + window.scrollY;
+      window.scrollTo({ top: Math.max(0, absoluteTop - topOffset), behavior });
+      return true;
+    } catch (_) {
+      try { target.scrollIntoView({ behavior, block: 'start', inline: 'nearest' }); return true; } catch(_) { return false; }
+    }
   }
 
+  function setFocusedPageIndex(pageIndex, options = {}) {
+    const idx = Number(pageIndex);
+    if (!Number.isFinite(idx) || idx < 0) return false;
+    lastFocusedPageIndex = idx;
+    try { localStorage.setItem('rc_last_focused_page', String(idx)); } catch(_) {}
+    const pagesEls = Array.from(document.querySelectorAll('#pages .page'));
+    pagesEls.forEach((el, n) => {
+      if (!el) return;
+      el.classList.toggle('page-active', n === idx);
+    });
+    const target = pagesEls[idx];
+    if (target && options.scroll) {
+      scrollPageIntoViewWithOffset(target, { behavior: options.behavior || 'smooth' });
+    }
+    return true;
+  }
 
+    window.startReadingFromPreview = async function startReadingFromPreview(bookId) {
+      const desired = String(bookId || '').trim();
+      if (!desired) return false;
+      const optionValues = Array.from(bookSelect.options || []).map(opt => String(opt.value || ''));
+      const resolvedBookId = optionValues.includes(desired)
+        ? desired
+        : (optionValues.includes(`local:${desired}`) ? `local:${desired}` : desired);
+      if (!resolvedBookId || !optionValues.includes(resolvedBookId)) return false;
+
+      sourceSel.value = 'book';
+      setSourceUI();
+      bookSelect.value = resolvedBookId;
+      await loadBook(resolvedBookId);
+
+      if (chapterSelect && hasExplicitChapters && chapterSelect.value === '' && chapterSelect.options.length > 1) {
+        chapterSelect.value = '0';
+        currentChapterIndex = 0;
+        const nextPages = parsePagesWithTitles(getCurrentChapterRaw());
+        populatePagesSelect(nextPages);
+      }
+
+      if (pageStart && pageStart.options.length > 1 && !pageStart.value) pageStart.value = '0';
+      if (pageEnd && pageEnd.options.length > 1 && !pageEnd.value) pageEnd.value = String(Math.max(0, pageEnd.options.length - 2));
+
+      loadBtn.click();
+      setTimeout(() => { try { window.restoreReadingPosition?.({ behavior: 'auto', allowHidden: false }); } catch(_) {} }, 160);
+      return true;
+    };
+
+    window.setFocusedPageIndex = setFocusedPageIndex;
+
+    window.scrollReadingPageIntoView = scrollPageIntoViewWithOffset;
+
+    window.getCurrentFocusedPageIndex = function getCurrentFocusedPageIndex() {
+      if (Number.isFinite(lastFocusedPageIndex) && lastFocusedPageIndex >= 0) return lastFocusedPageIndex;
+      const active = document.querySelector('#pages .page.page-active');
+      const idx = active ? Number(active.dataset.pageIndex) : NaN;
+      return Number.isFinite(idx) ? idx : 0;
+    };
+
+    window.startFocusedPageTts = function startFocusedPageTts() {
+      const idx = window.getCurrentFocusedPageIndex();
+      setFocusedPageIndex(idx, { scroll: true, behavior: 'smooth' });
+      const btn = document.querySelector(`#pages .page[data-page-index="${idx}"] .tts-btn[data-tts="page"]`);
+      if (btn) { btn.click(); return true; }
+      return false;
+    };
+
+    window.getFocusedReadingTargetForSync = function getFocusedReadingTargetForSync() {
+      return { bookId: bookSelect?.value || '', chapterId: chapterSelect?.value || '', pageIndex: window.getCurrentFocusedPageIndex() };
+    };
+  }
+
+  function scrollToLastReadPage(options = {}) {
+    const behavior = options.behavior || 'auto';
+    const allowHidden = !!options.allowHidden;
+    const readingMode = document.getElementById('reading-mode');
+    if (!allowHidden && readingMode && readingMode.classList.contains('hidden-section')) return false;
+    if (!Number.isFinite(lastFocusedPageIndex) || lastFocusedPageIndex < 0) {
+      try {
+        const stored = Number(localStorage.getItem('rc_last_focused_page'));
+        if (Number.isFinite(stored) && stored >= 0) lastFocusedPageIndex = stored;
+      } catch(_) {}
+    }
+    if (!Number.isFinite(lastFocusedPageIndex) || lastFocusedPageIndex < 0) return false;
+    const pageEl = document.querySelector(`#pages .page[data-page-index="${lastFocusedPageIndex}"]`);
+    if (!pageEl) return false;
+    try {
+      scrollPageIntoViewWithOffset(pageEl, { behavior });
+      pageEl.classList.add('page-active');
+      setTimeout(() => {
+        try { pageEl.classList.remove('page-active'); } catch (_) {}
+      }, 800);
+    } catch (_) {}
+    return true;
+  }
+
+  window.restoreReadingPosition = scrollToLastReadPage;
+  window.exitReadingSession = function exitReadingSession() {
+    try { if (typeof ttsStop === 'function') ttsStop(); } catch (_) {}
+    try { if (typeof ttsAutoplayCancelCountdown === 'function') ttsAutoplayCancelCountdown(); } catch (_) {}
+    try { if (typeof window.stopReadingAudioSession === 'function') window.stopReadingAudioSession(); } catch (_) {}
+    return true;
+  };
 
   async function addPages() {
     const input = document.getElementById("bulkInput").value;
@@ -1706,21 +1791,15 @@
       // TTS: Read page text
       const ttsPageBtn = page.querySelector('.tts-btn[data-tts="page"]');
       if (ttsPageBtn) {
-        try {
-          const support = (typeof getTtsSupportStatus === 'function') ? getTtsSupportStatus() : null;
-          if (support && !support.playable) {
-            ttsPageBtn.disabled = true;
-            ttsPageBtn.setAttribute('aria-disabled', 'true');
-            ttsPageBtn.title = support.reason || 'Playback unavailable';
-          }
-        } catch (_) {}
         ttsPageBtn.addEventListener("click", () => {
+          setFocusedPageIndex(i, { scroll: true, behavior: 'smooth' });
+          try {
+            const speedSel = document.getElementById('shell-speed');
+            if (speedSel && typeof window.setPlaybackRate === 'function') window.setPlaybackRate(speedSel.value);
+          } catch(_) {}
           if (AUTOPLAY_STATE.countdownPageIndex === i) {
             ttsAutoplayCancelCountdown();
-            return;
           }
-          try { currentPageIndex = i; } catch (_) {}
-          lastFocusedPageIndex = i;
           ttsSpeakQueue(`page-${i}`, [text]);
         });
       }
@@ -1750,13 +1829,13 @@
 
       // Clicking anywhere on the page should make "Next" advance from that page.
       page.addEventListener("pointerdown", () => {
-        lastFocusedPageIndex = i;
+        setFocusedPageIndex(i);
       });
 
       // Timer events
       textarea.addEventListener("focus", () => {
         
-        lastFocusedPageIndex = i;
+        setFocusedPageIndex(i);
 // Scroll to show entire page card (passage + textarea) instead of centering on textarea
         const pageCard = textarea.closest('.page');
         pageCard.scrollIntoView({ 
@@ -1899,8 +1978,7 @@
     
     applyModeVisibility();
     if (typeof applyTierAccess === 'function') applyTierAccess();
-    try { applyPendingReadingRestore(); } catch (_) {}
-    try { if (typeof updateDiagnostics === 'function') updateDiagnostics(); } catch (_) {}
+    try { if (typeof window.syncPlaybackUiAvailability === 'function') window.syncPlaybackUiAvailability(); } catch (_) {}
   }
 
   function applyModeVisibility() {
@@ -2109,51 +2187,3 @@
   })();
 
   // ===================================
-
-window.startFocusedPageTts = function startFocusedPageTts() {
-  const idx = getFocusedOrInferredReadingPageIndex();
-  const text = (Array.isArray(pages) && pages[idx]) ? pages[idx] : '';
-  if (!text) return false;
-  try { currentPageIndex = idx; } catch (_) {}
-  lastFocusedPageIndex = idx;
-  ttsSpeakQueue(`page-${idx}`, [text]);
-  return true;
-};
-
-window.getCurrentReadingPageIndex = getFocusedOrInferredReadingPageIndex;
-
-window.startReadingFromPreview = async function startReadingFromPreview(bookId) {
-  const sourceSel = document.getElementById('importSource');
-  const bookSel = document.getElementById('bookSelect');
-  if (!sourceSel || !bookSel || !bookId) return false;
-  sourceSel.value = 'book';
-  sourceSel.dispatchEvent(new Event('change', { bubbles: true }));
-  const optionValues = Array.from(bookSel.options || []).map(opt => String(opt.value || ''));
-  const desiredBookId = optionValues.includes(String(bookId))
-    ? String(bookId)
-    : (optionValues.includes(`local:${bookId}`) ? `local:${bookId}` : String(bookId));
-  bookSel.value = desiredBookId;
-  bookSel.dispatchEvent(new Event('change', { bubbles: true }));
-  return true;
-};
-
-window.exitReadingSession = function exitReadingSession() {
-  const result = { ttsStopped: false, musicStopped: false, countdownCleared: false, pageCount: Array.isArray(pages) ? pages.length : 0, activePageIndex: getFocusedOrInferredReadingPageIndex() };
-  try { if (typeof ttsStop === 'function') { ttsStop(); result.ttsStopped = true; } } catch (_) {}
-  try { if (typeof ttsAutoplayCancelCountdown === 'function') { ttsAutoplayCancelCountdown(); result.countdownCleared = true; } } catch (_) {}
-  try { const signal = document.getElementById('session-complete'); if (signal) signal.classList.add('hidden-section'); } catch (_) {}
-  try { document.querySelectorAll('.page-active').forEach((el) => el.classList.remove('page-active')); } catch (_) {}
-  try { const active = document.activeElement; if (active && typeof active.blur === 'function') active.blur(); } catch (_) {}
-  try { if (window.music) { window.music.pause(); result.musicStopped = true; } } catch (_) {}
-  try { updateDiagnostics(); } catch (_) {}
-  return result;
-};
-
-window.getRuntimeUiState = function getRuntimeUiState() {
-  return {
-    pageCount: Array.isArray(pages) ? pages.length : 0,
-    activePageIndex: getFocusedOrInferredReadingPageIndex(),
-    hasPages: Array.isArray(pages) && pages.length > 0,
-    restore: (typeof window.getReadingRestoreStatus === 'function') ? window.getReadingRestoreStatus() : null
-  };
-};
