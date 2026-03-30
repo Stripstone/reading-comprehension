@@ -248,19 +248,23 @@
         const nextBtn = document.getElementById('tts-next-btn');
         if (!btn) return;
         let status = { active: false, paused: false };
+        let countdown = { active: false };
         try { if (typeof window.getPlaybackStatus === 'function') status = window.getPlaybackStatus() || status; } catch(_) {}
+        try { if (typeof window.getCountdownStatus === 'function') countdown = window.getCountdownStatus() || countdown; } catch(_) {}
         const active = !!status.active;
         const paused = !!status.paused;
+        const inCountdown = !!countdown.active;
         btn.disabled = false;
-        btn.classList.toggle('active', active && paused);
-        btn.title = active ? (paused ? 'Resume narration' : 'Pause narration') : 'Play current page';
-        btn.innerHTML = (active && !paused)
+        btn.classList.toggle('active', active && !paused);
+        btn.title = (active && !paused && !inCountdown) ? 'Pause narration' : 'Play current page';
+        btn.innerHTML = (active && !paused && !inCountdown)
             ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause'
             : '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Play';
+        const canStep = active && !paused && !inCountdown;
         [prevBtn, nextBtn].forEach((control) => {
             if (!control) return;
-            control.classList.toggle('hidden-section', !active);
-            control.disabled = !active;
+            control.disabled = !canStep;
+            control.setAttribute('aria-disabled', canStep ? 'false' : 'true');
         });
     }
 
@@ -276,7 +280,7 @@
             } catch(_) {}
         }
         try { if (typeof window.pauseOrResumeReading === 'function') window.pauseOrResumeReading(); } catch(_) {}
-        syncPausePlayButton();
+        setTimeout(syncPausePlayButton, 30);
     }
 
     function handleTtsStep(delta) {
@@ -307,6 +311,9 @@
         const settingsBtn = document.getElementById('openReadingSettings');
         if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.preventDefault(); const s = document.getElementById('musicToggle'); if (s) s.click(); });
         setTimeout(() => { updateTierPill(); updateExplorerSwatchState(); syncPausePlayButton(); syncAutoplayButton(); }, 500);
+
+        window.addEventListener('tts-status-change', () => { syncPausePlayButton(); syncAutoplayButton(); updateProgressBar(); });
+        setInterval(() => { try { syncPausePlayButton(); } catch(_) {} }, 400);
         patchRefreshHook();
 
         const bookSel = document.getElementById('bookSelect');

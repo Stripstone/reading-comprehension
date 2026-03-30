@@ -1495,11 +1495,20 @@
       const idx = window.getCurrentFocusedPageIndex();
       const btn = document.querySelector(`#pages .page[data-page-index="${idx}"] .tts-btn[data-tts="page"]`);
       if (btn) { btn.click(); return true; }
+      try {
+        const textEl = document.querySelector(`#pages .page[data-page-index="${idx}"] .page-text`);
+        const text = textEl ? textEl.innerText.trim() : '';
+        if (text && typeof ttsSpeakQueue === 'function') { ttsSpeakQueue(`page-${idx}`, [text]); return true; }
+      } catch (_) {}
       return false;
     };
 
     window.getFocusedReadingTargetForSync = function getFocusedReadingTargetForSync() {
       return { bookId: bookSelect?.value || '', chapterId: chapterSelect?.value || '', pageIndex: window.getCurrentFocusedPageIndex() };
+    };
+
+    window.getFocusedReadingTargetForSupabase = function getFocusedReadingTargetForSupabase() {
+      return { source_type: (bookSelect?.value || '').startsWith('local:') ? 'local' : 'embedded', source_id: bookSelect?.value || '', chapter_id: chapterSelect?.value || '', last_page_index: window.getCurrentFocusedPageIndex() };
     };
   }
 
