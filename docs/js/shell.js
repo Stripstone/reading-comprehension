@@ -75,73 +75,11 @@
         window.scrollTo(0, 0);
     }
 
-    // ── Focus mode fade ──────────────────────────────────────────
-    let focusModeTimer   = null;
-    let focusModeHandler = null;
-
+    // ── Focus mode visibility lock (Pass 1) ─────────────────────
     function initFocusMode() {
-        // Restore persisted TTS speed into the dropdown and the audio element.
-        try {
-            const savedSpeed = localStorage.getItem('rc_tts_speed');
-            if (savedSpeed) {
-                const sel = document.getElementById('shell-speed');
-                if (sel) sel.value = savedSpeed;
-                try { if (typeof setPlaybackRate === 'function') setPlaybackRate(savedSpeed); } catch(_) { shellSetSpeed(savedSpeed); }
-            }
-        } catch(_) {}
-
         const bar = document.getElementById('reading-top-bar');
-        const rm  = document.getElementById('reading-mode');
-        if (!bar || !rm) return;
-        if (focusModeHandler) {
-            ['mousemove', 'scroll', 'touchstart', 'click'].forEach(ev =>
-                rm.removeEventListener(ev, focusModeHandler));
-        }
+        if (!bar) return;
         bar.classList.remove('faded');
-        function resetFade() {
-            bar.classList.remove('faded');
-            clearTimeout(focusModeTimer);
-            focusModeTimer = setTimeout(() => bar.classList.add('faded'), 3000);
-        }
-        focusModeHandler = resetFade;
-        resetFade();
-        ['mousemove', 'scroll', 'touchstart', 'click'].forEach(ev =>
-            rm.addEventListener(ev, resetFade, { passive: true }));
-        bar.addEventListener('mouseenter', () => { bar.classList.remove('faded'); clearTimeout(focusModeTimer); });
-        bar.addEventListener('mouseleave', resetFade);
-    }
-
-    // ── Modals ───────────────────────────────────────────────────
-    function openModal(id)  { const el = document.getElementById(id); if (!el) return; el.classList.remove('hidden-section'); if (el.classList.contains('modal-overlay')) el.style.display = 'flex'; }
-    function closeModal(id) { const el = document.getElementById(id); if (!el) return; el.classList.add('hidden-section'); if (el.classList.contains('modal-overlay')) el.style.display = 'none'; }
-
-    // ── Auth (SCAFFOLD) ──────────────────────────────────────────
-    // SCAFFOLD: replace login() with real Supabase auth flow
-    function login() {
-        showSection('dashboard');
-        try { refreshLibrary(); } catch(_) {}
-    }
-
-    // ── Profile tabs ─────────────────────────────────────────────
-    function switchTab(tabId) {
-        document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden-section'));
-        document.getElementById(tabId).classList.remove('hidden-section');
-        document.querySelectorAll('.profile-tab-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.tab === tabId);
-        });
-    }
-
-    // ── Tier — drives #tierSelect so ui.js applyTierAccess() fires ──
-    function setTier(btn) {
-        document.querySelectorAll('.tier-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        const map = { 'Basic': 'free', 'Pro': 'paid', 'Premium': 'premium' };
-        const value = map[btn.textContent.trim()] || 'free';
-        const sel = document.getElementById('tierSelect');
-        if (sel && sel.value !== value) { sel.value = value; sel.dispatchEvent(new Event('change')); }
-        const pill = document.getElementById('reading-tier-pill');
-        if (pill) pill.textContent = btn.textContent.trim();
-        updateExplorerSwatchState();
     }
 
     function updateTierPill() {
