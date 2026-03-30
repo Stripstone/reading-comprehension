@@ -348,6 +348,30 @@
 
     function handleAutoplayToggle() { return false; }
 
+    function ensureOptionFullLabels(selectEl) {
+        if (!selectEl || !selectEl.options) return;
+        Array.from(selectEl.options).forEach((opt) => {
+            if (!opt.dataset.fullLabel) opt.dataset.fullLabel = opt.textContent;
+        });
+    }
+
+    function setSelectedOptionLabel(selectEl, shortLabel) {
+        if (!selectEl || !selectEl.options || selectEl.selectedIndex < 0) return;
+        ensureOptionFullLabels(selectEl);
+        const opt = selectEl.options[selectEl.selectedIndex];
+        if (!opt) return;
+        const full = opt.dataset.fullLabel || opt.textContent;
+        const narrow = window.innerWidth <= 640;
+        opt.textContent = narrow ? shortLabel : full;
+    }
+
+    function applyReadingTopBarAdaptiveLabels() {
+        try {
+            setSelectedOptionLabel(document.getElementById('bookSelect'), 'Book');
+            setSelectedOptionLabel(document.getElementById('chapterSelect'), 'CH.');
+        } catch (_) {}
+    }
+
     function handleTtsStep(delta) {
         const before = {
             playback: (typeof getPlaybackStatus === 'function') ? getPlaybackStatus() : null,
@@ -387,6 +411,10 @@
         const loadBtn = document.getElementById('loadBookSelection');
         const pageStart = document.getElementById('pageStart');
         const pageEnd   = document.getElementById('pageEnd');
+        applyReadingTopBarAdaptiveLabels();
+        window.addEventListener('resize', applyReadingTopBarAdaptiveLabels);
+        if (bookSel) bookSel.addEventListener('change', () => setTimeout(applyReadingTopBarAdaptiveLabels, 0));
+        if (chSel) chSel.addEventListener('change', () => setTimeout(applyReadingTopBarAdaptiveLabels, 0));
         if (bookSel && chSel && loadBtn && pageStart && pageEnd) {
             const waitForPages = (timeout = 2500) => new Promise(resolve => {
                 const started = Date.now();
@@ -401,7 +429,7 @@
                 const ready = await waitForPages();
                 if (ready) {
                     loadBtn.click();
-                    setTimeout(() => { try { if (typeof window.__jublyAfterRender === 'function') window.__jublyAfterRender(); } catch(_) {} }, 120);
+                    setTimeout(() => { try { if (typeof window.__jublyAfterRender === 'function') window.__jublyAfterRender(); } catch(_) {} applyReadingTopBarAdaptiveLabels(); }, 120)
                 }
             });
             chSel.addEventListener('change', async () => {
@@ -409,7 +437,7 @@
                 const ready = await waitForPages();
                 if (ready) {
                     loadBtn.click();
-                    setTimeout(() => { try { if (typeof window.__jublyAfterRender === 'function') window.__jublyAfterRender(); } catch(_) {} }, 120);
+                    setTimeout(() => { try { if (typeof window.__jublyAfterRender === 'function') window.__jublyAfterRender(); } catch(_) {} applyReadingTopBarAdaptiveLabels(); }, 120)
                 }
             });
         }

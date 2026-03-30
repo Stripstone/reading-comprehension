@@ -516,3 +516,127 @@
     font-size: 0.68rem;
   }
 }
+
+/* Pass 1 revision — top bar safety, adaptive labels, centered settings modal */
+.reading-settings-modal {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.46);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 1000;
+}
+.reading-settings-card {
+  width: min(420px, calc(100vw - 2rem));
+  max-width: 100%;
+  max-height: min(86vh, 760px);
+  overflow: auto;
+  border-radius: 20px;
+}
+.reading-top-settings-btn .settings-gear {
+  flex: 0 0 auto;
+}
+.reading-top-settings-btn .settings-label {
+  display: inline;
+}
+#reading-top-bar {
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) auto;
+  gap: 10px;
+}
+#reading-top-bar .reading-top-left {
+  overflow: hidden;
+  max-width: min(960px, calc(100vw - 184px));
+  gap: 6px;
+}
+#reading-top-bar .reading-top-actions {
+  min-width: max-content;
+}
+#reading-top-bar .reading-select,
+#reading-top-bar #bookControls,
+#reading-top-bar #chapterControls {
+  min-width: 0;
+}
+#reading-top-bar #bookControls,
+#reading-top-bar #chapterControls {
+  display: flex;
+  align-items: center;
+}
+#reading-top-bar #bookSelect,
+#reading-top-bar #chapterSelect {
+  max-width: 180px;
+}
+#reading-top-bar .reading-top-exit {
+  position: relative;
+  z-index: 1;
+}
+@media (max-width: 900px) {
+  #reading-top-bar {
+    gap: 8px;
+  }
+  #reading-top-bar .reading-top-left {
+    max-width: calc(100vw - 156px);
+  }
+  #reading-top-bar #bookSelect {
+    max-width: 130px;
+  }
+  #reading-top-bar #chapterSelect {
+    max-width: 90px;
+  }
+}
+@media (max-width: 640px) {
+  #reading-top-bar {
+    gap: 4px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  #reading-top-bar .reading-top-left {
+    max-width: calc(100vw - 86px);
+    gap: 3px;
+    overflow: hidden;
+  }
+  #reading-top-bar .reading-divider {
+    display: none;
+  }
+  #reading-top-bar .reading-top-settings-btn {
+    min-width: 34px;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    gap: 0;
+  }
+  #reading-top-bar .reading-top-settings-btn .settings-label {
+    display: none;
+  }
+  #reading-top-bar .reading-select {
+    padding-left: 0;
+    padding-right: 0;
+    font-size: 0.72rem;
+  }
+  #reading-top-bar #modeSelect {
+    max-width: 94px;
+  }
+  #reading-top-bar #bookSelect {
+    max-width: 52px;
+  }
+  #reading-top-bar #chapterSelect {
+    max-width: 38px;
+  }
+  #reading-top-bar .tier-pill {
+    max-width: 52px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #reading-top-bar .reading-top-exit {
+    padding-left: 8px;
+    padding-right: 8px;
+    min-height: 34px;
+  }
+}
+
+#reading-top-bar .reading-top-left > * { min-width: 0; }
+#reading-top-bar #bookControls, #reading-top-bar #chapterControls { overflow: hidden; }
+

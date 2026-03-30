@@ -318,25 +318,20 @@
         syncSlidersFromState();
         populateBrowserVoicePicker();
         try {
-          volumePanel.style.visibility = 'hidden';
-          volumePanel.style.display = 'block';
-          const trigger = document.getElementById('openReadingSettings') || musicToggleBtn;
-          const rect = trigger ? trigger.getBoundingClientRect() : { top: 80, right: window.innerWidth - 20 };
-          const panelW = volumePanel.offsetWidth || 360;
-          const panelH = volumePanel.offsetHeight || 420;
-          const gap = 10;
-          const top = Math.max(10, rect.top - panelH - gap);
-          const left = Math.min(window.innerWidth - panelW - 10, Math.max(10, rect.right - panelW));
-          volumePanel.style.top = `${top}px`;
-          volumePanel.style.left = `${left}px`;
+          volumePanel.classList.remove('hidden-section');
+          volumePanel.setAttribute('aria-hidden', 'false');
+          volumePanel.style.visibility = 'visible';
+          volumePanel.style.display = 'flex';
+          volumePanel.style.top = '';
+          volumePanel.style.left = '';
         } catch (_) {}
-        volumePanel.style.visibility = 'visible';
-        volumePanel.style.display = 'block';
         return true;
       }
 
       function closeReadingSettingsModal() {
         volumePanel.style.display = 'none';
+        volumePanel.classList.add('hidden-section');
+        volumePanel.setAttribute('aria-hidden', 'true');
         return false;
       }
 
@@ -379,6 +374,11 @@
       }
 
       if (volumeCloseBtn) volumeCloseBtn.addEventListener('click', () => closeReadingSettingsModal());
+      if (volumePanel) {
+        volumePanel.addEventListener('click', (ev) => {
+          if (ev.target === volumePanel) closeReadingSettingsModal();
+        });
+      }
       if (toggleMusicBtn) toggleMusicBtn.addEventListener('click', () => window.toggleMusic && window.toggleMusic());
     }
 
