@@ -41,9 +41,12 @@ const TTS_DEBUG = {
   lastAction: null,
   lastError: null,
   lastCloudRequest: null,
+  lastCloudResponse: null,
   lastSkip: null,
   lastPlayRequest: null,
   lastResolvedPath: null,
+  lastPauseStrategy: null,
+  lastRouteDecision: null,
 };
 
 function ttsDiagClone(data) {
@@ -67,6 +70,40 @@ function ttsDiagPush(event, data = {}) {
 
 function getStoredSelectedVoice() {
   try { return localStorage.getItem('rc_browser_voice') || ''; } catch (_) { return ''; }
+}
+
+
+function getSelectedVoicePreference() {
+  const stored = getStoredSelectedVoice();
+  const type = stored.startsWith('cloud:') ? 'cloud' : (stored ? 'browser' : 'auto');
+  return {
+    stored,
+    type,
+    explicitCloud: type === 'cloud',
+    requestedCloudVoiceId: type === 'cloud' ? stored.slice('cloud:'.length) : null
+  };
+}
+
+function getPreferredTtsRouteInfo() {
+  const tier = (typeof appTier !== 'undefined' && appTier) ? String(appTier) : 'free';
+  const selected = getSelectedVoicePreference();
+  const support = getTtsSupportStatus();
+  const cloudCapable = tier !== 'free';
+  let requestedPath = cloudCapable ? 'cloud-preferred' : 'browser-free';
+  let reason = cloudCapable ? 'paid-tier-cloud-path' : 'free-tier-browser-path';
+  if (selected.explicitCloud) {
+    requestedPath = cloudCapable ? 'cloud-selected' : 'browser-free';
+    reason = cloudCapable ? 'explicit-cloud-selection' : 'cloud-selection-blocked-by-tier';
+  }
+  return {
+    tier,
+    cloudCapable,
+    requestedPath,
+    reason,
+    selected,
+    support,
+    browserFallbackAllowed: cloudCapable && !selected.explicitCloud
+  };
 }
 
 function getTtsDiagnosticsSnapshot() {
@@ -116,9 +153,12 @@ function getTtsDiagnosticsSnapshot() {
     voice: {
       variant: TTS_STATE.voiceVariant || 'female',
       selected: getStoredSelectedVoice(),
+      selection: getSelectedVoicePreference(),
       activeBrowserVoice: TTS_STATE.activeBrowserVoiceName || null,
       effectiveBrowserVoice: TTS_STATE.browserVoice ? (TTS_STATE.browserVoice.name || null) : null
     },
+    routing: getPreferredTtsRouteInfo(),
+    supportStatus: getTtsSupportStatus(),
     speed: {
       selected: getPlaybackRate(),
       state: Number(TTS_STATE.playbackRate || 0),
@@ -146,6 +186,9 @@ function getTtsDiagnosticsSnapshot() {
       skip: TTS_DEBUG.lastSkip,
       playRequest: TTS_DEBUG.lastPlayRequest,
       cloudRequest: TTS_DEBUG.lastCloudRequest,
+      cloudResponse: TTS_DEBUG.lastCloudResponse,
+      pauseStrategy: TTS_DEBUG.lastPauseStrategy,
+      routeDecision: TTS_DEBUG.lastRouteDecision,
       resolvedPath: TTS_DEBUG.lastResolvedPath
     },
     recentEvents: TTS_DEBUG.recent.slice(-30)
@@ -254,13 +297,16 @@ function getTtsSupportStatus() {
   })();
   const freePlayable = browserSupported && !!browserVoice;
   const playable = tier === 'free' ? freePlayable : true;
+  const selected = getSelectedVoicePreference();
   return {
     tier,
     browserSupported,
     browserVoices,
     browserVoiceAvailable: !!browserVoice,
+    browserVoiceName: browserVoice ? (browserVoice.name || null) : null,
     freePlayable,
     playable,
+    selected,
     reason: freePlayable ? '' : 'No browser English voice is available on this device.'
   };
 }
@@ -271,7 +317,8 @@ function pauseOrResumeReading() {
   if (status.paused) ttsResume();
   else ttsPause();
   const nextStatus = getPlaybackStatus();
-  ttsDiagPush('toggle-pause-resume', { before: status, after: nextStatus });
+  TTS_DEBUG.lastRouteDecision = getPreferredTtsRouteInfo();
+  ttsDiagPush('toggle-pause-resume', { before: status, after: nextStatus, route: TTS_DEBUG.lastRouteDecision });
   return nextStatus;
 }
 
@@ -822,6 +869,7 @@ function ttsPause() {
   // Cloud TTS: pause HTML Audio element
   if (TTS_STATE.audio) {
     try { TTS_STATE.audio.pause(); } catch (_) {}
+    TTS_DEBUG.lastPauseStrategy = 'cloud-audio-pause';
   }
   // Browser TTS: pause speechSynthesis. Some Edge online voices report speaking
   // but never enter the paused state; fall back to a controlled cancel + resume.
@@ -835,6 +883,7 @@ function ttsPause() {
         TTS_STATE.browserRestarting = true;
         try { window.speechSynthesis.cancel(); } catch (_) {}
         TTS_STATE.browserRestarting = false;
+        TTS_DEBUG.lastPauseStrategy = 'browser-cancel-restart-fallback';
         ttsDiagPush('browser-pause-fallback', {
           key: TTS_STATE.activeKey || null,
           sentenceIndex: Number(TTS_STATE.browserCurrentSentenceIndex || 0),
@@ -842,6 +891,7 @@ function ttsPause() {
         });
       } else {
         TTS_STATE.browserPaused = synthPaused;
+        TTS_DEBUG.lastPauseStrategy = synthPaused ? 'browser-speechsynthesis-pause' : 'browser-pause-noop';
       }
     } catch (_) {}
   }
@@ -865,12 +915,14 @@ function ttsResume() {
   if (browserTtsSupported()) {
     try {
       if (TTS_STATE.browserPaused && TTS_STATE.activeKey && /^page-\d+$/.test(String(TTS_STATE.activeKey || ''))) {
+        TTS_DEBUG.lastPauseStrategy = 'browser-restart-from-sentence';
         const resumed = browserSpeakPageFromSentence(TTS_STATE.activeKey, Number(TTS_STATE.browserCurrentSentenceIndex || 0));
         TTS_STATE.browserPaused = !resumed;
         return;
       }
       window.speechSynthesis.resume();
       TTS_STATE.browserPaused = !!window.speechSynthesis.paused;
+      TTS_DEBUG.lastPauseStrategy = 'browser-speechsynthesis-resume';
     } catch (_) {}
   }
 }
@@ -885,7 +937,8 @@ async function pollyFetchUrl(text, opts = {}) {
   // to take effect so changing env vars changes the narrator without being
   // overridden by the client.
   const payload = { text };
-  TTS_DEBUG.lastCloudRequest = { chars: String(text || '').length, sentenceMarks: !!(opts && opts.sentenceMarks), selectedVoice: getStoredSelectedVoice(), variant: TTS_STATE.voiceVariant || 'female' };
+  const selectedVoicePref = getSelectedVoicePreference();
+  TTS_DEBUG.lastCloudRequest = { chars: String(text || '').length, sentenceMarks: !!(opts && opts.sentenceMarks), selectedVoice: selectedVoicePref.stored, selectedVoiceType: selectedVoicePref.type, requestedVoiceId: selectedVoicePref.requestedCloudVoiceId, variant: TTS_STATE.voiceVariant || 'female' };
   ttsDiagPush('cloud-request-build', TTS_DEBUG.lastCloudRequest);
   if (opts && opts.sentenceMarks) payload.speechMarks = "sentence";
 
@@ -940,12 +993,21 @@ async function pollyFetchUrl(text, opts = {}) {
   }
 
   if (!res.ok || !data?.url) {
+    TTS_DEBUG.lastCloudResponse = { ok: false, status: res.status, payload: data || null, rawText: rawText || '' };
     const detail = data?.detail || data?.message || rawText || "";
     const msg = data?.error
       ? `${data.error}${detail ? `: ${detail}` : ""}`
       : `TTS request failed (${res.status})${detail ? `: ${detail}` : ""}`;
     throw new Error(msg);
   }
+  TTS_DEBUG.lastCloudResponse = {
+    ok: true,
+    status: res.status,
+    provider: data?.provider || null,
+    cacheHit: !!data?.cacheHit,
+    debug: data?.debug || null
+  };
+  ttsDiagPush('cloud-response', TTS_DEBUG.lastCloudResponse);
   return { url: data.url, sentenceMarks: Array.isArray(data.sentenceMarks) ? data.sentenceMarks : null };
 }
 
@@ -1041,7 +1103,8 @@ function browserSpeakQueue(key, parts) {
   const support = getTtsSupportStatus();
   if (!support.browserVoiceAvailable) {
     TTS_DEBUG.lastError = { at: new Date().toISOString(), path: 'browser', key, message: support.reason || 'No browser voice available' };
-    ttsDiagPush('browser-voice-unavailable', { key, reason: support.reason || 'No browser voice available' });
+    TTS_DEBUG.lastRouteDecision = getPreferredTtsRouteInfo();
+    ttsDiagPush('browser-voice-unavailable', { key, reason: support.reason || 'No browser voice available', route: TTS_DEBUG.lastRouteDecision });
     try { if (typeof window.syncPlaybackUiAvailability === 'function') window.syncPlaybackUiAvailability(); } catch (_) {}
     return;
   }
@@ -1193,13 +1256,15 @@ function browserSpeakQueue(key, parts) {
 }
 
 async function ttsSpeakQueue(key, parts) {
-  TTS_DEBUG.lastPlayRequest = { key, parts: (parts || []).length, path: (typeof appTier !== 'undefined' && appTier === 'free') ? 'browser-free' : 'cloud-preferred' };
+  const routeInfo = getPreferredTtsRouteInfo();
+  TTS_DEBUG.lastRouteDecision = routeInfo;
+  TTS_DEBUG.lastPlayRequest = { key, parts: (parts || []).length, path: routeInfo.requestedPath, reason: routeInfo.reason, selectedVoice: routeInfo.selected.stored };
   ttsDiagPush('speak-request', TTS_DEBUG.lastPlayRequest);
 
   // Free tier: route directly to browser speechSynthesis — no API call, no token cost.
   // Voice variant (male/female) is respected via browserPickVoice().
   // Sentence highlighting uses boundary events on browser TTS path.
-  if (typeof appTier !== 'undefined' && appTier === 'free') {
+  if (!routeInfo.cloudCapable) {
     TTS_DEBUG.lastResolvedPath = 'browser-free';
     browserSpeakQueue(key, parts);
     return;
@@ -1289,12 +1354,13 @@ async function ttsSpeakQueue(key, parts) {
     if (TTS_STATE.activeKey !== key) return;
     if (err && (err.name === 'AbortError' || String(err).includes('aborted'))) return;
 
-    const selectedVoice = (() => { try { return localStorage.getItem('rc_browser_voice') || ''; } catch(_) { return ''; } })();
+    const routeInfo = getPreferredTtsRouteInfo();
     TTS_DEBUG.lastError = { at: new Date().toISOString(), path: 'cloud', key, message: String(err && err.message ? err.message : err) };
-    ttsDiagPush('cloud-playback-failed', { key, message: String(err && err.message ? err.message : err) });
+    ttsDiagPush('cloud-playback-failed', { key, message: String(err && err.message ? err.message : err), route: routeInfo });
     console.warn('Cloud TTS playback failed:', err);
     ttsStop();
-    if (selectedVoice.startsWith('cloud:')) {
+    if (!routeInfo.browserFallbackAllowed) {
+      TTS_DEBUG.lastResolvedPath = routeInfo.selected.explicitCloud ? 'cloud-failure-no-browser-fallback' : 'cloud-failure-no-fallback';
       return;
     }
     TTS_DEBUG.lastResolvedPath = 'browser-fallback';

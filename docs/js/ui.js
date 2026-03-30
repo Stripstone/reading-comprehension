@@ -224,9 +224,9 @@
         placeholder.selected = !isThisVoiceActive || (!savedBrowser && savedVariant !== gender && isFree);
         selectEl.appendChild(placeholder);
 
-        // Cloud voices for Paid/Premium — Azure Neural voice catalogue
-        // Voices match what Edge browser exposes natively, so Edge users
-        // may get these for free via browserSpeakQueue (see tts.js Edge optimisation).
+        // Cloud voices for Paid/Premium — Azure Neural voice catalogue.
+        // These remain explicit cloud selections and should stay on the cloud path
+        // rather than being silently treated as browser-voice equivalents.
         if (!isFree) {
           const cloudGrp = document.createElement('optgroup');
           cloudGrp.label = '☁️ Cloud (Neural)';
@@ -356,6 +356,28 @@
         panes.forEach((pane) => pane.classList.toggle('active', pane.dataset.settingsPane === tabName));
       }
 
+      function isSettingsPanelOpen() {
+        return !!(volumePanel && volumePanel.style.display === 'flex' && !volumePanel.classList.contains('hidden-section'));
+      }
+
+      window.openReadingSettingsModal = function openReadingSettingsModal(tabName = 'sound') {
+        openSettingsPanel(tabName || 'sound');
+        return true;
+      };
+      window.closeReadingSettingsModal = function closeReadingSettingsModal() {
+        hideAllPanels();
+        return true;
+      };
+      window.toggleReadingSettingsModal = function toggleReadingSettingsModal(tabName = 'sound') {
+        if (isSettingsPanelOpen()) {
+          hideAllPanels();
+          return false;
+        }
+        openSettingsPanel(tabName || 'sound');
+        return true;
+      };
+      window.isReadingSettingsModalOpen = isSettingsPanelOpen;
+
       musicToggleBtn.addEventListener('click', (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
@@ -464,9 +486,16 @@
             totalSpent,
             breakdown: sessionTokens?.spent || {},
           },
+          stored: {
+            tier: (() => { try { return localStorage.getItem('rc_app_tier'); } catch(_) { return null; } })(),
+            voiceVariant: (() => { try { return localStorage.getItem('rc_voice_variant'); } catch(_) { return null; } })(),
+            voiceSelection: (() => { try { return localStorage.getItem('rc_browser_voice'); } catch(_) { return null; } })(),
+            ttsSpeed: (() => { try { return localStorage.getItem('rc_tts_speed'); } catch(_) { return null; } })(),
+          },
           tts: {
             variant: TTS_STATE?.voiceVariant || 'female',
             activeBrowserVoice: TTS_STATE?.activeBrowserVoiceName || null,
+            support: (typeof window.getTtsSupportStatus === 'function') ? window.getTtsSupportStatus() : null,
             allEnglishVoices: (() => {
               try {
                 return (window.speechSynthesis?.getVoices() || [])
@@ -476,6 +505,7 @@
             })(),
           },
           ttsRuntime: (typeof window.getTtsDiagnosticsSnapshot === 'function') ? window.getTtsDiagnosticsSnapshot() : null,
+          shell: (typeof window.getShellDiagnosticsSnapshot === 'function') ? window.getShellDiagnosticsSnapshot() : null,
           ai: lastAIDiagnostics || null,
           anchors: lastAnchorsDiagnostics || null,
         };
