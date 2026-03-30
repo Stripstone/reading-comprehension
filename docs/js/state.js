@@ -74,6 +74,26 @@
     };
   }
 
+// ---- Persistence strip (stabilization mode) ----
+const RC_STRIPPED_PERSIST_KEYS = [
+  "rc_tts_speed",
+  "rc_browser_voice",
+  "rc_app_tier"
+];
+
+function purgeStrippedRuntimePersistence() {
+  try {
+    RC_STRIPPED_PERSIST_KEYS.forEach((key) => {
+      try { localStorage.removeItem(key); } catch (_) {}
+      try { sessionStorage.removeItem(key); } catch (_) {}
+    });
+  } catch (_) {}
+  try { window.__rcRuntimePersistenceStripped = true; } catch (_) {}
+}
+
+purgeStrippedRuntimePersistence();
+window.purgeStrippedRuntimePersistence = purgeStrippedRuntimePersistence;
+
 // ---- Persistence ----
 // Persist learner work per-page-hash so switching chapters/sources doesn't wipe progress.
 // Also persist the last-opened session so refresh restores the current view.
@@ -97,20 +117,15 @@ function schedulePersistSession() {
 
 function persistSessionNow() {
   try {
-    // 1) Persist consolidations per pageHash so switching chapters doesn't wipe work.
     for (const p of (pageData || [])) {
       const h = p?.pageHash;
       if (!h) continue;
-      // v2: persist evaluation-stage inputs too (compass rating + sandstone) and any
-      // returned AI feedback so refresh does not wipe the evaluation phase.
       const record = {
         v: 2,
         savedAt: Date.now(),
         consolidation: p?.consolidation || "",
         rating: Number(p?.rating || 0) || 0,
         isSandstone: !!p?.isSandstone,
-        // Whether the AI feedback panel is currently expanded for this page.
-        // This is purely a UI convenience so users can return and still see the memory.
         aiExpanded: !!p?.aiExpanded,
         aiFeedbackRaw: typeof p?.aiFeedbackRaw === 'string' ? p.aiFeedbackRaw : "",
         aiAt: p?.aiAt ?? null,
@@ -119,33 +134,18 @@ function persistSessionNow() {
       localStorage.setItem(getConsolidationCacheKey(h), JSON.stringify(record));
     }
 
-    // 2) Persist a lightweight snapshot of the last-opened session for refresh restore.
-    const inferredPageIndex = (() => {
-      try {
-        if (typeof lastFocusedPageIndex === 'number' && lastFocusedPageIndex >= 0) return lastFocusedPageIndex;
-      } catch (_) {}
-      try {
-        if (typeof inferCurrentPageIndex === 'function') {
-          const idx = inferCurrentPageIndex();
-          if (Number.isFinite(idx) && idx >= 0) return idx;
-        }
-      } catch (_) {}
-      return Number.isFinite(currentPageIndex) ? currentPageIndex : 0;
-    })();
-
     const payload = {
-      v: 3,
+      v: 2,
       savedAt: Date.now(),
       pages: pages.slice(),
       pageHashes: pageData.map(p => p?.pageHash || ""),
-      consolidations: pageData.map(p => p?.consolidation || ""),
-      lastReadPageIndex: Math.max(0, inferredPageIndex),
-      appMode: typeof appMode !== 'undefined' ? appMode : 'reading'
+      consolidations: pageData.map(p => p?.consolidation || "")
     };
     localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(payload));
     localStorage.setItem(STORAGE_KEY_META, JSON.stringify({ savedAt: payload.savedAt }));
+    return true;
   } catch (e) {
-    // Ignore quota / private mode errors; app should still function.
+    return false;
   }
 }
 
@@ -169,14 +169,13 @@ function loadPersistedSessionIfAny() {
     const raw = localStorage.getItem(STORAGE_KEY_SESSION);
     if (!raw) return false;
     const parsed = JSON.parse(raw);
-    if (!parsed || (parsed.v !== 2 && parsed.v !== 3)) return false;
+    if (!parsed || parsed.v !== 2) return false;
     if (!Array.isArray(parsed.pages)) return false;
 
     pages = parsed.pages;
     const incomingHashes = Array.isArray(parsed.pageHashes) ? parsed.pageHashes : [];
     const incomingConsolidations = Array.isArray(parsed.consolidations) ? parsed.consolidations : [];
 
-    // Rehydrate runtime-only fields (AI output is intentionally not persisted).
     pageData = pages.map((t, idx) => {
       const pageHash = incomingHashes[idx] || "";
       let consolidation = incomingConsolidations[idx] || "";
@@ -192,7 +191,6 @@ function loadPersistedSessionIfAny() {
           if (rawC) {
             const rec = JSON.parse(rawC);
             if (rec && typeof rec.consolidation === 'string') consolidation = rec.consolidation;
-            // Back-compat: v1 stored only consolidation.
             const r = Number(rec?.rating || 0);
             rating = Number.isFinite(r) ? r : 0;
             isSandstone = !!rec?.isSandstone;
@@ -221,17 +219,13 @@ function loadPersistedSessionIfAny() {
       };
     });
 
-    // Defensive: ensure parallel structure
     if (pages.length !== pageData.length) {
-      // Try to reconcile by truncating to the shortest.
       const n = Math.min(pages.length, pageData.length);
       pages = pages.slice(0, n);
       pageData = pageData.slice(0, n);
     }
 
-    const restoredPage = Math.max(0, Math.min(Number(parsed?.lastReadPageIndex ?? 0) || 0, Math.max(0, pages.length - 1)));
-    currentPageIndex = restoredPage;
-    window.__rcPendingRestorePageIndex = restoredPage;
+    currentPageIndex = Math.min(currentPageIndex, Math.max(0, pages.length - 1));
     return pages.length > 0;
   } catch (e) {
     return false;
@@ -263,7 +257,6 @@ async function ensurePageHashesAndRehydrate() {
       const h = p.pageHash;
       if (!h) continue;
 
-      // Rehydrate from per-page record if present.
       try {
         const rawC = localStorage.getItem(getConsolidationCacheKey(h));
         if (rawC) {
@@ -281,12 +274,7 @@ async function ensurePageHashesAndRehydrate() {
       } catch (_) {}
     }
 
-    if (changed) {
-      // Update the session snapshot so future reloads have hashes immediately.
-      persistSessionNow();
-      render();
-      try { updateDiagnostics(); } catch (_) {}
-    }
+    if (changed) persistSessionNow();
   } catch (_) {}
 }
 
