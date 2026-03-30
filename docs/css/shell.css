@@ -541,3 +541,32 @@
   #bookSelect, #chapterSelect { max-width: 18vw; }
   .reading-top-left { max-width: calc(100% - 58px); }
 }
+
+
+/* Runtime patch v3: browser-safe TTS controls, larger visible playback controls, inline exit */
+.reading-top-bar { justify-content: center; }
+.reading-top-left { width: min(100%, 900px); max-width: min(100%, 900px); }
+.reading-top-exit { position: static; transform: none; margin-left: 0; }
+.reading-bottom-bar .pb-icon-btn {
+  min-height: 42px;
+  min-width: 42px;
+  padding: .62rem .9rem;
+  border: 1px solid rgba(148,163,184,.45);
+  background: rgba(255,255,255,.94);
+  box-shadow: 0 6px 18px rgba(15,23,42,.08);
+}
+.reading-bottom-bar #shell-pause-btn {
+  min-width: 88px;
+  font-weight: 800;
+}
+.reading-bottom-bar #tts-prev-btn,
+.reading-bottom-bar #tts-next-btn {
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+@media (max-width: 640px) {
+  .reading-bottom-bar .pb-icon-btn { min-height: 46px; min-width: 46px; padding: .72rem .92rem; }
+  .reading-bottom-bar #shell-pause-btn { min-width: 46px; padding-left: .78rem; padding-right: .78rem; }
+  .reading-bottom-bar #shell-pause-btn svg { margin-right: 0; }
+  .reading-top-left { gap: 4px; }
+}

@@ -260,10 +260,11 @@
         const speaking = active && !countdownActive;
         btn.disabled = false;
         btn.classList.toggle('active', speaking && paused);
+        const compact = isCompactPlaybackView();
         btn.title = speaking ? (paused ? 'Resume narration' : 'Pause narration') : 'Play current page';
         btn.innerHTML = (speaking && !paused)
-            ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause'
-            : '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Play';
+            ? (`<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>${compact ? '' : ' Pause'}`)
+            : (`<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>${compact ? '' : ' Play'}`);
         [prevBtn, nextBtn].forEach((control) => {
             if (!control) return;
             control.disabled = !speaking;
@@ -271,11 +272,21 @@
         });
     }
 
+    function isCompactPlaybackView() {
+        try { return !!window.matchMedia && window.matchMedia('(max-width: 640px)').matches; } catch (_) { return window.innerWidth <= 640; }
+    }
+
     function handlePausePlay() {
         let status = { active: false, paused: false };
+        let countdown = { active: false };
         try { if (typeof window.getPlaybackStatus === 'function') status = window.getPlaybackStatus() || status; } catch(_) {}
+        try { if (typeof window.getCountdownStatus === 'function') countdown = window.getCountdownStatus() || countdown; } catch(_) {}
         if (!status.active) {
             try {
+                if (countdown.active && typeof window.restartLastSpokenPageTts === 'function' && window.restartLastSpokenPageTts()) {
+                    setTimeout(syncPausePlayButton, 0);
+                    return;
+                }
                 if (typeof window.startFocusedPageTts === 'function' && window.startFocusedPageTts()) {
                     setTimeout(syncPausePlayButton, 0);
                     return;
@@ -317,7 +328,7 @@
             });
         }
         const settingsBtn = document.getElementById('openReadingSettings');
-        if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.preventDefault(); const s = document.getElementById('musicToggle'); if (s) s.click(); });
+        if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.preventDefault(); try { if (typeof window.openReadingSettingsModal === 'function') { window.openReadingSettingsModal(); return; } } catch(_) {} const modal = document.getElementById('volumePanel'); if (modal) { modal.style.display = 'flex'; modal.classList.remove('hidden-section'); modal.setAttribute('aria-hidden', 'false'); } });
         setTimeout(() => { updateTierPill(); updateExplorerSwatchState(); syncPausePlayButton(); syncAutoplayButton(); }, 500);
         window.setInterval(() => {
             try {

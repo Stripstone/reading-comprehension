@@ -475,6 +475,7 @@
               } catch(_) { return []; }
             })(),
           },
+          ttsRuntime: (typeof window.getTtsDiagnosticsSnapshot === 'function') ? window.getTtsDiagnosticsSnapshot() : null,
           ai: lastAIDiagnostics || null,
           anchors: lastAnchorsDiagnostics || null,
         };

@@ -1456,6 +1456,21 @@
     };
 
 
+  function scrollPageIntoViewWithOffset(target, options = {}) {
+    if (!target) return false;
+    const behavior = options.behavior || 'smooth';
+    const topBar = document.getElementById('reading-top-bar');
+    const topOffset = (topBar ? topBar.getBoundingClientRect().height : 0) + 12;
+    try {
+      const rect = target.getBoundingClientRect();
+      const absoluteTop = rect.top + window.scrollY;
+      window.scrollTo({ top: Math.max(0, absoluteTop - topOffset), behavior });
+      return true;
+    } catch (_) {
+      try { target.scrollIntoView({ behavior, block: 'start', inline: 'nearest' }); return true; } catch(_) { return false; }
+    }
+  }
+
   function setFocusedPageIndex(pageIndex, options = {}) {
     const idx = Number(pageIndex);
     if (!Number.isFinite(idx) || idx < 0) return false;
@@ -1468,7 +1483,7 @@
     });
     const target = pagesEls[idx];
     if (target && options.scroll) {
-      try { target.scrollIntoView({ behavior: options.behavior || 'smooth', block: 'start', inline: 'nearest' }); } catch(_) {}
+      scrollPageIntoViewWithOffset(target, { behavior: options.behavior || 'smooth' });
     }
     return true;
   }
@@ -1503,6 +1518,8 @@
     };
 
     window.setFocusedPageIndex = setFocusedPageIndex;
+
+    window.scrollReadingPageIntoView = scrollPageIntoViewWithOffset;
 
     window.getCurrentFocusedPageIndex = function getCurrentFocusedPageIndex() {
       if (Number.isFinite(lastFocusedPageIndex) && lastFocusedPageIndex >= 0) return lastFocusedPageIndex;
@@ -1539,7 +1556,7 @@
     const pageEl = document.querySelector(`#pages .page[data-page-index="${lastFocusedPageIndex}"]`);
     if (!pageEl) return false;
     try {
-      pageEl.scrollIntoView({ behavior, block: 'start', inline: 'nearest' });
+      scrollPageIntoViewWithOffset(pageEl, { behavior });
       pageEl.classList.add('page-active');
       setTimeout(() => {
         try { pageEl.classList.remove('page-active'); } catch (_) {}
@@ -1782,7 +1799,6 @@
           } catch(_) {}
           if (AUTOPLAY_STATE.countdownPageIndex === i) {
             ttsAutoplayCancelCountdown();
-            return;
           }
           ttsSpeakQueue(`page-${i}`, [text]);
         });
