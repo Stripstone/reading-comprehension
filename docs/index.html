@@ -32,51 +32,58 @@
      mute state is not displayed in the shell since the button text is always "Sound & Voice". -->
 <span id="musicIcon" style="display:none;" aria-hidden="true">🔇</span>
 
-<!-- Volume panel — positioned and shown by app's initUtilityPanels() -->
-<div id="volumePanel" style="display:none; position:fixed; z-index:1000; width:300px; max-width:92vw;">
-    <div class="glass-card p-4 shadow-xl">
-        <div class="flex items-center justify-between mb-3">
-            <span class="text-xs font-black uppercase tracking-wider text-slate-400">Settings</span>
-            <button type="button" id="volumeCloseBtn" style="background:#f1f5f9; border:none; border-radius:8px; width:28px; height:28px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#64748b; font-size:0.9rem; transition:background 0.15s;">✕</button>
+<!-- Settings panel — centered and tabbed for reading mode -->
+<div id="volumePanel" class="reading-settings-modal hidden-section" aria-hidden="true">
+    <div class="reading-settings-card glass-card shadow-xl">
+        <div class="reading-settings-header">
+            <span class="reading-settings-title">Settings</span>
+            <button type="button" id="volumeCloseBtn" class="reading-settings-close">✕</button>
         </div>
-        <div class="settings-layout">
-            <div class="settings-tabs" role="tablist" aria-label="Settings sections">
-                <button type="button" class="settings-tab-btn active" data-settings-tab="general" aria-selected="true">General</button>
-                <button type="button" class="settings-tab-btn" data-settings-tab="sound" aria-selected="false">Sound &amp; Voice</button>
+        <div class="reading-settings-body">
+            <div class="reading-settings-tabs" role="tablist" aria-label="Reading settings">
+                <button type="button" class="reading-settings-tab active" data-settings-tab="general">General</button>
+                <button type="button" class="reading-settings-tab" data-settings-tab="sound">Sound &amp; Voice</button>
             </div>
-            <div class="settings-panels">
-                <div class="settings-tab-panel active" data-settings-panel="general">
-                    <div class="settings-section-title">General</div>
-                    <div class="flex items-center justify-between mb-3 text-xs text-slate-500">
-                        <span class="font-semibold">Autoplay</span>
-                        <label class="flex items-center gap-2 cursor-pointer">
-                            <span class="text-slate-400">Next page auto</span>
-                            <input type="checkbox" id="autoplayToggle" style="accent-color:var(--theme-accent); width:15px; height:15px; cursor:pointer;">
+            <div class="reading-settings-pane-wrap">
+                <section class="reading-settings-pane active" data-settings-pane="general">
+                    <div class="reading-settings-field">
+                        <label class="reading-settings-label" for="modeSelect">Mode</label>
+                        <div id="modeSelectHost"></div>
+                    </div>
+                    <div class="reading-settings-row between">
+                        <div>
+                            <div class="reading-settings-label">Autoplay</div>
+                            <div class="reading-settings-help">Automatically continue to the next page.</div>
+                        </div>
+                        <label class="reading-settings-toggle">
+                            <input type="checkbox" id="autoplayToggle">
+                            <span>On</span>
                         </label>
                     </div>
-                    <p class="text-xs text-slate-400 mb-1">Reading controls stay in the bottom bar. Sound &amp; Voice lives here.</p>
-                </div>
-                <div class="settings-tab-panel" data-settings-panel="sound">
-                    <div class="settings-section-title">Sound &amp; Voice</div>
-                    <div class="flex gap-2 mb-3 settings-voice-row">
-                        <select id="voiceFemaleSelect" class="flex-1 text-xs font-semibold border-2 border-slate-200 rounded-lg px-2 py-2 bg-white text-slate-600 outline-none min-w-0"></select>
-                        <select id="voiceMaleSelect"   class="flex-1 text-xs font-semibold border-2 border-slate-200 rounded-lg px-2 py-2 bg-white text-slate-600 outline-none min-w-0"></select>
+                </section>
+                <section class="reading-settings-pane" data-settings-pane="sound">
+                    <div class="reading-settings-field dual-voices">
+                        <label class="reading-settings-label">Voices</label>
+                        <div class="reading-voice-selects">
+                            <select id="voiceFemaleSelect" class="reading-settings-select"></select>
+                            <select id="voiceMaleSelect" class="reading-settings-select"></select>
+                        </div>
                     </div>
-                    <div class="space-y-2 text-xs text-slate-500">
-                        <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Voice</span><input id="vol_voice"    type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
-                        <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Music</span><input id="vol_music"    type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
-                        <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Sand</span><input id="vol_sand"     type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
-                        <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Sandstone</span><input id="vol_stone"    type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
-                        <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Reward</span><input id="vol_reward"   type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
-                        <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Compass</span><input id="vol_compass"  type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
-                        <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Page Turn</span><input id="vol_pageTurn" type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
-                        <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Evaluate</span><input id="vol_evaluate" type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
+                    <div class="reading-settings-sliders">
+                        <div class="reading-slider-row"><span>Voice</span><input id="vol_voice" type="range" min="0" max="1" step="0.01"></div>
+                        <div class="reading-slider-row"><span>Music</span><input id="vol_music" type="range" min="0" max="1" step="0.01"></div>
+                        <div class="reading-slider-row"><span>Sand</span><input id="vol_sand" type="range" min="0" max="1" step="0.01"></div>
+                        <div class="reading-slider-row"><span>Sandstone</span><input id="vol_stone" type="range" min="0" max="1" step="0.01"></div>
+                        <div class="reading-slider-row"><span>Reward</span><input id="vol_reward" type="range" min="0" max="1" step="0.01"></div>
+                        <div class="reading-slider-row"><span>Compass</span><input id="vol_compass" type="range" min="0" max="1" step="0.01"></div>
+                        <div class="reading-slider-row"><span>Page Turn</span><input id="vol_pageTurn" type="range" min="0" max="1" step="0.01"></div>
+                        <div class="reading-slider-row"><span>Evaluate</span><input id="vol_evaluate" type="range" min="0" max="1" step="0.01"></div>
                     </div>
-                    <div class="mt-3 pt-3 border-t border-slate-100 flex justify-between items-center">
+                    <div class="reading-settings-footer">
                         <button type="button" id="toggleMusicBtn" class="btn-ghost px-3 py-1.5 rounded-lg text-xs font-bold">Music On/Off</button>
-                        <span class="text-xs text-slate-300">Volumes save locally</span>
+                        <span class="reading-settings-help">Volumes save locally</span>
                     </div>
-                </div>
+                </section>
             </div>
         </div>
     </div>
@@ -585,16 +592,17 @@
 <!-- READING MODE — Focus UI -->
 <main id="reading-mode" class="hidden-section">
 
-    <!-- TOP BAR: session-defining — remains visible during reading -->
+    <!-- TOP BAR: session-defining — fades on idle. Left scrolls, Exit always pinned right -->
     <div id="reading-top-bar" class="reading-top-bar">
         <div class="reading-top-left">
-            <!-- modeSelect: wired by ui.js initModeSelector() -->
-            <select id="modeSelect" class="reading-select">
+            <button id="openReadingSettings" type="button" class="pb-icon-btn reading-top-settings-btn" aria-label="Open reading settings" title="Reading settings"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg><span class="settings-label">Settings</span></button>
+            <div class="reading-divider"></div>
+            <!-- modeSelect: wired by ui.js initModeSelector(); moved into Settings General pane -->
+            <select id="modeSelect" class="reading-select hidden-section" aria-hidden="true">
                 <option value="reading" selected>Mode: Reading</option>
                 <option value="comprehension">Mode: Comprehension</option>
                 <option value="research">Mode: Research</option>
             </select>
-            <div class="reading-divider"></div>
             <!-- bookControls wraps bookSelect — initBookImporter() wires to this div -->
             <div id="bookControls" style="display:flex;align-items:center;">
                 <select id="bookSelect" class="reading-select">
@@ -610,7 +618,7 @@
             </div>
             <div class="reading-divider"></div>
             <!-- Tier display — reflects current appTier; changed via Profile tier buttons -->
-            <span id="reading-tier-pill" class="tier-pill">Basic</span>
+            <span id="reading-tier-pill" class="tier-pill">Pro</span>
         </div>
         <button onclick="showSection('dashboard')" class="reading-top-exit text-xs font-bold text-slate-400 hover:text-slate-800 transition bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg">Exit ✕</button>
     </div>
@@ -634,7 +642,6 @@
     <!-- BOTTOM PLAYBACK BAR: moment controls — always visible -->
     <div class="reading-bottom-bar">
         <div class="reading-bottom-left">
-            <!-- Speed — wired to TTS_STATE by shellSetSpeed() -->
             <select id="shell-speed" class="reading-select" onchange="shellSetSpeed(this.value)">
                 <option value="1">Speed: 1.0×</option>
                 <option value="1.25">Speed: 1.25×</option>
@@ -643,23 +650,13 @@
                 <option value="2">Speed: 2.0×</option>
             </select>
             <div class="reading-divider mx-1"></div>
-            <button id="shell-prev-section-btn" onclick="handleSectionJump(-1)" class="pb-icon-btn" title="Previous section">
-                ↺
-            </button>
-            <div class="reading-divider mx-1"></div>
-            <button id="shell-pause-btn" onclick="handlePausePlay()" class="pb-icon-btn" title="Play current page">
+            <button id="tts-prev-btn" onclick="handleTtsStep(-1)" class="pb-icon-btn pb-step-btn" title="Previous section" disabled aria-disabled="true"><span class="pb-step-glyph" aria-hidden="true">↺</span><span class="sr-only">Previous section</span></button>
+            <button id="shell-pause-btn" onclick="handlePausePlay()" class="pb-icon-btn pb-play-btn" title="Play narration">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                 Play
             </button>
-            <div class="reading-divider mx-1"></div>
-            <button id="shell-next-section-btn" onclick="handleSectionJump(1)" class="pb-icon-btn" title="Next section">
-                ↻
-            </button>
-            <div class="reading-divider mx-1"></div>
-            <button id="musicToggle" class="pb-icon-btn" title="Settings">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                Settings
-            </button>
+            <button id="tts-next-btn" onclick="handleTtsStep(1)" class="pb-icon-btn pb-step-btn" title="Next section" disabled aria-disabled="true"><span class="pb-step-glyph" aria-hidden="true">↻</span><span class="sr-only">Next section</span></button>
+
         </div>
         <!-- Page progress — plain text counter, no dots -->
         <div class="flex-shrink-0">
