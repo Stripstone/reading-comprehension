@@ -1791,19 +1791,7 @@
       // TTS: Read page text
       const ttsPageBtn = page.querySelector('.tts-btn[data-tts="page"]');
       if (ttsPageBtn) {
-        const syncTtsPageButtonState = () => {
-          let disableForVoices = false;
-          try {
-            disableForVoices = typeof window.browserVoiceCount === 'function' && window.browserVoiceCount() === 0 && (typeof window.appTier === 'undefined' || String(window.appTier) === 'free');
-          } catch (_) {}
-          ttsPageBtn.disabled = disableForVoices;
-          ttsPageBtn.setAttribute('aria-disabled', disableForVoices.toString());
-          ttsPageBtn.title = disableForVoices ? 'No browser voices available' : 'Read page aloud';
-        };
-        syncTtsPageButtonState();
-        setTimeout(syncTtsPageButtonState, 400);
         ttsPageBtn.addEventListener("click", () => {
-          if (ttsPageBtn.disabled) return;
           setFocusedPageIndex(i, { scroll: true, behavior: 'smooth' });
           try {
             const speedSel = document.getElementById('shell-speed');
@@ -1990,6 +1978,7 @@
     
     applyModeVisibility();
     if (typeof applyTierAccess === 'function') applyTierAccess();
+    try { if (typeof window.syncPlaybackUiAvailability === 'function') window.syncPlaybackUiAvailability(); } catch (_) {}
   }
 
   function applyModeVisibility() {

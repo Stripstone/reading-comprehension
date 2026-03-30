@@ -258,41 +258,55 @@
         const paused = !!status.paused;
         const countdownActive = !!countdown.active;
         const speaking = active && !countdownActive;
-        const browserUnavailable = (() => {
-            try {
-                if (typeof window.browserTtsUsable === 'function' ? !window.browserTtsUsable() : (typeof window.browserVoiceCount === 'function' && window.browserVoiceCount() === 0)) {
-                    return (typeof window.appTier === 'undefined' || String(window.appTier) === 'free');
-                }
-            } catch (_) {}
-            return false;
-        })();
-        btn.disabled = browserUnavailable;
-        btn.setAttribute('aria-disabled', browserUnavailable.toString());
+        syncPlaybackUiAvailability();
+        if (btn.disabled && !speaking && !countdownActive) return;
         btn.classList.toggle('active', speaking && paused);
         const compact = isCompactPlaybackView();
-        btn.title = browserUnavailable ? 'No browser voices available' : (speaking ? (paused ? 'Resume narration' : 'Pause narration') : 'Play current page');
+        btn.title = speaking ? (paused ? 'Resume narration' : 'Pause narration') : 'Play current page';
         btn.innerHTML = (speaking && !paused)
             ? (`<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>${compact ? '' : ' Pause'}`)
             : (`<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>${compact ? '' : ' Play'}`);
         [prevBtn, nextBtn].forEach((control) => {
             if (!control) return;
-            control.disabled = browserUnavailable || !speaking;
-            control.setAttribute('aria-disabled', (browserUnavailable || !speaking).toString());
-            if (browserUnavailable) control.title = 'No browser voices available';
+            control.disabled = !speaking;
+            control.setAttribute('aria-disabled', (!speaking).toString());
         });
+    }
+
+
+    function syncPlaybackUiAvailability() {
+        let support = { playable: true, freePlayable: true, reason: '', tier: 'free' };
+        try { if (typeof window.getTtsSupportStatus === 'function') support = window.getTtsSupportStatus() || support; } catch(_) {}
+        const unavailable = !support.playable;
+        const reason = support.reason || 'Playback is unavailable on this device.';
+        const shellControls = [
+            document.getElementById('shell-pause-btn'),
+            document.getElementById('tts-prev-btn'),
+            document.getElementById('tts-next-btn')
+        ].filter(Boolean);
+        shellControls.forEach((el) => {
+            el.disabled = unavailable || !!el.disabled;
+            el.setAttribute('aria-disabled', String(!!el.disabled));
+            if (unavailable) el.title = reason;
+        });
+        document.querySelectorAll('.tts-btn[data-tts="page"]').forEach((btn) => {
+            btn.disabled = unavailable;
+            btn.setAttribute('aria-disabled', String(unavailable));
+            if (unavailable) btn.title = reason;
+            else btn.removeAttribute('title');
+        });
+        const autoplayBtn = document.getElementById('shell-autoplay-btn');
+        if (autoplayBtn) {
+            autoplayBtn.disabled = unavailable;
+            autoplayBtn.setAttribute('aria-disabled', String(unavailable));
+            if (unavailable) autoplayBtn.title = reason;
+        }
+        const settingsBtn = document.getElementById('openReadingSettings');
+        if (settingsBtn && unavailable) settingsBtn.title = reason;
     }
 
     function isCompactPlaybackView() {
         try { return !!window.matchMedia && window.matchMedia('(max-width: 640px)').matches; } catch (_) { return window.innerWidth <= 640; }
-    }
-
-
-    function btnDisabledPlayback() {
-        try {
-            return (typeof window.browserTtsUsable === 'function' ? !window.browserTtsUsable() : (typeof window.browserVoiceCount === 'function' && window.browserVoiceCount() === 0)) && (typeof window.appTier === 'undefined' || String(window.appTier) === 'free');
-        } catch (_) {
-            return false;
-        }
     }
 
     function handlePausePlay() {
@@ -312,17 +326,16 @@
                 }
             } catch(_) {}
         }
-        if (btnDisabledPlayback()) { syncPausePlayButton(); return; }
         try { if (typeof window.pauseOrResumeReading === 'function') window.pauseOrResumeReading(); } catch(_) {}
         syncPausePlayButton();
-        setTimeout(syncPausePlayButton, 120);
-        setTimeout(syncPausePlayButton, 280);
     }
 
     function handleTtsStep(delta) {
-        if (btnDisabledPlayback()) { syncPausePlayButton(); return false; }
         let moved = false;
         try { if (typeof window.ttsJumpSentence === 'function') moved = !!window.ttsJumpSentence(delta); } catch(_) {}
+        if (!moved) {
+            try { if (typeof window.ttsJumpPage === 'function') moved = !!window.ttsJumpPage(delta); } catch(_) {}
+        }
         syncPausePlayButton();
         return moved;
     }
@@ -340,7 +353,37 @@
         syncAutoplayButton();
     }
 
-    function initShellRuntimeBindings() {
+    function handleOpenReadingSettings() {
+        try {
+            if (typeof window.openReadingSettingsModal === 'function') {
+                window.openReadingSettingsModal();
+                return true;
+            }
+        } catch(_) {}
+        const panel = document.getElementById('volumePanel');
+        const trigger = document.getElementById('openReadingSettings') || document.getElementById('musicToggle');
+        if (!panel) return false;
+        try {
+            panel.style.display = 'block';
+            if (trigger) {
+                panel.style.visibility = 'hidden';
+                const rect = trigger.getBoundingClientRect();
+                const panelW = panel.offsetWidth || 320;
+                const panelH = panel.offsetHeight || 420;
+                const gap = 10;
+                const top = Math.max(10, rect.bottom + gap > window.innerHeight ? rect.top - panelH - gap : rect.bottom + gap);
+                const left = Math.min(window.innerWidth - panelW - 10, Math.max(10, rect.right - panelW));
+                panel.style.top = `${top}px`;
+                panel.style.left = `${left}px`;
+                panel.style.visibility = 'visible';
+            }
+            return true;
+        } catch(_) {
+            return false;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
         const checkbox = document.getElementById('autoplayToggle');
         if (checkbox) {
             checkbox.addEventListener('change', () => {
@@ -348,12 +391,15 @@
             });
         }
         const settingsBtn = document.getElementById('openReadingSettings');
-        if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); try { if (typeof window.openReadingSettingsModal === 'function') { window.openReadingSettingsModal('sound'); return; } } catch(_) {} const modal = document.getElementById('volumePanel'); if (modal) { modal.style.display = 'flex'; modal.classList.remove('hidden-section'); modal.setAttribute('aria-hidden', 'false'); } });
-        setTimeout(() => { updateTierPill(); updateExplorerSwatchState(); syncPausePlayButton(); syncAutoplayButton(); try { if (typeof window.syncTtsVoiceAvailabilityControls === 'function') window.syncTtsVoiceAvailabilityControls(); } catch(_) {} }, 500);
+        if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.preventDefault(); handleOpenReadingSettings(); });
+        setTimeout(() => { updateTierPill(); updateExplorerSwatchState(); syncPlaybackUiAvailability(); syncPausePlayButton(); syncAutoplayButton(); }, 500);
         window.setInterval(() => {
             try {
                 const readingMode = document.getElementById('reading-mode');
-                if (readingMode && !readingMode.classList.contains('hidden-section')) { syncPausePlayButton(); try { if (typeof window.syncTtsVoiceAvailabilityControls === 'function') window.syncTtsVoiceAvailabilityControls(); } catch(_) {} }
+                if (readingMode && !readingMode.classList.contains('hidden-section')) {
+                    syncPlaybackUiAvailability();
+                    syncPausePlayButton();
+                }
             } catch(_) {}
         }, 250);
         patchRefreshHook();
@@ -389,7 +435,7 @@
                 }
             });
         }
-    }
+    });
 
     // ── Library table — populated by __jublyLibraryRefresh hook called from library.js ──
     function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -619,8 +665,17 @@
         }
     });
 
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initShellRuntimeBindings, { once: true });
-    else initShellRuntimeBindings();
-
     // Engine scripts load dynamically after window.load; refresh shell library once boot settles.
     window.addEventListener('load', () => setTimeout(() => { refreshLibrary(); patchRefreshHook(); }, 350));
+
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+        try {
+            window.speechSynthesis.addEventListener('voiceschanged', () => {
+                syncPlaybackUiAvailability();
+                syncPausePlayButton();
+            });
+        } catch (_) {}
+    }
+
+    window.syncPlaybackUiAvailability = syncPlaybackUiAvailability;
+    window.handleOpenReadingSettings = handleOpenReadingSettings;

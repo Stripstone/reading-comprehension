@@ -15,8 +15,6 @@ const TTS_STATE = {
   voiceVariant: 'female',
   // Name of the browser voice currently in use (set by browserSpeakQueue, cleared on stop)
   activeBrowserVoiceName: null,
-  browserPseudoPaused: false,
-  browserPauseIntent: false,
   playbackRate: 1,
   // sentence highlight state (page read)
   highlightPageKey: null,
@@ -34,6 +32,7 @@ const TTS_STATE = {
   browserVoice: null,
   browserRestarting: false,
   browserBoundaryHandler: null,
+  browserPaused: false,
 };
 
 const TTS_DEBUG = {
@@ -213,16 +212,14 @@ function getPlaybackRate() {
 }
 
 function getPlaybackStatus() {
-  let paused = false;
+  let paused = !!TTS_STATE.browserPaused;
   try {
     if (TTS_STATE.audio) {
       paused = !!TTS_STATE.audio.paused;
-    } else if (browserTtsSupported()) {
-      paused = !!(TTS_STATE.browserPseudoPaused || window.speechSynthesis.paused);
+    } else if (!TTS_STATE.browserPaused && browserTtsSupported()) {
+      paused = !!window.speechSynthesis.paused;
     }
-  } catch (_) {
-    paused = !!TTS_STATE.browserPseudoPaused;
-  }
+  } catch (_) {}
   return {
     active: !!TTS_STATE.activeKey,
     paused,
@@ -240,6 +237,31 @@ function getCountdownStatus() {
     pageIndex: Number(AUTOPLAY_STATE.countdownPageIndex ?? -1),
     seconds: Number(AUTOPLAY_STATE.countdownSec ?? 0) || 0,
     active: Number(AUTOPLAY_STATE.countdownPageIndex ?? -1) !== -1 && Number(AUTOPLAY_STATE.countdownSec ?? 0) > 0
+  };
+}
+
+
+function getTtsSupportStatus() {
+  const tier = (typeof appTier !== 'undefined' && appTier) ? String(appTier) : 'free';
+  const browserSupported = !!browserTtsSupported();
+  const browserVoice = browserSupported ? browserPickVoice() : null;
+  const browserVoices = (() => {
+    try {
+      return browserSupported ? (window.speechSynthesis.getVoices() || []).filter(v => (v.lang || '').toLowerCase().startsWith('en')).length : 0;
+    } catch (_) {
+      return 0;
+    }
+  })();
+  const freePlayable = browserSupported && !!browserVoice;
+  const playable = tier === 'free' ? freePlayable : true;
+  return {
+    tier,
+    browserSupported,
+    browserVoices,
+    browserVoiceAvailable: !!browserVoice,
+    freePlayable,
+    playable,
+    reason: freePlayable ? '' : 'No browser English voice is available on this device.'
   };
 }
 
@@ -694,31 +716,6 @@ function browserTtsSupported() {
   return typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
 }
 
-function browserVoiceCount() {
-  if (!browserTtsSupported()) return 0;
-  try { return (window.speechSynthesis.getVoices() || []).length; } catch (_) { return 0; }
-}
-
-function browserTtsUsable() {
-  if (!browserTtsSupported()) return false;
-  try {
-    const voices = window.speechSynthesis.getVoices() || [];
-    return voices.some(v => (v.lang || '').toLowerCase().startsWith('en'));
-  } catch (_) {
-    return browserVoiceCount() > 0;
-  }
-}
-
-function browserNeedsPseudoPause() {
-  try {
-    const voiceName = String(TTS_STATE.activeBrowserVoiceName || TTS_STATE.browserVoice?.name || '');
-    const ua = String((typeof navigator !== 'undefined' && navigator.userAgent) || '');
-    return /Edg\//.test(ua) || /online|natural/i.test(voiceName);
-  } catch (_) {
-    return false;
-  }
-}
-
 function browserTtsStop() {
   if (!browserTtsSupported()) return;
   window.speechSynthesis.cancel();
@@ -740,14 +737,12 @@ function browserPickVoice() {
     ];
     const usable   = voices.filter(v => !BAD_VOICES.some(b => v.name.includes(b)));
     const enVoices = usable.filter(v => (v.lang || '').toLowerCase().startsWith('en'));
-    const localPreferred = enVoices.filter(v => !/online|natural/i.test(v.name || ''));
-    const pool = localPreferred.length ? localPreferred : enVoices;
 
     // User-selected voice takes priority if it's still available
     try {
       const saved = localStorage.getItem('rc_browser_voice');
       if (saved) {
-        const match = pool.find(v => v.name === saved) || enVoices.find(v => v.name === saved);
+        const match = enVoices.find(v => v.name === saved);
         if (match) return match;
       }
     } catch (_) {}
@@ -811,8 +806,8 @@ function ttsStop() {
   ttsClearSentenceHighlight();
   TTS_STATE.activeKey = null;
   TTS_STATE.activeBrowserVoiceName = null;
-  TTS_STATE.browserPseudoPaused = false;
-  TTS_STATE.browserPauseIntent = false;
+  TTS_STATE.browserPaused = false;
+  TTS_STATE.browserRestarting = false;
   ttsDiagPush('stop', { activeKey: TTS_STATE.activeKey, lastPageKey: TTS_STATE.lastPageKey });
 }
 
@@ -828,21 +823,27 @@ function ttsPause() {
   if (TTS_STATE.audio) {
     try { TTS_STATE.audio.pause(); } catch (_) {}
   }
-  // Browser TTS: prefer native pause/resume, but keep a sentence-level fallback
+  // Browser TTS: pause speechSynthesis. Some Edge online voices report speaking
+  // but never enter the paused state; fall back to a controlled cancel + resume.
   if (browserTtsSupported()) {
-    const forcePseudoPause = browserNeedsPseudoPause();
-    TTS_STATE.browserPauseIntent = false;
-    try { window.speechSynthesis.pause(); } catch (_) {}
-    let nativePaused = false;
-    try { nativePaused = !!window.speechSynthesis.paused; } catch (_) {}
-    if ((forcePseudoPause || !nativePaused) && TTS_STATE.activeKey) {
-      TTS_STATE.browserPseudoPaused = true;
-      TTS_STATE.browserPauseIntent = true;
-      try { window.speechSynthesis.cancel(); } catch (_) {}
-      ttsDiagPush('browser-pseudo-pause', { key: TTS_STATE.activeKey, sentenceIndex: Number(TTS_STATE.browserCurrentSentenceIndex) || 0, forced: !!forcePseudoPause });
-    } else {
-      TTS_STATE.browserPseudoPaused = nativePaused;
-    }
+    try {
+      window.speechSynthesis.pause();
+      const synthPaused = !!window.speechSynthesis.paused;
+      const synthSpeaking = !!window.speechSynthesis.speaking;
+      if (!synthPaused && synthSpeaking) {
+        TTS_STATE.browserPaused = true;
+        TTS_STATE.browserRestarting = true;
+        try { window.speechSynthesis.cancel(); } catch (_) {}
+        TTS_STATE.browserRestarting = false;
+        ttsDiagPush('browser-pause-fallback', {
+          key: TTS_STATE.activeKey || null,
+          sentenceIndex: Number(TTS_STATE.browserCurrentSentenceIndex || 0),
+          charIndex: Number(TTS_STATE.browserCurrentCharIndex || 0)
+        });
+      } else {
+        TTS_STATE.browserPaused = synthPaused;
+      }
+    } catch (_) {}
   }
 }
 
@@ -860,18 +861,17 @@ function ttsResume() {
       ttsStartHighlightLoop(TTS_STATE.audio);
     } catch (_) {}
   }
-  // Browser TTS: resume speechSynthesis or restart from the saved sentence when native pause is unreliable
+  // Browser TTS: resume speechSynthesis or restart from the last tracked sentence
   if (browserTtsSupported()) {
-    if (TTS_STATE.browserPseudoPaused && TTS_STATE.activeKey) {
-      const sentenceIndex = Math.max(0, Number(TTS_STATE.browserCurrentSentenceIndex) || 0);
-      TTS_STATE.browserPseudoPaused = false;
-      TTS_STATE.browserPauseIntent = false;
-      browserSpeakPageFromSentence(TTS_STATE.activeKey, sentenceIndex);
-      return;
-    }
-    try { window.speechSynthesis.resume(); } catch (_) {}
-    TTS_STATE.browserPseudoPaused = false;
-    TTS_STATE.browserPauseIntent = false;
+    try {
+      if (TTS_STATE.browserPaused && TTS_STATE.activeKey && /^page-\d+$/.test(String(TTS_STATE.activeKey || ''))) {
+        const resumed = browserSpeakPageFromSentence(TTS_STATE.activeKey, Number(TTS_STATE.browserCurrentSentenceIndex || 0));
+        TTS_STATE.browserPaused = !resumed;
+        return;
+      }
+      window.speechSynthesis.resume();
+      TTS_STATE.browserPaused = !!window.speechSynthesis.paused;
+    } catch (_) {}
   }
 }
 
@@ -982,9 +982,9 @@ function browserSpeakPageFromSentence(key, sentenceIndex) {
   TTS_STATE.browserRestarting = true;
   try { window.speechSynthesis.cancel(); } catch (_) {}
   TTS_STATE.browserRestarting = false;
-  TTS_STATE.browserPseudoPaused = false;
   TTS_STATE.activeKey = key;
-  TTS_DEBUG.lastResolvedPath = 'browser-restart-from-sentence';
+  TTS_STATE.browserPaused = false;
+  TTS_DEBUG.lastResolvedPath = 'cloud-preferred';
   ttsRememberLastPageKey(key);
   ttsSetButtonActive(key, true);
   ttsSetHintButton(key, true);
@@ -1008,8 +1008,6 @@ function browserSpeakPageFromSentence(key, sentenceIndex) {
   };
   utter.onend = () => {
     if (TTS_STATE.browserRestarting) return;
-    if (TTS_STATE.browserPauseIntent) { TTS_STATE.browserPauseIntent = false; return; }
-    TTS_STATE.browserPseudoPaused = false;
     ttsDiagPush('cloud-queue-complete', { key });
     TTS_STATE.activeKey = null;
     ttsSetButtonActive(key, false);
@@ -1022,8 +1020,6 @@ function browserSpeakPageFromSentence(key, sentenceIndex) {
   };
   utter.onerror = () => {
     if (TTS_STATE.browserRestarting) return;
-    if (TTS_STATE.browserPauseIntent) { TTS_STATE.browserPauseIntent = false; return; }
-    TTS_STATE.browserPseudoPaused = false;
     TTS_STATE.activeKey = null;
     ttsSetButtonActive(key, false);
     ttsSetHintButton(key, false);
@@ -1041,9 +1037,12 @@ function browserSpeakQueue(key, parts) {
     alert("Text-to-speech is not supported in this browser.");
     return;
   }
-  if (!browserTtsUsable()) {
-    TTS_DEBUG.lastError = { at: new Date().toISOString(), path: 'browser', key, message: 'No browser voices available' };
-    ttsDiagPush('browser-no-voices', { key });
+
+  const support = getTtsSupportStatus();
+  if (!support.browserVoiceAvailable) {
+    TTS_DEBUG.lastError = { at: new Date().toISOString(), path: 'browser', key, message: support.reason || 'No browser voice available' };
+    ttsDiagPush('browser-voice-unavailable', { key, reason: support.reason || 'No browser voice available' });
+    try { if (typeof window.syncPlaybackUiAvailability === 'function') window.syncPlaybackUiAvailability(); } catch (_) {}
     return;
   }
 
@@ -1067,7 +1066,6 @@ function browserSpeakQueue(key, parts) {
   const voice = browserPickVoice();
   TTS_STATE.browserVoice = voice || null;
   TTS_STATE.activeBrowserVoiceName = voice ? voice.name : '(default)';
-  TTS_STATE.browserPauseIntent = false;
 
   // Build sentence-level highlight spans for the first part (the page text),
   // using the same DOM structure as the Polly path so CSS styling is consistent.
@@ -1179,12 +1177,8 @@ function browserSpeakQueue(key, parts) {
       };
     }
 
-    utter.onend = () => {
-      if (TTS_STATE.browserPauseIntent) { TTS_STATE.browserPauseIntent = false; return; }
-      idx += 1; speakNext();
-    };
+    utter.onend = () => { idx += 1; speakNext(); };
     utter.onerror = () => {
-      if (TTS_STATE.browserPauseIntent) { TTS_STATE.browserPauseIntent = false; return; }
       TTS_DEBUG.lastError = { at: new Date().toISOString(), path: 'browser', key, message: 'speechSynthesis utterance error' };
       ttsDiagPush('browser-utterance-error', { key });
       TTS_STATE.activeKey = null;
@@ -1324,8 +1318,6 @@ window.applyCurrentPlaybackRate = applyCurrentPlaybackRate;
 window.getPlaybackRate = getPlaybackRate;
 window.getPlaybackStatus = getPlaybackStatus;
 window.getAutoplayStatus = getAutoplayStatus;
-window.browserTtsUsable = browserTtsUsable;
-window.syncTtsVoiceAvailabilityControls = syncTtsVoiceAvailabilityControls;
 
 function ttsJumpSentence(delta) {
   const audio = TTS_STATE.audio;
@@ -1342,7 +1334,7 @@ function ttsJumpSentence(delta) {
     }
     const target = Math.max(0, Math.min(marks.length - 1, idx + (delta < 0 ? -1 : 1)));
     try {
-      audio.currentTime = Math.max(0, ((Number(marks[target].time) || 0) - 120) / 1000);
+      audio.currentTime = Math.max(0, (Number(marks[target].time) || 0) / 1000 - 0.02);
       if (TTS_STATE.highlightSpans) {
         TTS_STATE.highlightSpans.forEach((span, i) => span.style.setProperty('--tts-alpha', i === target ? '1' : '0'));
       }
@@ -1401,36 +1393,13 @@ function restartLastSpokenPageTts() {
 }
 
 window.getCountdownStatus = getCountdownStatus;
-function syncTtsVoiceAvailabilityControls() {
-  const disabled = !browserTtsUsable() && (typeof window.appTier === 'undefined' || String(window.appTier) === 'free');
-  try {
-    document.querySelectorAll('.tts-btn[data-tts="page"]').forEach((btn) => {
-      btn.disabled = disabled;
-      btn.setAttribute('aria-disabled', String(disabled));
-      btn.title = disabled ? 'No browser voices available' : 'Read page aloud';
-    });
-  } catch (_) {}
-  try {
-    ['shell-pause-btn','tts-prev-btn','tts-next-btn'].forEach((id) => {
-      const btn = document.getElementById(id);
-      if (!btn) return;
-      const shouldDisable = disabled || (id !== 'shell-pause-btn' && !getPlaybackStatus().active);
-      btn.disabled = !!shouldDisable;
-      btn.setAttribute('aria-disabled', String(!!shouldDisable));
-      if (disabled) btn.title = 'No browser voices available';
-    });
-  } catch (_) {}
-  return !disabled;
-}
-
+window.getTtsSupportStatus = getTtsSupportStatus;
 window.pauseOrResumeReading = pauseOrResumeReading;
 window.toggleAutoplay = toggleAutoplay;
 window.ttsJumpSentence = ttsJumpSentence;
 window.ttsJumpPage = ttsJumpPage;
 window.restartLastSpokenPageTts = restartLastSpokenPageTts;
 window.getTtsDiagnosticsSnapshot = getTtsDiagnosticsSnapshot;
-window.browserTtsUsable = browserTtsUsable;
-window.browserVoiceCount = browserVoiceCount;
 
 // Best-practice stop conditions:
 // - If the user navigates away or the page is unloaded, stop speaking.

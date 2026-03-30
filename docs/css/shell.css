@@ -545,8 +545,8 @@
 
 /* Runtime patch v3: browser-safe TTS controls, larger visible playback controls, inline exit */
 .reading-top-bar { justify-content: center; }
-.reading-top-left { width: min(100%, 900px); max-width: calc(100% - 82px); margin: 0 auto; }
-.reading-top-exit { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); margin-left: 0; z-index: 1; }
+.reading-top-left { width: min(100%, 900px); max-width: min(100%, 900px); }
+.reading-top-exit { position: static; transform: none; margin-left: 0; }
 .reading-bottom-bar .pb-icon-btn {
   min-height: 42px;
   min-width: 42px;
@@ -568,50 +568,66 @@
   .reading-bottom-bar .pb-icon-btn { min-height: 46px; min-width: 46px; padding: .72rem .92rem; }
   .reading-bottom-bar #shell-pause-btn { min-width: 46px; padding-left: .78rem; padding-right: .78rem; }
   .reading-bottom-bar #shell-pause-btn svg { margin-right: 0; }
-  .reading-top-left { gap: 4px; max-width: calc(100% - 66px); }
-  .reading-top-exit { right: 8px; }
+  .reading-top-left { gap: 4px; }
 }
 
-
-
-/* Runtime patch v4: visible exit, top bar grid, stable inline controls */
-#reading-top-bar.reading-top-bar {
+/* Playback stability + mobile control visibility patch */
+#reading-top-bar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  column-gap: 8px;
+  gap: 8px;
 }
 #reading-top-bar .reading-top-left {
   min-width: 0;
   width: 100%;
-  max-width: none;
+  max-width: 100%;
+  display: flex !important;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
   overflow-x: auto;
   overflow-y: hidden;
-  justify-content: center;
   scrollbar-width: none;
-  padding-right: 0;
 }
 #reading-top-bar .reading-top-left::-webkit-scrollbar { display: none; }
+#reading-top-bar .reading-top-left > * { flex: 0 0 auto; }
 #reading-top-bar .reading-top-exit {
-  position: static;
-  transform: none;
   margin-left: 0;
-  align-self: center;
-  justify-self: end;
-  z-index: 3;
-  white-space: nowrap;
+  position: sticky;
+  right: 0;
+  z-index: 1;
 }
-#bookControls, #chapterControls { min-width: 0; }
-#bookSelect, #chapterSelect {
-  display: block;
-  min-width: 0;
-  text-align: left;
-  text-overflow: ellipsis;
-  overflow: hidden;
-  white-space: nowrap;
+#reading-top-bar .reading-top-settings-btn {
+  min-width: 38px;
+}
+#reading-top-bar .reading-select {
+  max-width: min(32vw, 170px);
+}
+.reading-bottom-left {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.reading-bottom-left::-webkit-scrollbar { display: none; }
+#shell-pause-btn[disabled],
+#shell-autoplay-btn[disabled],
+#tts-prev-btn[disabled],
+#tts-next-btn[disabled],
+.tts-btn[disabled] {
+  opacity: .45;
+  cursor: not-allowed;
 }
 @media (max-width: 640px) {
-  #reading-top-bar.reading-top-bar { column-gap: 6px; }
-  #reading-top-bar .reading-top-exit { padding-left: 9px; padding-right: 9px; }
-  #bookSelect, #chapterSelect { max-width: 19vw; }
+  #reading-top-bar {
+    padding-left: 8px;
+    padding-right: 8px;
+    gap: 6px;
+  }
+  #reading-top-bar .reading-top-left { gap: 4px; }
+  #reading-top-bar .reading-select { max-width: 27vw; font-size: .7rem; }
+  #reading-top-bar .tier-pill { max-width: 18vw; }
+  #reading-top-bar .reading-top-settings-btn .settings-label { display: none; }
+  .reading-bottom-bar { gap: 6px; padding-left: 8px; padding-right: 8px; }
+  .reading-bottom-left { gap: 4px; }
 }
