@@ -90,15 +90,6 @@
         pill.textContent = map[sel.value] || 'Basic';
     }
 
-
-
-    // ── Auth scaffold ───────────────────────────────────────────
-    function login() {
-        showSection('dashboard');
-        try { refreshLibrary(); } catch (_) {}
-    }
-    if (typeof window !== 'undefined') window.login = login;
-
     function getCurrentTier() {
         const sel = document.getElementById('tierSelect');
         if (sel && sel.value) return sel.value;
