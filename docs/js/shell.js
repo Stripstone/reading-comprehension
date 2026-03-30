@@ -296,11 +296,13 @@
         try { if (typeof window.canJumpTtsSection === 'function') can = !!window.canJumpTtsSection(); } catch(_) {}
         prev.disabled = !can;
         next.disabled = !can;
+        prev.classList.toggle('is-active', can);
+        next.classList.toggle('is-active', can);
     }
 
     function handleSectionJump(direction) {
         try { if (typeof window.jumpTtsSection === 'function') window.jumpTtsSection(direction); } catch(_) {}
-        setTimeout(() => { syncPausePlayButton(); syncSectionJumpButtons(); }, 40);
+        setTimeout(() => { syncPausePlayButton(); syncSectionJumpButtons(); }, 60);
     }
 
     function showSettingsTab(tabName) {
@@ -412,21 +414,41 @@
     }
 
     // Scroll affordance — called by library.js via __jublyAfterRender after render()
-    window.__jublyAfterRender = function() {
+    function refreshScrollAffordances() {
         document.querySelectorAll('#pages .page').forEach(function(pageEl) {
-            const textEl = pageEl.querySelector('.page-text');
-            if (!textEl || textEl.parentElement.classList.contains('page-text-wrap')) return;
-            const wrap = document.createElement('div'); wrap.className = 'page-text-wrap';
-            textEl.parentNode.insertBefore(wrap, textEl); wrap.appendChild(textEl);
-            const fade = document.createElement('div'); fade.className = 'page-text-fade'; wrap.appendChild(fade);
-            function checkScroll() {
-                const atEnd = textEl.scrollHeight - textEl.scrollTop - textEl.clientHeight < 8;
-                wrap.classList.toggle('scrolled-to-end', atEnd || textEl.scrollHeight <= textEl.clientHeight + 4);
+            const existingWrap = pageEl.querySelector('.page-text-wrap');
+            const textEl = existingWrap ? existingWrap.querySelector('.page-text') : pageEl.querySelector('.page-text');
+            if (!textEl) return;
+            let wrap = existingWrap;
+            if (!wrap) {
+                wrap = document.createElement('div');
+                wrap.className = 'page-text-wrap';
+                textEl.parentNode.insertBefore(wrap, textEl);
+                wrap.appendChild(textEl);
+                const fade = document.createElement('div');
+                fade.className = 'page-text-fade';
+                wrap.appendChild(fade);
             }
-            textEl.addEventListener('scroll', checkScroll, { passive: true });
-            setTimeout(checkScroll, 150);
+            if (!textEl.__jublyAffordanceBound) {
+                const checkScroll = function() {
+                    const canScroll = textEl.scrollHeight > textEl.clientHeight + 4;
+                    const atEnd = textEl.scrollHeight - textEl.scrollTop - textEl.clientHeight < 8;
+                    wrap.classList.toggle('has-affordance', canScroll && !atEnd);
+                    wrap.classList.toggle('scrolled-to-end', atEnd || !canScroll);
+                };
+                textEl.__jublyCheckScroll = checkScroll;
+                textEl.addEventListener('scroll', checkScroll, { passive: true });
+                textEl.__jublyAffordanceBound = true;
+            }
+            try { textEl.__jublyCheckScroll && textEl.__jublyCheckScroll(); } catch(_) {}
+            requestAnimationFrame(() => { try { textEl.__jublyCheckScroll && textEl.__jublyCheckScroll(); } catch(_) {} });
+            setTimeout(() => { try { textEl.__jublyCheckScroll && textEl.__jublyCheckScroll(); } catch(_) {} }, 120);
+            setTimeout(() => { try { textEl.__jublyCheckScroll && textEl.__jublyCheckScroll(); } catch(_) {} }, 320);
         });
-    };
+    }
+    window.__jublyAfterRender = refreshScrollAffordances;
+    window.__jublyRefreshScrollAffordances = refreshScrollAffordances;
+    window.addEventListener('resize', () => { try { refreshScrollAffordances(); } catch(_) {} });
 
     // ── Reading session ──────────────────────────────────────────
     let _previewBookId = null;

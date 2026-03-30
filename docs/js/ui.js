@@ -334,26 +334,13 @@
         if (!isOpen) {
           syncSlidersFromState();
           populateBrowserVoicePicker();
-          // Position the panel just ABOVE the music toggle so it never drops below the fold.
-          // (iPad cursor can't reach off-page dropdowns.)
           try {
-            // Temporarily show invisibly so we can measure height.
             volumePanel.style.visibility = 'hidden';
             volumePanel.style.display = 'block';
-
-            const rect = musicToggleBtn.getBoundingClientRect();
-            const panelW = volumePanel.offsetWidth;
-            const panelH = volumePanel.offsetHeight;
-
-            const gap = 10;
-            const top = Math.max(10, rect.top - panelH - gap);
-            const left = Math.min(
-              window.innerWidth - panelW - 10,
-              Math.max(10, rect.right - panelW)
-            );
-
-            volumePanel.style.top = `${top}px`;
-            volumePanel.style.left = `${left}px`;
+            volumePanel.style.top = '50%';
+            volumePanel.style.left = '50%';
+            volumePanel.style.right = 'auto';
+            volumePanel.style.transform = 'translate(-50%, -50%)';
           } catch (_) {}
           volumePanel.style.visibility = 'visible';
         }

@@ -39,39 +39,45 @@
             <span class="text-xs font-black uppercase tracking-wider text-slate-400">Settings</span>
             <button type="button" id="volumeCloseBtn" style="background:#f1f5f9; border:none; border-radius:8px; width:28px; height:28px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#64748b; font-size:0.9rem; transition:background 0.15s;">✕</button>
         </div>
-        <div class="settings-tabs mb-3" role="tablist" aria-label="Settings sections">
-            <button type="button" class="settings-tab-btn active" data-settings-tab="general" aria-selected="true">General</button>
-            <button type="button" class="settings-tab-btn" data-settings-tab="sound" aria-selected="false">Sound &amp; Voice</button>
-        </div>
-        <div class="settings-tab-panel active" data-settings-panel="general">
-            <div class="flex items-center justify-between mb-3 text-xs text-slate-500">
-                <span class="font-semibold">Autoplay</span>
-                <label class="flex items-center gap-2 cursor-pointer">
-                    <span class="text-slate-400">Next page auto</span>
-                    <input type="checkbox" id="autoplayToggle" style="accent-color:var(--theme-accent); width:15px; height:15px; cursor:pointer;">
-                </label>
+        <div class="settings-layout">
+            <div class="settings-tabs" role="tablist" aria-label="Settings sections">
+                <button type="button" class="settings-tab-btn active" data-settings-tab="general" aria-selected="true">General</button>
+                <button type="button" class="settings-tab-btn" data-settings-tab="sound" aria-selected="false">Sound &amp; Voice</button>
             </div>
-            <p class="text-xs text-slate-400 mb-1">Reading controls stay in the bottom bar. Sound &amp; Voice lives here.</p>
-        </div>
-        <div class="settings-tab-panel" data-settings-panel="sound">
-        <div class="flex gap-2 mb-3">
-            <select id="voiceFemaleSelect" class="flex-1 text-xs font-semibold border-2 border-slate-200 rounded-lg px-2 py-2 bg-white text-slate-600 outline-none min-w-0"></select>
-            <select id="voiceMaleSelect"   class="flex-1 text-xs font-semibold border-2 border-slate-200 rounded-lg px-2 py-2 bg-white text-slate-600 outline-none min-w-0"></select>
-        </div>
-        <div class="space-y-2 text-xs text-slate-500">
-            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Voice</span><input id="vol_voice"    type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
-            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Music</span><input id="vol_music"    type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
-            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Sand</span><input id="vol_sand"     type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
-            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Sandstone</span><input id="vol_stone"    type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
-            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Reward</span><input id="vol_reward"   type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
-            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Compass</span><input id="vol_compass"  type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
-            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Page Turn</span><input id="vol_pageTurn" type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
-            <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Evaluate</span><input id="vol_evaluate" type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
-        </div>
-        <div class="mt-3 pt-3 border-t border-slate-100 flex justify-between items-center">
-            <button type="button" id="toggleMusicBtn" class="btn-ghost px-3 py-1.5 rounded-lg text-xs font-bold">Music On/Off</button>
-            <span class="text-xs text-slate-300">Volumes save locally</span>
-        </div>
+            <div class="settings-panels">
+                <div class="settings-tab-panel active" data-settings-panel="general">
+                    <div class="settings-section-title">General</div>
+                    <div class="flex items-center justify-between mb-3 text-xs text-slate-500">
+                        <span class="font-semibold">Autoplay</span>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <span class="text-slate-400">Next page auto</span>
+                            <input type="checkbox" id="autoplayToggle" style="accent-color:var(--theme-accent); width:15px; height:15px; cursor:pointer;">
+                        </label>
+                    </div>
+                    <p class="text-xs text-slate-400 mb-1">Reading controls stay in the bottom bar. Sound &amp; Voice lives here.</p>
+                </div>
+                <div class="settings-tab-panel" data-settings-panel="sound">
+                    <div class="settings-section-title">Sound &amp; Voice</div>
+                    <div class="flex gap-2 mb-3 settings-voice-row">
+                        <select id="voiceFemaleSelect" class="flex-1 text-xs font-semibold border-2 border-slate-200 rounded-lg px-2 py-2 bg-white text-slate-600 outline-none min-w-0"></select>
+                        <select id="voiceMaleSelect"   class="flex-1 text-xs font-semibold border-2 border-slate-200 rounded-lg px-2 py-2 bg-white text-slate-600 outline-none min-w-0"></select>
+                    </div>
+                    <div class="space-y-2 text-xs text-slate-500">
+                        <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Voice</span><input id="vol_voice"    type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
+                        <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Music</span><input id="vol_music"    type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
+                        <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Sand</span><input id="vol_sand"     type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
+                        <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Sandstone</span><input id="vol_stone"    type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
+                        <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Reward</span><input id="vol_reward"   type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
+                        <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Compass</span><input id="vol_compass"  type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
+                        <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Page Turn</span><input id="vol_pageTurn" type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
+                        <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Evaluate</span><input id="vol_evaluate" type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-slate-100 flex justify-between items-center">
+                        <button type="button" id="toggleMusicBtn" class="btn-ghost px-3 py-1.5 rounded-lg text-xs font-bold">Music On/Off</button>
+                        <span class="text-xs text-slate-300">Volumes save locally</span>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>

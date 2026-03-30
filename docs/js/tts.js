@@ -97,7 +97,7 @@ function activePageIndexFromKey(key) {
 function startCurrentPageTts(pageIndex) {
   const idx = Number.isFinite(Number(pageIndex)) ? Number(pageIndex) : activePageIndexFromKey(TTS_STATE.activeKey);
   if (!Number.isFinite(idx) || idx < 0) return false;
-  const pageText = Array.isArray(window.pages) ? window.pages[idx] : null;
+  const pageText = Array.isArray(typeof pages !== 'undefined' ? pages : null) ? pages[idx] : null;
   if (!pageText) return false;
   ttsSpeakQueue(`page-${idx}`, [pageText]);
   return true;
@@ -105,18 +105,32 @@ function startCurrentPageTts(pageIndex) {
 
 function canJumpTtsSection() {
   const countdown = getCountdownStatus();
-  return !!TTS_STATE.activeKey && !countdown.active && !TTS_STATE.browserMode && Array.isArray(TTS_STATE.highlightMarks) && TTS_STATE.highlightMarks.length > 1;
+  const status = getPlaybackStatus();
+  return !!status.active && !status.paused && !countdown.active && !TTS_STATE.browserMode && !!TTS_STATE.audio && Array.isArray(TTS_STATE.highlightMarks) && TTS_STATE.highlightMarks.length > 1;
 }
 
 function jumpTtsSection(direction) {
   if (!canJumpTtsSection() || !TTS_STATE.audio) return false;
   const marks = TTS_STATE.highlightMarks || [];
-  const current = Number.isFinite(TTS_STATE.activeSentenceIndex) && TTS_STATE.activeSentenceIndex >= 0 ? TTS_STATE.activeSentenceIndex : 0;
+  if (!marks.length) return false;
+  const nowMs = Math.max(0, Number(TTS_STATE.audio.currentTime || 0) * 1000);
+  let current = Number.isFinite(TTS_STATE.activeSentenceIndex) && TTS_STATE.activeSentenceIndex >= 0 ? TTS_STATE.activeSentenceIndex : -1;
+  if (current < 0) {
+    for (let i = 0; i < marks.length; i++) {
+      const start = Number(marks[i]?.time ?? 0);
+      const next = i + 1 < marks.length ? Number(marks[i + 1]?.time ?? Infinity) : Infinity;
+      if (nowMs >= start && nowMs < next) { current = i; break; }
+    }
+    if (current < 0) current = 0;
+  }
   const target = Math.max(0, Math.min(marks.length - 1, current + (direction < 0 ? -1 : 1)));
   if (target === current) return false;
   try {
-    const startTime = Number(marks[target]?.time ?? 0);
-    TTS_STATE.audio.currentTime = Math.max(0, startTime);
+    const startTime = Number(marks[target]?.time ?? 0) / 1000;
+    if (Array.isArray(TTS_STATE.highlightSpans)) {
+      TTS_STATE.highlightSpans.forEach(span => span && span.style && span.style.setProperty('--tts-alpha', '0'));
+    }
+    TTS_STATE.audio.currentTime = Math.max(0, startTime + 0.01);
     TTS_STATE.activeSentenceIndex = target;
     ttsStartHighlightLoop(TTS_STATE.audio);
     emitTtsStatus();
@@ -241,7 +255,6 @@ function ttsSetButtonActive(key, active) {
     const btn = pageEl.querySelector('.tts-btn[data-tts="page"]');
     if (!btn) return;
     btn.classList.toggle('tts-active', active);
-    btn.textContent = active ? '■ Stop' : '🔊 Read aloud';
   } catch (_) {}
 }
 
@@ -961,6 +974,15 @@ function browserSpeakQueue(key, parts) {
   speakNext();
 }
 
+function isCloudVoiceSelected() {
+  try {
+    const saved = localStorage.getItem('rc_browser_voice') || '';
+    return saved.startsWith('cloud:');
+  } catch (_) {
+    return false;
+  }
+}
+
 async function ttsSpeakQueue(key, parts) {
 
   // Free tier: route directly to browser speechSynthesis — no API call, no token cost.
@@ -1026,7 +1048,9 @@ async function ttsSpeakQueue(key, parts) {
         // to the real audio URL. Resetting loop here is critical — if we landed
         // here from autoplay, loop=true is still set from ttsKeepWarmForAutoplay.
         try { audio.loop = false; audio.pause(); } catch (_) {}
+        try { audio.onended = null; audio.onerror = null; } catch (_) {}
         audio.src = url;
+        try { audio.currentTime = 0; audio.load(); } catch (_) {}
         try {
           audio.defaultPlaybackRate = getPlaybackRate();
           audio.playbackRate = getPlaybackRate();
@@ -1061,8 +1085,15 @@ async function ttsSpeakQueue(key, parts) {
     if (TTS_STATE.activeKey !== key) return;
     if (err && (err.name === 'AbortError' || String(err).includes('aborted'))) return;
 
-    // If Polly isn't configured yet (or otherwise fails), don't spam alerts; just fall back.
-    console.warn("Polly TTS unavailable, falling back to browser TTS:", err);
+    const cloudSelected = isCloudVoiceSelected();
+    if (cloudSelected) {
+      console.error("Cloud TTS playback failed:", err);
+      ttsStop();
+      return;
+    }
+
+    // If cloud TTS isn't configured yet (or otherwise fails), don't spam alerts; just fall back.
+    console.warn("Cloud TTS unavailable, falling back to browser TTS:", err);
     ttsStop();
     browserSpeakQueue(key, queue);
   }
