@@ -171,6 +171,7 @@
         const vv = String(v || '').toLowerCase() === 'male' ? 'male' : 'female';
         TTS_STATE.voiceVariant = vv;
         try { localStorage.setItem('rc_voice_variant', vv); } catch (_) {}
+        try { window.__rcSessionVoiceVariant = vv; } catch (_) {}
       }
 
       // Voice selects — two dropdowns, one per gender.
@@ -193,8 +194,8 @@
         if (!selectEl) return;
         const isFree      = typeof appTier !== 'undefined' && appTier === 'free';
         const isActive    = String(TTS_STATE?.voiceVariant || 'female').toLowerCase() === gender;
-        const savedBrowser = (() => { try { return localStorage.getItem('rc_browser_voice') || ''; } catch(_) { return ''; } })();
-        const savedVariant = (() => { try { return localStorage.getItem('rc_voice_variant') || 'female'; } catch(_) { return 'female'; } })();
+        const savedBrowser = (() => { try { return (typeof getStoredSelectedVoice === 'function' ? getStoredSelectedVoice() : (window.__rcSessionVoiceSelection || '')) || ''; } catch(_) { return ''; } })();
+        const savedVariant = (() => { try { return String(TTS_STATE?.voiceVariant || window.__rcSessionVoiceVariant || 'female'); } catch(_) { return 'female'; } })();
         const isThisVoiceActive = isActive && (savedVariant === gender);
 
         const allVoices = (window.speechSynthesis?.getVoices() || [])
@@ -302,10 +303,10 @@
           setVoiceVariant(gender);
           if (val.startsWith('polly:') || val.startsWith('cloud:')) {
             // Cloud voice — store the full value so pollyFetchUrl can forward the model id
-            try { localStorage.setItem('rc_browser_voice', val); } catch(_) {}
+            try { window.__rcSessionVoiceSelection = val; } catch(_) {}
           } else {
             // Browser voice
-            try { localStorage.setItem('rc_browser_voice', val); } catch(_) {}
+            try { window.__rcSessionVoiceSelection = val; } catch(_) {}
           }
           populateBrowserVoicePicker();
         });
@@ -480,11 +481,12 @@
             breakdown: sessionTokens?.spent || {},
           },
           stored: {
-            tier: (() => { try { return localStorage.getItem('rc_app_tier'); } catch(_) { return null; } })(),
-            voiceVariant: (() => { try { return localStorage.getItem('rc_voice_variant'); } catch(_) { return null; } })(),
-            voiceSelection: (() => { try { return localStorage.getItem('rc_browser_voice'); } catch(_) { return null; } })(),
-            ttsSpeed: (() => { try { return localStorage.getItem('rc_tts_speed'); } catch(_) { return null; } })(),
-            autoplay: (() => { try { return localStorage.getItem('rc_autoplay'); } catch(_) { return null; } })(),
+            persistenceMode: (window.__rcRuntimePersistenceStripped ? 'stripped-for-stabilization' : 'normal'),
+            tier: null,
+            voiceVariant: null,
+            voiceSelection: null,
+            ttsSpeed: null,
+            autoplay: null,
           },
           tts: {
             variant: TTS_STATE?.voiceVariant || 'female',
@@ -601,9 +603,7 @@
 
   try {
     const saved = localStorage.getItem('rc_app_mode');
-    if (saved && ['reading','comprehension','research'].includes(saved)) {
-      appMode = saved;
-    }
+    if (saved && ['reading','comprehension','research','thesis'].includes(saved)) appMode = saved === 'thesis' ? 'research' : saved;
   } catch (_) {}
 
   select.value = appMode;
@@ -634,20 +634,12 @@
   const VALID_TIERS = ['free', 'paid', 'premium'];
 
   // Restore persisted tier
-  try {
-    const saved = localStorage.getItem('rc_app_tier');
-    if (saved && VALID_TIERS.includes(saved)) {
-      appTier = saved;
-    }
-  } catch (_) {}
-
   select.value = appTier;
 
   select.addEventListener('change', () => {
     const newTier = select.value;
     if (!VALID_TIERS.includes(newTier) || newTier === appTier) return;
     appTier = newTier;
-    try { localStorage.setItem('rc_app_tier', appTier); } catch (_) {}
     try { if (typeof tokenReset === 'function') tokenReset(); } catch(_) {}
     applyTierAccess();
   });
@@ -686,7 +678,6 @@
       if (isFree && appMode !== 'reading') {
         modeSelect.value = 'reading';
         appMode = 'reading';
-        try { localStorage.setItem('rc_app_mode', 'reading'); } catch (_) {}
         if (typeof applyModeVisibility === 'function') applyModeVisibility();
       }
     }
@@ -736,10 +727,12 @@
   try {
     checkbox.checked = localStorage.getItem('rc_autoplay') === '1';
     AUTOPLAY_STATE.enabled = checkbox.checked;
-  } catch (_) {}
+  } catch (_) {
+    checkbox.checked = !!AUTOPLAY_STATE.enabled;
+  }
   checkbox.addEventListener('change', () => {
     AUTOPLAY_STATE.enabled = checkbox.checked;
-    localStorage.setItem('rc_autoplay', checkbox.checked ? '1':'0');
+    try { localStorage.setItem('rc_autoplay', checkbox.checked ? '1':'0'); } catch (_) {}
     if (!AUTOPLAY_STATE.enabled) ttsAutoplayCancelCountdown();
   });
 })();

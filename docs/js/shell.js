@@ -82,16 +82,6 @@
     let focusModeHandler = null;
 
     function initFocusMode() {
-        // Restore persisted TTS speed into the dropdown and the audio element.
-        try {
-            const savedSpeed = localStorage.getItem('rc_tts_speed');
-            if (savedSpeed) {
-                const sel = document.getElementById('shell-speed');
-                if (sel) sel.value = savedSpeed;
-                try { if (typeof setPlaybackRate === 'function') setPlaybackRate(savedSpeed); } catch(_) { shellSetSpeed(savedSpeed); }
-            }
-        } catch(_) {}
-
         const bar = document.getElementById('reading-top-bar');
         const rm  = document.getElementById('reading-mode');
         if (!bar || !rm) return;
@@ -225,7 +215,6 @@
     function shellSetSpeed(value) {
         const rate = parseFloat(value) || 1;
         try { if (typeof setPlaybackRate === 'function') return setPlaybackRate(rate); } catch(_) {}
-        try { localStorage.setItem('rc_tts_speed', String(rate)); } catch(_) {}
         return rate;
     }
 
