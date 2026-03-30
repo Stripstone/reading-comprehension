@@ -363,13 +363,11 @@
       });
 
       // Open the volume panel from the existing music button or top-bar Settings button.
-      if (musicToggleBtn) {
-        musicToggleBtn.addEventListener('click', (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          toggleReadingSettingsModal();
-        });
-      }
+      musicToggleBtn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        toggleReadingSettingsModal();
+      });
 
       const topSettingsBtn = document.getElementById('openReadingSettings');
       if (topSettingsBtn) {

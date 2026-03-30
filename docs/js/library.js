@@ -2110,6 +2110,34 @@
 
   // ===================================
 
+
+window.focusReadingPage = function focusReadingPage(targetIndex, options = {}) {
+  const pageEls = Array.from(document.querySelectorAll('.page'));
+  if (!pageEls.length) return { ok: false, reason: 'no-pages' };
+  const total = pageEls.length;
+  let idx = Number(targetIndex);
+  if (!Number.isFinite(idx)) idx = getFocusedOrInferredReadingPageIndex();
+  idx = ((idx % total) + total) % total;
+  const target = pageEls[idx];
+  if (!target) return { ok: false, reason: 'missing-target', index: idx, total };
+  const activeClass = 'page-active';
+  document.querySelectorAll('.' + activeClass).forEach((el) => el.classList.remove(activeClass));
+  target.classList.add(activeClass);
+  target.scrollIntoView({ behavior: options.behavior || 'smooth', block: 'start' });
+  lastFocusedPageIndex = idx;
+  try { currentPageIndex = idx; } catch (_) {}
+  try { if (typeof updateDiagnostics === 'function') updateDiagnostics(); } catch (_) {}
+  return { ok: true, index: idx, total };
+};
+
+window.stepReadingPage = function stepReadingPage(delta, options = {}) {
+  const total = Array.isArray(pages) ? pages.length : 0;
+  if (!total) return { ok: false, reason: 'no-pages', total: 0 };
+  const current = getFocusedOrInferredReadingPageIndex();
+  const next = ((current + Number(delta || 0)) % total + total) % total;
+  return window.focusReadingPage(next, options);
+};
+
 window.startFocusedPageTts = function startFocusedPageTts() {
   const idx = getFocusedOrInferredReadingPageIndex();
   const text = (Array.isArray(pages) && pages[idx]) ? pages[idx] : '';
