@@ -170,7 +170,6 @@
       function setVoiceVariant(v) {
         const vv = String(v || '').toLowerCase() === 'male' ? 'male' : 'female';
         TTS_STATE.voiceVariant = vv;
-        try { localStorage.setItem('rc_voice_variant', vv); } catch (_) {}
         try { window.__rcSessionVoiceVariant = vv; } catch (_) {}
       }
 
@@ -601,11 +600,6 @@
   const select = document.getElementById('modeSelect');
   if (!select) return;
 
-  try {
-    const saved = localStorage.getItem('rc_app_mode');
-    if (saved && ['reading','comprehension','research','thesis'].includes(saved)) appMode = saved === 'thesis' ? 'research' : saved;
-  } catch (_) {}
-
   select.value = appMode;
 
   select.addEventListener('change', () => {
@@ -619,7 +613,6 @@
     }
 
     appMode = newMode;
-    try { localStorage.setItem('rc_app_mode', appMode); } catch (_) {}
     render();
   });
 })();
@@ -724,15 +717,9 @@
 (function initAutoplayToggle() {
   const checkbox = document.getElementById('autoplayToggle');
   if (!checkbox) return;
-  try {
-    checkbox.checked = localStorage.getItem('rc_autoplay') === '1';
-    AUTOPLAY_STATE.enabled = checkbox.checked;
-  } catch (_) {
-    checkbox.checked = !!AUTOPLAY_STATE.enabled;
-  }
+  checkbox.checked = !!AUTOPLAY_STATE.enabled;
   checkbox.addEventListener('change', () => {
     AUTOPLAY_STATE.enabled = checkbox.checked;
-    try { localStorage.setItem('rc_autoplay', checkbox.checked ? '1':'0'); } catch (_) {}
     if (!AUTOPLAY_STATE.enabled) ttsAutoplayCancelCountdown();
   });
 })();
