@@ -140,6 +140,7 @@
 
     function hideAllPanels() {
       if (volumePanel) volumePanel.style.display = 'none';
+      if (settingsBackdrop) settingsBackdrop.style.display = 'none';
       if (diagPanel) diagPanel.style.display = 'none';
     }
 
@@ -314,29 +315,46 @@
       handleVoiceSelectChange(voiceFemaleSelect, 'female');
       handleVoiceSelectChange(voiceMaleSelect,   'male');
 
+      let settingsBackdrop = null;
+      function ensureSettingsBackdrop() {
+        if (settingsBackdrop) return settingsBackdrop;
+        settingsBackdrop = document.createElement('div');
+        settingsBackdrop.id = 'readingSettingsBackdrop';
+        settingsBackdrop.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(15,23,42,0.42);z-index:999;';
+        settingsBackdrop.addEventListener('click', () => closeReadingSettingsModal());
+        document.body.appendChild(settingsBackdrop);
+        return settingsBackdrop;
+      }
+
       function openReadingSettingsModal() {
         syncSlidersFromState();
         populateBrowserVoicePicker();
-        try {
-          volumePanel.style.visibility = 'hidden';
-          volumePanel.style.display = 'block';
-          const trigger = document.getElementById('openReadingSettings') || musicToggleBtn;
-          const rect = trigger ? trigger.getBoundingClientRect() : { top: 80, right: window.innerWidth - 20 };
-          const panelW = volumePanel.offsetWidth || 360;
-          const panelH = volumePanel.offsetHeight || 420;
-          const gap = 10;
-          const top = Math.max(10, rect.top - panelH - gap);
-          const left = Math.min(window.innerWidth - panelW - 10, Math.max(10, rect.right - panelW));
-          volumePanel.style.top = `${top}px`;
-          volumePanel.style.left = `${left}px`;
-        } catch (_) {}
+        ensureSettingsBackdrop().style.display = 'block';
+        volumePanel.style.position = 'fixed';
+        volumePanel.style.top = '50%';
+        volumePanel.style.left = '50%';
+        volumePanel.style.right = 'auto';
+        volumePanel.style.bottom = 'auto';
+        volumePanel.style.transform = 'translate(-50%, -50%)';
+        volumePanel.style.width = 'min(420px, calc(100vw - 24px))';
+        volumePanel.style.maxWidth = 'calc(100vw - 24px)';
+        volumePanel.style.maxHeight = 'calc(100vh - 24px)';
+        volumePanel.style.overflow = 'auto';
+        volumePanel.style.border = '2px solid var(--border)';
+        volumePanel.style.borderRadius = '18px';
+        volumePanel.style.background = 'var(--secondary-bg)';
+        volumePanel.style.boxShadow = '0 20px 60px rgba(15, 23, 42, 0.25)';
+        volumePanel.style.padding = '18px';
         volumePanel.style.visibility = 'visible';
         volumePanel.style.display = 'block';
+        try { if (typeof updateDiagnostics === 'function') updateDiagnostics(); } catch (_) {}
         return true;
       }
 
       function closeReadingSettingsModal() {
+        if (settingsBackdrop) settingsBackdrop.style.display = 'none';
         volumePanel.style.display = 'none';
+        try { if (typeof updateDiagnostics === 'function') updateDiagnostics(); } catch (_) {}
         return false;
       }
 
@@ -390,22 +408,17 @@
       diagBtn = document.createElement('button');
       diagBtn.id = 'diagnosticsToggle';
       diagBtn.type = 'button';
-      diagBtn.className = 'music-button';
+      diagBtn.className = 'pb-icon-btn diagnostics-inline-btn';
       diagBtn.title = 'Diagnostics';
-      diagBtn.innerHTML = '<span id="diagIcon">🔧</span>';
-      document.body.appendChild(diagBtn);
-      diagBtn.style.position = 'fixed';
-      diagBtn.style.top = '60px';
-      diagBtn.style.left = '12px';
-      diagBtn.style.right = 'auto';
-      diagBtn.style.bottom = 'auto';
-      diagBtn.style.zIndex = '1001';
+      diagBtn.innerHTML = '<span id="diagIcon" aria-hidden="true">🔧</span><span class="sr-only">Diagnostics</span>';
 
-      // Panel: same conventions as the Sound panel (fixed, above the button)
+      // Panel: fixed overlay-style diagnostics anchored from the bottom-right inside reading chrome
       diagPanel = document.createElement('div');
       diagPanel.id = 'diagPanel';
       diagPanel.style.display = 'none';
       diagPanel.style.position = 'fixed';
+      diagPanel.style.right = '12px';
+      diagPanel.style.bottom = '56px';
       diagPanel.style.zIndex = '1000';
       diagPanel.style.width = '420px';
       diagPanel.style.maxWidth = '92vw';
@@ -504,6 +517,26 @@
         } catch (_) {}
       };
 
+      function placeDiagnosticsButton() {
+        const reading = document.getElementById('reading-mode');
+        const inReading = !!(reading && !reading.classList.contains('hidden-section'));
+        const slot = document.querySelector('.reading-bottom-actions');
+        if (!diagBtn) return;
+        if (inReading && slot) {
+          if (diagBtn.parentNode !== slot) slot.insertBefore(diagBtn, slot.firstChild);
+          diagBtn.style.display = 'inline-flex';
+          diagBtn.style.position = 'static';
+          diagBtn.style.zIndex = '1';
+        } else {
+          if (diagBtn.parentNode !== document.body) document.body.appendChild(diagBtn);
+          diagBtn.style.display = 'none';
+          if (diagPanel) diagPanel.style.display = 'none';
+        }
+      }
+
+      placeDiagnosticsButton();
+      window.updateDiagnosticsPlacement = placeDiagnosticsButton;
+
       diagBtn.addEventListener('click', (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
@@ -566,6 +599,8 @@
     ensureDiagUI();
 
     // Click outside closes panels (lightweight)
+    window.addEventListener('resize', () => { try { if (typeof updateDiagnosticsPlacement === 'function') updateDiagnosticsPlacement(); } catch (_) {} });
+
     document.addEventListener('click', (e) => {
       const t = e.target;
       const inVol = volumePanel && volumePanel.contains(t);
