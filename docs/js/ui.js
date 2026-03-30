@@ -139,7 +139,7 @@
     }
 
     function hideAllPanels() {
-      if (volumePanel) { volumePanel.style.display = 'none'; volumePanel.classList.add('hidden-section'); volumePanel.setAttribute('aria-hidden', 'true'); }
+      if (volumePanel) volumePanel.style.display = 'none';
       if (diagPanel) diagPanel.style.display = 'none';
     }
 
@@ -319,51 +319,47 @@
         window.speechSynthesis.addEventListener('voiceschanged', populateBrowserVoicePicker);
       }
 
-      const settingsTabs = Array.from(volumePanel.querySelectorAll('[data-settings-tab]'));
-      settingsTabs.forEach((tab) => {
-        tab.addEventListener('click', () => {
-          const tabName = tab.dataset.settingsTab || 'general';
-          settingsTabs.forEach((btn) => btn.classList.toggle('active', btn === tab));
-          volumePanel.querySelectorAll('[data-settings-pane]').forEach((pane) => {
-            pane.classList.toggle('active', pane.dataset.settingsPane === tabName);
-          });
-        });
-      });
-
-      if (volumeCloseBtn) volumeCloseBtn.addEventListener('click', () => hideAllPanels());
-      volumePanel.addEventListener('click', (e) => { if (e.target === volumePanel) hideAllPanels(); });
-
       Object.entries(sliders).forEach(([key, el]) => {
         if (!el) return;
         el.addEventListener('input', () => setVolume(key, el.value));
       });
 
       // Open the volume panel from the existing music button (no extra top-controls button).
-      function openSettingsPanel(tabName = 'sound') {
-        hideAllPanels();
-        syncSlidersFromState();
-        populateBrowserVoicePicker();
-        const host = document.getElementById('modeSelectHost');
-        const modeSelect = document.getElementById('modeSelect');
-        if (host && modeSelect && modeSelect.parentElement !== host) host.appendChild(modeSelect);
-        if (modeSelect) { modeSelect.classList.remove('hidden-section'); modeSelect.removeAttribute('aria-hidden'); }
-        volumePanel.style.display = 'flex';
-        volumePanel.classList.remove('hidden-section');
-        volumePanel.setAttribute('aria-hidden', 'false');
-        const tabs = Array.from(volumePanel.querySelectorAll('[data-settings-tab]'));
-        const panes = Array.from(volumePanel.querySelectorAll('[data-settings-pane]'));
-        tabs.forEach((tab) => tab.classList.toggle('active', tab.dataset.settingsTab === tabName));
-        panes.forEach((pane) => pane.classList.toggle('active', pane.dataset.settingsPane === tabName));
-      }
-
       musicToggleBtn.addEventListener('click', (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
-        const isOpen = volumePanel.style.display === 'flex';
-        if (isOpen) hideAllPanels();
-        else openSettingsPanel('sound');
+
+        const isOpen = volumePanel.style.display === 'block';
+        hideAllPanels();
+        if (!isOpen) {
+          syncSlidersFromState();
+          populateBrowserVoicePicker();
+          // Position the panel just ABOVE the music toggle so it never drops below the fold.
+          // (iPad cursor can't reach off-page dropdowns.)
+          try {
+            // Temporarily show invisibly so we can measure height.
+            volumePanel.style.visibility = 'hidden';
+            volumePanel.style.display = 'block';
+
+            const rect = musicToggleBtn.getBoundingClientRect();
+            const panelW = volumePanel.offsetWidth;
+            const panelH = volumePanel.offsetHeight;
+
+            const gap = 10;
+            const top = Math.max(10, rect.top - panelH - gap);
+            const left = Math.min(
+              window.innerWidth - panelW - 10,
+              Math.max(10, rect.right - panelW)
+            );
+
+            volumePanel.style.top = `${top}px`;
+            volumePanel.style.left = `${left}px`;
+          } catch (_) {}
+          volumePanel.style.visibility = 'visible';
+        }
       });
 
+      if (volumeCloseBtn) volumeCloseBtn.addEventListener('click', () => (volumePanel.style.display = 'none'));
       if (toggleMusicBtn) toggleMusicBtn.addEventListener('click', () => window.toggleMusic && window.toggleMusic());
     }
 

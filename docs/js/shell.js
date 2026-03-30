@@ -43,7 +43,7 @@
         const supportFooter = document.getElementById('supportFooter');
         if (supportFooter) supportFooter.style.display = SIDEBAR_SECTIONS.includes(id) ? 'block' : 'none';
 
-        // Reading mode: keep top controls visible, restore on exit
+        // Reading mode: hide nav for focus, restore on exit
         const mainNav = document.querySelector('nav');
         if (mainNav) mainNav.style.display = id === 'reading-mode' ? 'none' : '';
         if (wasReading && id !== 'reading-mode') cleanupReadingTransientState();
@@ -53,6 +53,7 @@
             updateExplorerSwatchState();
             updateProgressBar();
             syncPausePlayButton();
+            syncSectionJumpButtons();
             try { if (typeof window.restoreReadingPosition === 'function') setTimeout(() => window.restoreReadingPosition({ behavior: 'auto' }), 60); } catch(_) {}
         }
         if (id === 'dashboard') refreshLibrary();
@@ -65,6 +66,7 @@
     let focusModeHandler = null;
 
     function initFocusMode() {
+        // Restore persisted TTS speed into the dropdown and the audio element.
         try {
             const savedSpeed = localStorage.getItem('rc_tts_speed');
             if (savedSpeed) {
@@ -82,8 +84,8 @@
             ['mousemove', 'scroll', 'touchstart', 'click'].forEach(ev =>
                 rm.removeEventListener(ev, focusModeHandler));
         }
-        clearTimeout(focusModeTimer);
         bar.classList.remove('faded');
+        clearTimeout(focusModeTimer);
         focusModeHandler = null;
     }
 
@@ -236,84 +238,91 @@
         const prog = document.getElementById('shell-page-progress');
         if (prog) prog.textContent = '—';
         _readingStartTime = null;
+        syncPausePlayButton();
+        syncSectionJumpButtons();
     }
 
     // ── Bottom bar controls ──────────────────────────────────────
 
-    // Pause/Play — calls app's tts.js functions if available.
-    // Guards against first-use case where TTS was never started (TTS_STATE.activeKey is null).
+    function getCurrentReadingPageIndex() {
+        if (typeof lastFocusedPageIndex === 'number' && lastFocusedPageIndex >= 0) return lastFocusedPageIndex;
+        const active = document.querySelector('#pages .page.focused, #pages .page.active');
+        if (active) {
+            const idx = parseInt(active.dataset.pageIndex, 10);
+            if (Number.isFinite(idx)) return idx;
+        }
+        const first = document.querySelector('#pages .page[data-page-index]');
+        if (first) {
+            const idx = parseInt(first.dataset.pageIndex, 10);
+            if (Number.isFinite(idx)) return idx;
+        }
+        return 0;
+    }
+
     function syncPausePlayButton() {
         const btn = document.getElementById('shell-pause-btn');
-        const prevBtn = document.getElementById('tts-prev-btn');
-        const nextBtn = document.getElementById('tts-next-btn');
         if (!btn) return;
         let status = { active: false, paused: false };
-        let countdown = { active: false };
         try { if (typeof window.getPlaybackStatus === 'function') status = window.getPlaybackStatus() || status; } catch(_) {}
-        try { if (typeof window.getCountdownStatus === 'function') countdown = window.getCountdownStatus() || countdown; } catch(_) {}
-        const active = !!status.active;
-        const paused = !!status.paused;
-        const inCountdown = !!countdown.active;
-        btn.disabled = false;
-        btn.classList.toggle('active', active && !paused);
-        btn.title = (active && !paused && !inCountdown) ? 'Pause narration' : 'Play current page';
-        btn.innerHTML = (active && !paused && !inCountdown)
-            ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause'
-            : '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Play';
-        const canStep = active && !paused && !inCountdown;
-        [prevBtn, nextBtn].forEach((control) => {
-            if (!control) return;
-            control.disabled = !canStep;
-            control.setAttribute('aria-disabled', canStep ? 'false' : 'true');
-        });
+        const isPlaying = !!status.active && !status.paused;
+        const label = isPlaying ? 'Pause' : 'Play';
+        const icon = isPlaying
+            ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>'
+            : '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+        btn.classList.toggle('active', isPlaying);
+        btn.disabled = !document.querySelector('#pages .page');
+        btn.title = isPlaying ? 'Pause narration' : 'Play current page';
+        btn.innerHTML = `${icon} ${label}`;
     }
 
     function handlePausePlay() {
         let status = { active: false, paused: false };
         try { if (typeof window.getPlaybackStatus === 'function') status = window.getPlaybackStatus() || status; } catch(_) {}
-        if (!status.active) {
-            try {
-                if (typeof window.startFocusedPageTts === 'function' && window.startFocusedPageTts()) {
-                    setTimeout(syncPausePlayButton, 0);
-                    return;
-                }
-            } catch(_) {}
-        }
-        try { if (typeof window.pauseOrResumeReading === 'function') window.pauseOrResumeReading(); } catch(_) {}
-        setTimeout(syncPausePlayButton, 30);
+        try {
+            if (!status.active && typeof window.startCurrentPageTts === 'function') {
+                window.startCurrentPageTts(getCurrentReadingPageIndex());
+            } else if (typeof window.pauseOrResumeReading === 'function') {
+                window.pauseOrResumeReading();
+            }
+        } catch(_) {}
+        setTimeout(() => { syncPausePlayButton(); syncSectionJumpButtons(); }, 40);
     }
 
-    function handleTtsStep(delta) {
-        try { if (typeof window.ttsJumpSentence === 'function') window.ttsJumpSentence(delta); } catch(_) {}
-        syncPausePlayButton();
+    function syncSectionJumpButtons() {
+        const prev = document.getElementById('shell-prev-section-btn');
+        const next = document.getElementById('shell-next-section-btn');
+        if (!prev || !next) return;
+        let can = false;
+        try { if (typeof window.canJumpTtsSection === 'function') can = !!window.canJumpTtsSection(); } catch(_) {}
+        prev.disabled = !can;
+        next.disabled = !can;
     }
 
-    function syncAutoplayButton() {
-        const checkbox = document.getElementById('autoplayToggle');
-        if (!checkbox) return;
-        let enabled = false;
-        try { if (typeof window.getAutoplayStatus === 'function') enabled = !!window.getAutoplayStatus().enabled; } catch(_) {}
-        checkbox.checked = enabled;
+    function handleSectionJump(direction) {
+        try { if (typeof window.jumpTtsSection === 'function') window.jumpTtsSection(direction); } catch(_) {}
+        setTimeout(() => { syncPausePlayButton(); syncSectionJumpButtons(); }, 40);
     }
 
-    function handleAutoplayToggle(force) {
-        try { if (typeof window.toggleAutoplay === 'function') window.toggleAutoplay(force); } catch(_) {}
-        syncAutoplayButton();
+    function showSettingsTab(tabName) {
+        document.querySelectorAll('.settings-tab-btn').forEach(btn => {
+            const active = btn.dataset.settingsTab === tabName;
+            btn.classList.toggle('active', active);
+            btn.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        document.querySelectorAll('.settings-tab-panel').forEach(panel => {
+            panel.classList.toggle('active', panel.dataset.settingsPanel === tabName);
+        });
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.settings-tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => showSettingsTab(btn.dataset.settingsTab || 'general'));
+        });
         const checkbox = document.getElementById('autoplayToggle');
-        if (checkbox) {
-            checkbox.addEventListener('change', () => {
-                handleAutoplayToggle(checkbox.checked);
-            });
-        }
-        const settingsBtn = document.getElementById('openReadingSettings');
-        if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.preventDefault(); const s = document.getElementById('musicToggle'); if (s) s.click(); });
-        setTimeout(() => { updateTierPill(); updateExplorerSwatchState(); syncPausePlayButton(); syncAutoplayButton(); }, 500);
-
-        window.addEventListener('tts-status-change', () => { syncPausePlayButton(); syncAutoplayButton(); updateProgressBar(); });
-        setInterval(() => { try { syncPausePlayButton(); } catch(_) {} }, 400);
+        if (checkbox) checkbox.addEventListener('change', () => showSettingsTab('general'));
+        window.addEventListener('rc:tts-status', () => { syncPausePlayButton(); syncSectionJumpButtons(); });
+        // Sync tier pill and explorer swatch once app has loaded
+        setTimeout(() => { updateTierPill(); updateExplorerSwatchState(); syncPausePlayButton(); syncSectionJumpButtons(); }, 500);
         patchRefreshHook();
 
         const bookSel = document.getElementById('bookSelect');
@@ -532,6 +541,36 @@
             pagesEl.addEventListener('focusin', () => updateProgressBar());
         }
 
+        // F2: Autoplay countdown badge — polls AUTOPLAY_STATE every 300ms, shows badge on button.
+        let _countdownInterval = null;
+        function _startCountdownPoll() {
+            if (_countdownInterval) return;
+            _countdownInterval = setInterval(() => {
+                const btn = document.getElementById('shell-autoplay-btn');
+                if (!btn) return;
+                let badge = document.getElementById('shell-countdown-badge');
+                try {
+                    if (!hasActiveReadingCards()) { if (badge) badge.remove(); return; }
+                    const countdown = (typeof window.getCountdownStatus === 'function') ? window.getCountdownStatus() : { pageIndex: -1, seconds: 0 };
+                    const idx = countdown.pageIndex;
+                    const sec = countdown.seconds;
+                    if (idx !== -1 && sec > 0) {
+                        if (!badge) {
+                            badge = document.createElement('span');
+                            badge.id = 'shell-countdown-badge';
+                            badge.style.cssText = 'margin-left:4px; font-size:0.65rem; font-weight:800; color:var(--theme-accent); background:var(--theme-accent-soft); border-radius:999px; padding:1px 6px;';
+                            btn.appendChild(badge);
+                        }
+                        badge.textContent = `Next: ${sec}…`;
+                    } else if (badge) {
+                        badge.remove();
+                    }
+                    syncPausePlayButton();
+                    syncSectionJumpButtons();
+                } catch(_) { if (badge) badge.remove(); }
+            }, 300);
+        }
+        _startCountdownPoll();
 
         // F3: Page advance pulse + end-of-book detection via MutationObserver.
         let _sessionCompletePending = false;
@@ -579,3 +618,6 @@
 
     // Engine scripts load dynamically after window.load; refresh shell library once boot settles.
     window.addEventListener('load', () => setTimeout(() => { refreshLibrary(); patchRefreshHook(); }, 350));
+
+
+window.handleSectionJump = handleSectionJump;
