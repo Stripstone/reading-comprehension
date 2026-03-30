@@ -1480,7 +1480,26 @@
       if (pageEnd && pageEnd.options.length > 1 && !pageEnd.value) pageEnd.value = String(Math.max(0, pageEnd.options.length - 2));
 
       loadBtn.click();
+      setTimeout(() => { try { window.restoreReadingPosition?.({ behavior: 'auto', allowHidden: false }); } catch(_) {} }, 160);
       return true;
+    };
+
+    window.getCurrentFocusedPageIndex = function getCurrentFocusedPageIndex() {
+      if (Number.isFinite(lastFocusedPageIndex) && lastFocusedPageIndex >= 0) return lastFocusedPageIndex;
+      const active = document.querySelector('#pages .page.page-active');
+      const idx = active ? Number(active.dataset.pageIndex) : NaN;
+      return Number.isFinite(idx) ? idx : 0;
+    };
+
+    window.startFocusedPageTts = function startFocusedPageTts() {
+      const idx = window.getCurrentFocusedPageIndex();
+      const btn = document.querySelector(`#pages .page[data-page-index="${idx}"] .tts-btn[data-tts="page"]`);
+      if (btn) { btn.click(); return true; }
+      return false;
+    };
+
+    window.getFocusedReadingTargetForSync = function getFocusedReadingTargetForSync() {
+      return { bookId: bookSelect?.value || '', chapterId: chapterSelect?.value || '', pageIndex: window.getCurrentFocusedPageIndex() };
     };
   }
 
@@ -1489,6 +1508,12 @@
     const allowHidden = !!options.allowHidden;
     const readingMode = document.getElementById('reading-mode');
     if (!allowHidden && readingMode && readingMode.classList.contains('hidden-section')) return false;
+    if (!Number.isFinite(lastFocusedPageIndex) || lastFocusedPageIndex < 0) {
+      try {
+        const stored = Number(localStorage.getItem('rc_last_focused_page'));
+        if (Number.isFinite(stored) && stored >= 0) lastFocusedPageIndex = stored;
+      } catch(_) {}
+    }
     if (!Number.isFinite(lastFocusedPageIndex) || lastFocusedPageIndex < 0) return false;
     const pageEl = document.querySelector(`#pages .page[data-page-index="${lastFocusedPageIndex}"]`);
     if (!pageEl) return false;
@@ -1678,7 +1703,7 @@
         </div>
 
         <div class="page-actions">
-          <button type="button" class="top-btn tts-btn" data-tts="page" data-page="${i}">🔊 Read aloud</button>
+          <button type="button" class="top-btn tts-btn" data-tts="page" data-page="${i}">🔊 Read page</button>
         </div>
 
         <div class="anchors-nav">
@@ -1763,6 +1788,7 @@
       // Clicking anywhere on the page should make "Next" advance from that page.
       page.addEventListener("pointerdown", () => {
         lastFocusedPageIndex = i;
+        try { localStorage.setItem('rc_last_focused_page', String(i)); } catch(_) {}
       });
 
       // Timer events
