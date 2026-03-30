@@ -180,9 +180,6 @@
         }
         const sel = document.getElementById('shell-speed');
         if (sel) sel.value = String(rate);
-        try {
-            if (typeof window.applyCurrentPlaybackRate === 'function') window.applyCurrentPlaybackRate();
-        } catch(_) {}
     }
 
     function hasActiveReadingCards() {
@@ -251,72 +248,27 @@
         const nextBtn = document.getElementById('tts-next-btn');
         if (!btn) return;
         let status = { active: false, paused: false };
-        let countdown = { active: false };
         try { if (typeof window.getPlaybackStatus === 'function') status = window.getPlaybackStatus() || status; } catch(_) {}
-        try { if (typeof window.getCountdownStatus === 'function') countdown = window.getCountdownStatus() || countdown; } catch(_) {}
         const active = !!status.active;
         const paused = !!status.paused;
-        const countdownActive = !!countdown.active;
-        const speaking = active && !countdownActive;
-        syncPlaybackUiAvailability();
-        if (btn.disabled && !speaking && !countdownActive) return;
-        btn.classList.toggle('active', speaking && paused);
-        const compact = isCompactPlaybackView();
-        btn.title = speaking ? (paused ? 'Resume narration' : 'Pause narration') : 'Play current page';
-        btn.innerHTML = (speaking && !paused)
-            ? (`<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>${compact ? '' : ' Pause'}`)
-            : (`<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>${compact ? '' : ' Play'}`);
+        btn.disabled = false;
+        btn.classList.toggle('active', active && paused);
+        btn.title = active ? (paused ? 'Resume narration' : 'Pause narration') : 'Play current page';
+        btn.innerHTML = (active && !paused)
+            ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause'
+            : '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Play';
         [prevBtn, nextBtn].forEach((control) => {
             if (!control) return;
-            control.disabled = !speaking;
-            control.setAttribute('aria-disabled', (!speaking).toString());
+            control.classList.toggle('hidden-section', !active);
+            control.disabled = !active;
         });
-    }
-
-
-    function syncPlaybackUiAvailability() {
-        let support = { playable: true, freePlayable: true, reason: '', tier: 'free' };
-        try { if (typeof window.getTtsSupportStatus === 'function') support = window.getTtsSupportStatus() || support; } catch(_) {}
-        const unavailable = !support.playable;
-        const reason = support.reason || 'Playback is unavailable on this device.';
-        const playBtn = document.getElementById('shell-pause-btn');
-        if (playBtn) {
-            playBtn.disabled = unavailable;
-            playBtn.setAttribute('aria-disabled', String(unavailable));
-            playBtn.title = unavailable ? reason : 'Play current page';
-        }
-        document.querySelectorAll('.tts-btn[data-tts="page"]').forEach((btn) => {
-            btn.disabled = unavailable;
-            btn.setAttribute('aria-disabled', String(unavailable));
-            if (unavailable) btn.title = reason;
-            else btn.removeAttribute('title');
-        });
-        const autoplayBtn = document.getElementById('shell-autoplay-btn');
-        if (autoplayBtn) {
-            autoplayBtn.disabled = unavailable;
-            autoplayBtn.setAttribute('aria-disabled', String(unavailable));
-            if (unavailable) autoplayBtn.title = reason;
-            else autoplayBtn.removeAttribute('title');
-        }
-        const settingsBtn = document.getElementById('openReadingSettings');
-        if (settingsBtn) settingsBtn.title = unavailable ? reason : 'Reading settings';
-    }
-
-    function isCompactPlaybackView() {
-        try { return !!window.matchMedia && window.matchMedia('(max-width: 640px)').matches; } catch (_) { return window.innerWidth <= 640; }
     }
 
     function handlePausePlay() {
         let status = { active: false, paused: false };
-        let countdown = { active: false };
         try { if (typeof window.getPlaybackStatus === 'function') status = window.getPlaybackStatus() || status; } catch(_) {}
-        try { if (typeof window.getCountdownStatus === 'function') countdown = window.getCountdownStatus() || countdown; } catch(_) {}
         if (!status.active) {
             try {
-                if (countdown.active && typeof window.restartLastSpokenPageTts === 'function' && window.restartLastSpokenPageTts()) {
-                    setTimeout(syncPausePlayButton, 0);
-                    return;
-                }
                 if (typeof window.startFocusedPageTts === 'function' && window.startFocusedPageTts()) {
                     setTimeout(syncPausePlayButton, 0);
                     return;
@@ -328,13 +280,8 @@
     }
 
     function handleTtsStep(delta) {
-        let moved = false;
-        try { if (typeof window.ttsJumpSentence === 'function') moved = !!window.ttsJumpSentence(delta); } catch(_) {}
-        if (!moved) {
-            try { if (typeof window.ttsJumpPage === 'function') moved = !!window.ttsJumpPage(delta); } catch(_) {}
-        }
+        try { if (typeof window.ttsJumpSentence === 'function') window.ttsJumpSentence(delta); } catch(_) {}
         syncPausePlayButton();
-        return moved;
     }
 
     function syncAutoplayButton() {
@@ -350,49 +297,6 @@
         syncAutoplayButton();
     }
 
-    function handleOpenReadingSettings() {
-        try {
-            if (typeof window.toggleReadingSettingsModal === 'function') {
-                window.toggleReadingSettingsModal('sound');
-                return true;
-            }
-            if (typeof window.openReadingSettingsModal === 'function') {
-                window.openReadingSettingsModal('sound');
-                return true;
-            }
-        } catch(_) {}
-        const panel = document.getElementById('volumePanel');
-        const trigger = document.getElementById('openReadingSettings') || document.getElementById('musicToggle');
-        if (!panel) return false;
-        try {
-            const isOpen = panel.style.display === 'flex' || panel.style.display === 'block' || !panel.classList.contains('hidden-section');
-            if (isOpen) {
-                panel.style.display = 'none';
-                panel.classList.add('hidden-section');
-                panel.setAttribute('aria-hidden', 'true');
-                return true;
-            }
-            panel.style.display = 'flex';
-            panel.classList.remove('hidden-section');
-            panel.setAttribute('aria-hidden', 'false');
-            if (trigger) {
-                panel.style.visibility = 'hidden';
-                const rect = trigger.getBoundingClientRect();
-                const panelW = panel.offsetWidth || 320;
-                const panelH = panel.offsetHeight || 420;
-                const gap = 10;
-                const top = Math.max(10, rect.bottom + gap > window.innerHeight ? rect.top - panelH - gap : rect.bottom + gap);
-                const left = Math.min(window.innerWidth - panelW - 10, Math.max(10, rect.right - panelW));
-                panel.style.top = `${top}px`;
-                panel.style.left = `${left}px`;
-                panel.style.visibility = 'visible';
-            }
-            return true;
-        } catch(_) {
-            return false;
-        }
-    }
-
     document.addEventListener('DOMContentLoaded', () => {
         const checkbox = document.getElementById('autoplayToggle');
         if (checkbox) {
@@ -401,17 +305,8 @@
             });
         }
         const settingsBtn = document.getElementById('openReadingSettings');
-        if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.preventDefault(); handleOpenReadingSettings(); });
-        setTimeout(() => { updateTierPill(); updateExplorerSwatchState(); syncPlaybackUiAvailability(); syncPausePlayButton(); syncAutoplayButton(); }, 500);
-        window.setInterval(() => {
-            try {
-                const readingMode = document.getElementById('reading-mode');
-                if (readingMode && !readingMode.classList.contains('hidden-section')) {
-                    syncPlaybackUiAvailability();
-                    syncPausePlayButton();
-                }
-            } catch(_) {}
-        }, 250);
+        if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.preventDefault(); const s = document.getElementById('musicToggle'); if (s) s.click(); });
+        setTimeout(() => { updateTierPill(); updateExplorerSwatchState(); syncPausePlayButton(); syncAutoplayButton(); }, 500);
         patchRefreshHook();
 
         const bookSel = document.getElementById('bookSelect');
@@ -677,68 +572,3 @@
 
     // Engine scripts load dynamically after window.load; refresh shell library once boot settles.
     window.addEventListener('load', () => setTimeout(() => { refreshLibrary(); patchRefreshHook(); }, 350));
-
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-        try {
-            window.speechSynthesis.addEventListener('voiceschanged', () => {
-                syncPlaybackUiAvailability();
-                syncPausePlayButton();
-            });
-        } catch (_) {}
-    }
-
-    function snapshotShellControl(selector) {
-        const el = typeof selector === 'string' ? document.querySelector(selector) : selector;
-        if (!el) return null;
-        let rect = null;
-        try {
-            const r = el.getBoundingClientRect();
-            rect = { width: Math.round(r.width), height: Math.round(r.height), top: Math.round(r.top), left: Math.round(r.left) };
-        } catch (_) {}
-        return {
-            text: (el.textContent || '').replace(/\s+/g, ' ').trim(),
-            disabled: !!el.disabled,
-            ariaDisabled: el.getAttribute('aria-disabled'),
-            title: el.getAttribute('title') || '',
-            className: el.className || '',
-            rect
-        };
-    }
-
-    function getShellDiagnosticsSnapshot() {
-        const settingsPanel = document.getElementById('volumePanel');
-        const topBar = document.getElementById('reading-top-bar');
-        const bottomBar = document.querySelector('.reading-bottom-bar');
-        const readingMode = document.getElementById('reading-mode');
-        const pageBtns = Array.from(document.querySelectorAll('.tts-btn[data-tts="page"]'));
-        return {
-            readingVisible: !!(readingMode && !readingMode.classList.contains('hidden-section')),
-            settingsOpen: !!(settingsPanel && settingsPanel.style.display !== 'none' && !settingsPanel.classList.contains('hidden-section')),
-            controls: {
-                settings: snapshotShellControl('#openReadingSettings'),
-                exit: snapshotShellControl('.reading-top-exit'),
-                play: snapshotShellControl('#shell-pause-btn'),
-                prev: snapshotShellControl('#tts-prev-btn'),
-                next: snapshotShellControl('#tts-next-btn'),
-                autoplay: snapshotShellControl('#shell-autoplay-btn')
-            },
-            pageReadButtons: {
-                count: pageBtns.length,
-                disabledCount: pageBtns.filter((btn) => !!btn.disabled).length,
-                activeCount: pageBtns.filter((btn) => btn.classList.contains('tts-active')).length,
-                sample: pageBtns.slice(0, 3).map((btn) => snapshotShellControl(btn))
-            },
-            layout: {
-                topBar: topBar ? { clientWidth: topBar.clientWidth, scrollWidth: topBar.scrollWidth } : null,
-                topLeft: (() => {
-                    const el = document.querySelector('#reading-top-bar .reading-top-left');
-                    return el ? { clientWidth: el.clientWidth, scrollWidth: el.scrollWidth } : null;
-                })(),
-                bottomBar: bottomBar ? { clientWidth: bottomBar.clientWidth, scrollWidth: bottomBar.scrollWidth } : null
-            }
-        };
-    }
-
-    window.syncPlaybackUiAvailability = syncPlaybackUiAvailability;
-    window.handleOpenReadingSettings = handleOpenReadingSettings;
-    window.getShellDiagnosticsSnapshot = getShellDiagnosticsSnapshot;
