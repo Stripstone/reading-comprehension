@@ -97,18 +97,10 @@
             ['mousemove', 'scroll', 'touchstart', 'click'].forEach(ev =>
                 rm.removeEventListener(ev, focusModeHandler));
         }
+        focusModeHandler = null;
+        clearTimeout(focusModeTimer);
+        focusModeTimer = null;
         bar.classList.remove('faded');
-        function resetFade() {
-            bar.classList.remove('faded');
-            clearTimeout(focusModeTimer);
-            focusModeTimer = setTimeout(() => bar.classList.add('faded'), 3000);
-        }
-        focusModeHandler = resetFade;
-        resetFade();
-        ['mousemove', 'scroll', 'touchstart', 'click'].forEach(ev =>
-            rm.addEventListener(ev, resetFade, { passive: true }));
-        bar.addEventListener('mouseenter', () => { bar.classList.remove('faded'); clearTimeout(focusModeTimer); });
-        bar.addEventListener('mouseleave', resetFade);
     }
 
     // ── Modals ───────────────────────────────────────────────────
