@@ -69,8 +69,10 @@
             updateTierPill();
             updateExplorerSwatchState();
             updateProgressBar();
+            try { if (typeof applyReadingTopBarResponsiveState === 'function') applyReadingTopBarResponsiveState(); } catch(_) {}
         }
         if (id === 'dashboard') refreshLibrary();
+        try { if (typeof window.syncDiagnosticsVisibility === 'function') window.syncDiagnosticsVisibility(); } catch (_) {}
 
         window.scrollTo(0, 0);
     }
@@ -102,6 +104,40 @@
         focusModeTimer = null;
         bar.classList.remove('faded');
     }
+
+
+    function applyReadingTopBarResponsiveState() {
+        const narrow = window.innerWidth <= 640;
+        const ids = [
+            ['bookSelect', 'Book'],
+            ['chapterSelect', 'CH.']
+        ];
+        ids.forEach(([id, shortLabel]) => {
+            const select = document.getElementById(id);
+            if (!select || !select.options) return;
+            Array.from(select.options).forEach((opt) => {
+                if (!opt.dataset.fullLabel) opt.dataset.fullLabel = opt.textContent;
+                opt.textContent = opt.dataset.fullLabel;
+            });
+            const selected = select.options[select.selectedIndex >= 0 ? select.selectedIndex : 0];
+            if (selected) {
+                select.title = selected.dataset.fullLabel || selected.textContent || '';
+                if (narrow) selected.textContent = shortLabel;
+            }
+        });
+    }
+    window.applyReadingTopBarResponsiveState = applyReadingTopBarResponsiveState;
+    window.addEventListener('resize', applyReadingTopBarResponsiveState);
+    document.addEventListener('DOMContentLoaded', () => {
+        applyReadingTopBarResponsiveState();
+        ['bookSelect','chapterSelect'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el && !el.__responsiveLabelBound) {
+                el.addEventListener('change', applyReadingTopBarResponsiveState);
+                el.__responsiveLabelBound = true;
+            }
+        });
+    });
 
     // ── Modals ───────────────────────────────────────────────────
     function openModal(id)  { const el = document.getElementById(id); if (!el) return; el.classList.remove('hidden-section'); if (el.classList.contains('modal-overlay')) el.style.display = 'flex'; }

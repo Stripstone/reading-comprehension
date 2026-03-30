@@ -640,3 +640,89 @@
 #reading-top-bar .reading-top-left > * { min-width: 0; }
 #reading-top-bar #bookControls, #reading-top-bar #chapterControls { overflow: hidden; }
 
+
+
+/* Pass 1 revision fix — keep non-reading layouts centered, keep diagnostics scoped, and lock reading top bar */
+#dashboard.with-sidebar,
+#profile-page.with-sidebar {
+  box-sizing: border-box;
+  width: min(100%, calc(64rem + 68px));
+  margin-left: auto !important;
+  margin-right: auto !important;
+  padding-left: calc(68px + 1.5rem) !important;
+  padding-right: 1.5rem !important;
+}
+@media (max-width: 640px) {
+  #dashboard.with-sidebar,
+  #profile-page.with-sidebar {
+    width: 100%;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+}
+
+#reading-top-bar {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr) !important;
+  align-items: center;
+  column-gap: 12px;
+}
+#reading-top-bar .reading-top-spacer {
+  display: block;
+  min-width: 0;
+}
+#reading-top-bar .reading-top-left {
+  justify-self: center;
+  justify-content: center;
+  overflow: hidden !important;
+  max-width: min(100%, calc(100vw - 220px));
+  padding: 0;
+}
+#reading-top-bar .reading-top-actions {
+  justify-self: end;
+  min-width: max-content;
+  position: relative;
+  z-index: 2;
+}
+#reading-top-bar .reading-select,
+#reading-top-bar #bookControls,
+#reading-top-bar #chapterControls,
+#reading-top-bar .tier-pill {
+  min-width: 0;
+}
+#reading-top-bar #bookSelect,
+#reading-top-bar #chapterSelect,
+#reading-top-bar #modeSelect {
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+@media (max-width: 900px) {
+  #reading-top-bar .reading-top-left {
+    max-width: calc(100vw - 170px);
+  }
+}
+@media (max-width: 640px) {
+  #reading-top-bar {
+    column-gap: 6px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  #reading-top-bar .reading-top-left {
+    max-width: calc(100vw - 78px);
+    gap: 4px;
+  }
+  #reading-top-bar #modeSelect {
+    max-width: 72px;
+  }
+  #reading-top-bar #bookSelect {
+    max-width: 44px;
+  }
+  #reading-top-bar #chapterSelect {
+    max-width: 36px;
+  }
+  #reading-top-bar .reading-top-exit {
+    padding-left: 8px;
+    padding-right: 8px;
+    min-width: 58px;
+  }
+}

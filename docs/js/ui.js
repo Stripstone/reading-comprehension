@@ -336,7 +336,7 @@
       }
 
       function toggleReadingSettingsModal() {
-        const open = volumePanel.style.display === 'block';
+        const open = volumePanel.style.display === 'flex';
         hideAllPanels();
         if (open) return false;
         return openReadingSettingsModal();
@@ -345,7 +345,7 @@
       window.openReadingSettingsModal = openReadingSettingsModal;
       window.closeReadingSettingsModal = closeReadingSettingsModal;
       window.toggleReadingSettingsModal = toggleReadingSettingsModal;
-      window.isReadingSettingsModalOpen = () => volumePanel.style.display === 'block';
+      window.isReadingSettingsModalOpen = () => volumePanel.style.display === 'flex';
 
       // Repopulate when voices load asynchronously (Chrome/Edge)
       if (typeof window !== 'undefined' && window.speechSynthesis) {
