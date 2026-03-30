@@ -53,7 +53,7 @@
             updateExplorerSwatchState();
             updateProgressBar();
             syncPausePlayButton();
-            syncSectionJumpButtons();
+            syncAutoplayButton();
             try { if (typeof window.restoreReadingPosition === 'function') setTimeout(() => window.restoreReadingPosition({ behavior: 'auto' }), 60); } catch(_) {}
         }
         if (id === 'dashboard') refreshLibrary();
@@ -85,8 +85,17 @@
                 rm.removeEventListener(ev, focusModeHandler));
         }
         bar.classList.remove('faded');
-        clearTimeout(focusModeTimer);
-        focusModeHandler = null;
+        function resetFade() {
+            bar.classList.remove('faded');
+            clearTimeout(focusModeTimer);
+            focusModeTimer = setTimeout(() => bar.classList.add('faded'), 3000);
+        }
+        focusModeHandler = resetFade;
+        resetFade();
+        ['mousemove', 'scroll', 'touchstart', 'click'].forEach(ev =>
+            rm.addEventListener(ev, resetFade, { passive: true }));
+        bar.addEventListener('mouseenter', () => { bar.classList.remove('faded'); clearTimeout(focusModeTimer); });
+        bar.addEventListener('mouseleave', resetFade);
     }
 
     // ── Modals ───────────────────────────────────────────────────
@@ -238,91 +247,54 @@
         const prog = document.getElementById('shell-page-progress');
         if (prog) prog.textContent = '—';
         _readingStartTime = null;
-        syncPausePlayButton();
-        syncSectionJumpButtons();
     }
 
     // ── Bottom bar controls ──────────────────────────────────────
 
-    function getCurrentReadingPageIndex() {
-        if (typeof lastFocusedPageIndex === 'number' && lastFocusedPageIndex >= 0) return lastFocusedPageIndex;
-        const active = document.querySelector('#pages .page.focused, #pages .page.active');
-        if (active) {
-            const idx = parseInt(active.dataset.pageIndex, 10);
-            if (Number.isFinite(idx)) return idx;
-        }
-        const first = document.querySelector('#pages .page[data-page-index]');
-        if (first) {
-            const idx = parseInt(first.dataset.pageIndex, 10);
-            if (Number.isFinite(idx)) return idx;
-        }
-        return 0;
-    }
-
+    // Pause/Play — calls app's tts.js functions if available.
+    // Guards against first-use case where TTS was never started (TTS_STATE.activeKey is null).
     function syncPausePlayButton() {
         const btn = document.getElementById('shell-pause-btn');
         if (!btn) return;
         let status = { active: false, paused: false };
         try { if (typeof window.getPlaybackStatus === 'function') status = window.getPlaybackStatus() || status; } catch(_) {}
-        const isPlaying = !!status.active && !status.paused;
-        const label = isPlaying ? 'Pause' : 'Play';
-        const icon = isPlaying
-            ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>'
-            : '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
-        btn.classList.toggle('active', isPlaying);
-        btn.disabled = !document.querySelector('#pages .page');
-        btn.title = isPlaying ? 'Pause narration' : 'Play current page';
-        btn.innerHTML = `${icon} ${label}`;
+        btn.classList.toggle('active', !!status.active && !!status.paused);
+        btn.disabled = !status.active;
+        btn.innerHTML = (status.active && status.paused)
+            ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Play'
+            : '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause';
     }
 
     function handlePausePlay() {
-        let status = { active: false, paused: false };
-        try { if (typeof window.getPlaybackStatus === 'function') status = window.getPlaybackStatus() || status; } catch(_) {}
-        try {
-            if (!status.active && typeof window.startCurrentPageTts === 'function') {
-                window.startCurrentPageTts(getCurrentReadingPageIndex());
-            } else if (typeof window.pauseOrResumeReading === 'function') {
-                window.pauseOrResumeReading();
-            }
-        } catch(_) {}
-        setTimeout(() => { syncPausePlayButton(); syncSectionJumpButtons(); }, 40);
+        try { if (typeof window.pauseOrResumeReading === 'function') window.pauseOrResumeReading(); } catch(_) {}
+        syncPausePlayButton();
     }
 
-    function syncSectionJumpButtons() {
-        const prev = document.getElementById('shell-prev-section-btn');
-        const next = document.getElementById('shell-next-section-btn');
-        if (!prev || !next) return;
-        let can = false;
-        try { if (typeof window.canJumpTtsSection === 'function') can = !!window.canJumpTtsSection(); } catch(_) {}
-        prev.disabled = !can;
-        next.disabled = !can;
+    // Autoplay button — syncs with #autoplayToggle checkbox inside volumePanel
+    function syncAutoplayButton() {
+        const btn = document.getElementById('shell-autoplay-btn');
+        if (!btn) return;
+        let enabled = false;
+        try { if (typeof window.getAutoplayStatus === 'function') enabled = !!window.getAutoplayStatus().enabled; } catch(_) {}
+        btn.classList.toggle('active', enabled);
     }
 
-    function handleSectionJump(direction) {
-        try { if (typeof window.jumpTtsSection === 'function') window.jumpTtsSection(direction); } catch(_) {}
-        setTimeout(() => { syncPausePlayButton(); syncSectionJumpButtons(); }, 40);
+    function handleAutoplayToggle() {
+        try { if (typeof window.toggleAutoplay === 'function') window.toggleAutoplay(); } catch(_) {}
+        syncAutoplayButton();
     }
 
-    function showSettingsTab(tabName) {
-        document.querySelectorAll('.settings-tab-btn').forEach(btn => {
-            const active = btn.dataset.settingsTab === tabName;
-            btn.classList.toggle('active', active);
-            btn.setAttribute('aria-selected', active ? 'true' : 'false');
-        });
-        document.querySelectorAll('.settings-tab-panel').forEach(panel => {
-            panel.classList.toggle('active', panel.dataset.settingsPanel === tabName);
-        });
-    }
-
+    // Keep autoplay button in sync if checkbox changes (e.g. via volume panel)
     document.addEventListener('DOMContentLoaded', () => {
-        document.querySelectorAll('.settings-tab-btn').forEach(btn => {
-            btn.addEventListener('click', () => showSettingsTab(btn.dataset.settingsTab || 'general'));
-        });
         const checkbox = document.getElementById('autoplayToggle');
-        if (checkbox) checkbox.addEventListener('change', () => showSettingsTab('general'));
-        window.addEventListener('rc:tts-status', () => { syncPausePlayButton(); syncSectionJumpButtons(); });
+        const btn      = document.getElementById('shell-autoplay-btn');
+        if (checkbox && btn) {
+            checkbox.addEventListener('change', () => {
+                syncAutoplayButton();
+            });
+        }
         // Sync tier pill and explorer swatch once app has loaded
-        setTimeout(() => { updateTierPill(); updateExplorerSwatchState(); syncPausePlayButton(); syncSectionJumpButtons(); }, 500);
+        setTimeout(() => { updateTierPill(); updateExplorerSwatchState(); syncPausePlayButton(); syncAutoplayButton(); }, 500);
         patchRefreshHook();
 
         const bookSel = document.getElementById('bookSelect');
@@ -566,7 +538,7 @@
                         badge.remove();
                     }
                     syncPausePlayButton();
-                    syncSectionJumpButtons();
+                    syncAutoplayButton();
                 } catch(_) { if (badge) badge.remove(); }
             }, 300);
         }
@@ -618,6 +590,3 @@
 
     // Engine scripts load dynamically after window.load; refresh shell library once boot settles.
     window.addEventListener('load', () => setTimeout(() => { refreshLibrary(); patchRefreshHook(); }, 350));
-
-
-window.handleSectionJump = handleSectionJump;

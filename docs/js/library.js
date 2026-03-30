@@ -1678,7 +1678,7 @@
         </div>
 
         <div class="page-actions">
-          <button type="button" class="top-btn tts-btn" data-tts="page" data-page="${i}">🔊 Read aloud</button>
+          <button type="button" class="top-btn tts-btn" data-tts="page" data-page="${i}">🔊 Read page</button>
         </div>
 
         <div class="anchors-nav">
