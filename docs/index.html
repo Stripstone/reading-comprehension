@@ -572,6 +572,7 @@
 
     <!-- TOP BAR: session-defining — fades on idle. Left scrolls, Exit always pinned right -->
     <div id="reading-top-bar" class="reading-top-bar">
+        <div class="reading-top-spacer" aria-hidden="true"></div>
         <div class="reading-top-left">
             <button id="openReadingSettings" type="button" class="pb-icon-btn reading-top-settings-btn" title="Reading settings">Settings</button>
             <div class="reading-divider"></div>
@@ -592,7 +593,7 @@
             <!-- chapterControls wraps chapterSelect — initBookImporter() wires to this div -->
             <div id="chapterControls" style="display:flex;align-items:center;">
                 <select id="chapterSelect" class="reading-select">
-                    <option value="">Chapter: —</option>
+                    <option value="">Ch: —</option>
                 </select>
             </div>
             <div class="reading-divider"></div>
@@ -622,6 +623,7 @@
 
     <!-- BOTTOM PLAYBACK BAR: moment controls — always visible -->
     <div class="reading-bottom-bar">
+        <div class="reading-bottom-spacer" aria-hidden="true"></div>
         <div class="reading-bottom-left">
             <!-- Speed — runtime-owned via setPlaybackRate() -->
             <select id="shell-speed" class="reading-select" onchange="shellSetSpeed(this.value)">
@@ -641,7 +643,7 @@
         </div>
         <!-- Page progress — plain text counter, no dots -->
         <div class="reading-bottom-actions flex-shrink-0">
-            <span class="page-progress" id="shell-page-progress">Page 1 / 1</span>
+            <span class="page-progress" id="shell-page-progress">—</span>
         </div>
     </div>
 
