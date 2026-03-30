@@ -974,9 +974,13 @@ async function ttsSpeakQueue(key, parts) {
     if (TTS_STATE.activeKey !== key) return;
     if (err && (err.name === 'AbortError' || String(err).includes('aborted'))) return;
 
+    const selectedVoice = (() => { try { return localStorage.getItem('rc_browser_voice') || ''; } catch(_) { return ''; } })();
     console.warn('Cloud TTS playback failed:', err);
     ttsStop();
-    return;
+    if (selectedVoice.startsWith('cloud:')) {
+      return;
+    }
+    browserSpeakQueue(key, queue);
   }
 }
 

@@ -1493,14 +1493,8 @@
 
     window.startFocusedPageTts = function startFocusedPageTts() {
       const idx = window.getCurrentFocusedPageIndex();
-      const safeIdx = Number.isFinite(idx) && idx >= 0 ? idx : 0;
-      const text = Array.isArray(pages) ? String(pages[safeIdx] || '').trim() : '';
-      if (!text) return false;
-      try { lastFocusedPageIndex = safeIdx; localStorage.setItem('rc_last_focused_page', String(safeIdx)); } catch(_) {}
-      try { ttsSpeakQueue(`page-${safeIdx}`, [text]); return true; } catch(_) {
-        const btn = document.querySelector(`#pages .page[data-page-index="${safeIdx}"] .tts-btn[data-tts="page"]`);
-        if (btn) { btn.click(); return true; }
-      }
+      const btn = document.querySelector(`#pages .page[data-page-index="${idx}"] .tts-btn[data-tts="page"]`);
+      if (btn) { btn.click(); return true; }
       return false;
     };
 
