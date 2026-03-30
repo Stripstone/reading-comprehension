@@ -1455,6 +1455,24 @@
       try { await populateBookSelectWithLocal(); } catch (_) {}
     };
 
+
+  function setFocusedPageIndex(pageIndex, options = {}) {
+    const idx = Number(pageIndex);
+    if (!Number.isFinite(idx) || idx < 0) return false;
+    lastFocusedPageIndex = idx;
+    try { localStorage.setItem('rc_last_focused_page', String(idx)); } catch(_) {}
+    const pagesEls = Array.from(document.querySelectorAll('#pages .page'));
+    pagesEls.forEach((el, n) => {
+      if (!el) return;
+      el.classList.toggle('page-active', n === idx);
+    });
+    const target = pagesEls[idx];
+    if (target && options.scroll) {
+      try { target.scrollIntoView({ behavior: options.behavior || 'smooth', block: 'start', inline: 'nearest' }); } catch(_) {}
+    }
+    return true;
+  }
+
     window.startReadingFromPreview = async function startReadingFromPreview(bookId) {
       const desired = String(bookId || '').trim();
       if (!desired) return false;
@@ -1484,6 +1502,8 @@
       return true;
     };
 
+    window.setFocusedPageIndex = setFocusedPageIndex;
+
     window.getCurrentFocusedPageIndex = function getCurrentFocusedPageIndex() {
       if (Number.isFinite(lastFocusedPageIndex) && lastFocusedPageIndex >= 0) return lastFocusedPageIndex;
       const active = document.querySelector('#pages .page.page-active');
@@ -1493,22 +1513,14 @@
 
     window.startFocusedPageTts = function startFocusedPageTts() {
       const idx = window.getCurrentFocusedPageIndex();
+      setFocusedPageIndex(idx, { scroll: true, behavior: 'smooth' });
       const btn = document.querySelector(`#pages .page[data-page-index="${idx}"] .tts-btn[data-tts="page"]`);
       if (btn) { btn.click(); return true; }
-      try {
-        const textEl = document.querySelector(`#pages .page[data-page-index="${idx}"] .page-text`);
-        const text = textEl ? textEl.innerText.trim() : '';
-        if (text && typeof ttsSpeakQueue === 'function') { ttsSpeakQueue(`page-${idx}`, [text]); return true; }
-      } catch (_) {}
       return false;
     };
 
     window.getFocusedReadingTargetForSync = function getFocusedReadingTargetForSync() {
       return { bookId: bookSelect?.value || '', chapterId: chapterSelect?.value || '', pageIndex: window.getCurrentFocusedPageIndex() };
-    };
-
-    window.getFocusedReadingTargetForSupabase = function getFocusedReadingTargetForSupabase() {
-      return { source_type: (bookSelect?.value || '').startsWith('local:') ? 'local' : 'embedded', source_id: bookSelect?.value || '', chapter_id: chapterSelect?.value || '', last_page_index: window.getCurrentFocusedPageIndex() };
     };
   }
 
@@ -1763,6 +1775,11 @@
       const ttsPageBtn = page.querySelector('.tts-btn[data-tts="page"]');
       if (ttsPageBtn) {
         ttsPageBtn.addEventListener("click", () => {
+          setFocusedPageIndex(i, { scroll: true, behavior: 'smooth' });
+          try {
+            const speedSel = document.getElementById('shell-speed');
+            if (speedSel && typeof window.setPlaybackRate === 'function') window.setPlaybackRate(speedSel.value);
+          } catch(_) {}
           if (AUTOPLAY_STATE.countdownPageIndex === i) {
             ttsAutoplayCancelCountdown();
             return;
@@ -1796,14 +1813,13 @@
 
       // Clicking anywhere on the page should make "Next" advance from that page.
       page.addEventListener("pointerdown", () => {
-        lastFocusedPageIndex = i;
-        try { localStorage.setItem('rc_last_focused_page', String(i)); } catch(_) {}
+        setFocusedPageIndex(i);
       });
 
       // Timer events
       textarea.addEventListener("focus", () => {
         
-        lastFocusedPageIndex = i;
+        setFocusedPageIndex(i);
 // Scroll to show entire page card (passage + textarea) instead of centering on textarea
         const pageCard = textarea.closest('.page');
         pageCard.scrollIntoView({ 
