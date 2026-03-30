@@ -258,22 +258,41 @@
         const paused = !!status.paused;
         const countdownActive = !!countdown.active;
         const speaking = active && !countdownActive;
-        btn.disabled = false;
+        const browserUnavailable = (() => {
+            try {
+                if (typeof window.browserTtsUsable === 'function' ? !window.browserTtsUsable() : (typeof window.browserVoiceCount === 'function' && window.browserVoiceCount() === 0)) {
+                    return (typeof window.appTier === 'undefined' || String(window.appTier) === 'free');
+                }
+            } catch (_) {}
+            return false;
+        })();
+        btn.disabled = browserUnavailable;
+        btn.setAttribute('aria-disabled', browserUnavailable.toString());
         btn.classList.toggle('active', speaking && paused);
         const compact = isCompactPlaybackView();
-        btn.title = speaking ? (paused ? 'Resume narration' : 'Pause narration') : 'Play current page';
+        btn.title = browserUnavailable ? 'No browser voices available' : (speaking ? (paused ? 'Resume narration' : 'Pause narration') : 'Play current page');
         btn.innerHTML = (speaking && !paused)
             ? (`<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>${compact ? '' : ' Pause'}`)
             : (`<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>${compact ? '' : ' Play'}`);
         [prevBtn, nextBtn].forEach((control) => {
             if (!control) return;
-            control.disabled = !speaking;
-            control.setAttribute('aria-disabled', (!speaking).toString());
+            control.disabled = browserUnavailable || !speaking;
+            control.setAttribute('aria-disabled', (browserUnavailable || !speaking).toString());
+            if (browserUnavailable) control.title = 'No browser voices available';
         });
     }
 
     function isCompactPlaybackView() {
         try { return !!window.matchMedia && window.matchMedia('(max-width: 640px)').matches; } catch (_) { return window.innerWidth <= 640; }
+    }
+
+
+    function btnDisabledPlayback() {
+        try {
+            return (typeof window.browserTtsUsable === 'function' ? !window.browserTtsUsable() : (typeof window.browserVoiceCount === 'function' && window.browserVoiceCount() === 0)) && (typeof window.appTier === 'undefined' || String(window.appTier) === 'free');
+        } catch (_) {
+            return false;
+        }
     }
 
     function handlePausePlay() {
@@ -293,16 +312,17 @@
                 }
             } catch(_) {}
         }
+        if (btnDisabledPlayback()) { syncPausePlayButton(); return; }
         try { if (typeof window.pauseOrResumeReading === 'function') window.pauseOrResumeReading(); } catch(_) {}
         syncPausePlayButton();
+        setTimeout(syncPausePlayButton, 120);
+        setTimeout(syncPausePlayButton, 280);
     }
 
     function handleTtsStep(delta) {
+        if (btnDisabledPlayback()) { syncPausePlayButton(); return false; }
         let moved = false;
         try { if (typeof window.ttsJumpSentence === 'function') moved = !!window.ttsJumpSentence(delta); } catch(_) {}
-        if (!moved) {
-            try { if (typeof window.ttsJumpPage === 'function') moved = !!window.ttsJumpPage(delta); } catch(_) {}
-        }
         syncPausePlayButton();
         return moved;
     }
@@ -320,7 +340,7 @@
         syncAutoplayButton();
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    function initShellRuntimeBindings() {
         const checkbox = document.getElementById('autoplayToggle');
         if (checkbox) {
             checkbox.addEventListener('change', () => {
@@ -328,12 +348,12 @@
             });
         }
         const settingsBtn = document.getElementById('openReadingSettings');
-        if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.preventDefault(); try { if (typeof window.openReadingSettingsModal === 'function') { window.openReadingSettingsModal(); return; } } catch(_) {} const modal = document.getElementById('volumePanel'); if (modal) { modal.style.display = 'flex'; modal.classList.remove('hidden-section'); modal.setAttribute('aria-hidden', 'false'); } });
-        setTimeout(() => { updateTierPill(); updateExplorerSwatchState(); syncPausePlayButton(); syncAutoplayButton(); }, 500);
+        if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); try { if (typeof window.openReadingSettingsModal === 'function') { window.openReadingSettingsModal('sound'); return; } } catch(_) {} const modal = document.getElementById('volumePanel'); if (modal) { modal.style.display = 'flex'; modal.classList.remove('hidden-section'); modal.setAttribute('aria-hidden', 'false'); } });
+        setTimeout(() => { updateTierPill(); updateExplorerSwatchState(); syncPausePlayButton(); syncAutoplayButton(); try { if (typeof window.syncTtsVoiceAvailabilityControls === 'function') window.syncTtsVoiceAvailabilityControls(); } catch(_) {} }, 500);
         window.setInterval(() => {
             try {
                 const readingMode = document.getElementById('reading-mode');
-                if (readingMode && !readingMode.classList.contains('hidden-section')) syncPausePlayButton();
+                if (readingMode && !readingMode.classList.contains('hidden-section')) { syncPausePlayButton(); try { if (typeof window.syncTtsVoiceAvailabilityControls === 'function') window.syncTtsVoiceAvailabilityControls(); } catch(_) {} }
             } catch(_) {}
         }, 250);
         patchRefreshHook();
@@ -369,7 +389,7 @@
                 }
             });
         }
-    });
+    }
 
     // ── Library table — populated by __jublyLibraryRefresh hook called from library.js ──
     function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -598,6 +618,9 @@
             exitBtn.addEventListener('click', () => cleanupReadingTransientState());
         }
     });
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initShellRuntimeBindings, { once: true });
+    else initShellRuntimeBindings();
 
     // Engine scripts load dynamically after window.load; refresh shell library once boot settles.
     window.addEventListener('load', () => setTimeout(() => { refreshLibrary(); patchRefreshHook(); }, 350));

@@ -292,6 +292,7 @@
       function populateBrowserVoicePicker() {
         buildVoiceSelect(voiceFemaleSelect, 'female');
         buildVoiceSelect(voiceMaleSelect,   'male');
+        try { if (typeof window.syncTtsVoiceAvailabilityControls === 'function') window.syncTtsVoiceAvailabilityControls(); } catch (_) {}
       }
 
       function handleVoiceSelectChange(selectEl, gender) {
@@ -355,6 +356,7 @@
         tabs.forEach((tab) => tab.classList.toggle('active', tab.dataset.settingsTab === tabName));
         panes.forEach((pane) => pane.classList.toggle('active', pane.dataset.settingsPane === tabName));
       }
+      window.openReadingSettingsModal = (tabName = 'sound') => { openSettingsPanel(tabName); try { if (typeof window.syncTtsVoiceAvailabilityControls === 'function') window.syncTtsVoiceAvailabilityControls(); } catch (_) {} return true; };
 
       musicToggleBtn.addEventListener('click', (ev) => {
         ev.preventDefault();
@@ -365,6 +367,17 @@
       });
 
       if (toggleMusicBtn) toggleMusicBtn.addEventListener('click', () => window.toggleMusic && window.toggleMusic());
+
+      const topSettingsBtn = document.getElementById('openReadingSettings');
+      if (topSettingsBtn && topSettingsBtn !== musicToggleBtn) {
+        topSettingsBtn.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const isOpen = volumePanel.style.display === 'flex';
+          if (isOpen) hideAllPanels();
+          else openSettingsPanel('sound');
+        });
+      }
     }
 
     // Diagnostics panel wiring (debug-only)

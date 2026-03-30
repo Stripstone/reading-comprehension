@@ -545,8 +545,8 @@
 
 /* Runtime patch v3: browser-safe TTS controls, larger visible playback controls, inline exit */
 .reading-top-bar { justify-content: center; }
-.reading-top-left { width: min(100%, 900px); max-width: min(100%, 900px); }
-.reading-top-exit { position: static; transform: none; margin-left: 0; }
+.reading-top-left { width: min(100%, 900px); max-width: calc(100% - 82px); margin: 0 auto; }
+.reading-top-exit { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); margin-left: 0; z-index: 1; }
 .reading-bottom-bar .pb-icon-btn {
   min-height: 42px;
   min-width: 42px;
@@ -568,5 +568,50 @@
   .reading-bottom-bar .pb-icon-btn { min-height: 46px; min-width: 46px; padding: .72rem .92rem; }
   .reading-bottom-bar #shell-pause-btn { min-width: 46px; padding-left: .78rem; padding-right: .78rem; }
   .reading-bottom-bar #shell-pause-btn svg { margin-right: 0; }
-  .reading-top-left { gap: 4px; }
+  .reading-top-left { gap: 4px; max-width: calc(100% - 66px); }
+  .reading-top-exit { right: 8px; }
+}
+
+
+
+/* Runtime patch v4: visible exit, top bar grid, stable inline controls */
+#reading-top-bar.reading-top-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+}
+#reading-top-bar .reading-top-left {
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  justify-content: center;
+  scrollbar-width: none;
+  padding-right: 0;
+}
+#reading-top-bar .reading-top-left::-webkit-scrollbar { display: none; }
+#reading-top-bar .reading-top-exit {
+  position: static;
+  transform: none;
+  margin-left: 0;
+  align-self: center;
+  justify-self: end;
+  z-index: 3;
+  white-space: nowrap;
+}
+#bookControls, #chapterControls { min-width: 0; }
+#bookSelect, #chapterSelect {
+  display: block;
+  min-width: 0;
+  text-align: left;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  #reading-top-bar.reading-top-bar { column-gap: 6px; }
+  #reading-top-bar .reading-top-exit { padding-left: 9px; padding-right: 9px; }
+  #bookSelect, #chapterSelect { max-width: 19vw; }
 }
