@@ -43,7 +43,7 @@
         const supportFooter = document.getElementById('supportFooter');
         if (supportFooter) supportFooter.style.display = SIDEBAR_SECTIONS.includes(id) ? 'block' : 'none';
 
-        // Reading mode: hide nav for focus, restore on exit
+        // Reading mode: keep top controls visible, restore on exit
         const mainNav = document.querySelector('nav');
         if (mainNav) mainNav.style.display = id === 'reading-mode' ? 'none' : '';
         if (wasReading && id !== 'reading-mode') cleanupReadingTransientState();
@@ -53,7 +53,6 @@
             updateExplorerSwatchState();
             updateProgressBar();
             syncPausePlayButton();
-            syncAutoplayButton();
             try { if (typeof window.restoreReadingPosition === 'function') setTimeout(() => window.restoreReadingPosition({ behavior: 'auto' }), 60); } catch(_) {}
         }
         if (id === 'dashboard') refreshLibrary();
@@ -66,7 +65,6 @@
     let focusModeHandler = null;
 
     function initFocusMode() {
-        // Restore persisted TTS speed into the dropdown and the audio element.
         try {
             const savedSpeed = localStorage.getItem('rc_tts_speed');
             if (savedSpeed) {
@@ -84,18 +82,9 @@
             ['mousemove', 'scroll', 'touchstart', 'click'].forEach(ev =>
                 rm.removeEventListener(ev, focusModeHandler));
         }
+        clearTimeout(focusModeTimer);
         bar.classList.remove('faded');
-        function resetFade() {
-            bar.classList.remove('faded');
-            clearTimeout(focusModeTimer);
-            focusModeTimer = setTimeout(() => bar.classList.add('faded'), 3000);
-        }
-        focusModeHandler = resetFade;
-        resetFade();
-        ['mousemove', 'scroll', 'touchstart', 'click'].forEach(ev =>
-            rm.addEventListener(ev, resetFade, { passive: true }));
-        bar.addEventListener('mouseenter', () => { bar.classList.remove('faded'); clearTimeout(focusModeTimer); });
-        bar.addEventListener('mouseleave', resetFade);
+        focusModeHandler = null;
     }
 
     // ── Modals ───────────────────────────────────────────────────
@@ -191,6 +180,9 @@
         }
         const sel = document.getElementById('shell-speed');
         if (sel) sel.value = String(rate);
+        try {
+            if (typeof window.applyCurrentPlaybackRate === 'function') window.applyCurrentPlaybackRate();
+        } catch(_) {}
     }
 
     function hasActiveReadingCards() {
@@ -255,46 +247,171 @@
     // Guards against first-use case where TTS was never started (TTS_STATE.activeKey is null).
     function syncPausePlayButton() {
         const btn = document.getElementById('shell-pause-btn');
+        const prevBtn = document.getElementById('tts-prev-btn');
+        const nextBtn = document.getElementById('tts-next-btn');
         if (!btn) return;
         let status = { active: false, paused: false };
+        let countdown = { active: false };
         try { if (typeof window.getPlaybackStatus === 'function') status = window.getPlaybackStatus() || status; } catch(_) {}
-        btn.classList.toggle('active', !!status.active && !!status.paused);
-        btn.disabled = !status.active;
-        btn.innerHTML = (status.active && status.paused)
-            ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Play'
-            : '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause';
+        try { if (typeof window.getCountdownStatus === 'function') countdown = window.getCountdownStatus() || countdown; } catch(_) {}
+        const active = !!status.active;
+        const paused = !!status.paused;
+        const countdownActive = !!countdown.active;
+        const speaking = active && !countdownActive;
+        syncPlaybackUiAvailability();
+        if (btn.disabled && !speaking && !countdownActive) return;
+        btn.classList.toggle('active', speaking && paused);
+        const compact = isCompactPlaybackView();
+        btn.title = speaking ? (paused ? 'Resume narration' : 'Pause narration') : 'Play current page';
+        btn.innerHTML = (speaking && !paused)
+            ? (`<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>${compact ? '' : ' Pause'}`)
+            : (`<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>${compact ? '' : ' Play'}`);
+        [prevBtn, nextBtn].forEach((control) => {
+            if (!control) return;
+            control.disabled = !speaking;
+            control.setAttribute('aria-disabled', (!speaking).toString());
+        });
+    }
+
+
+    function syncPlaybackUiAvailability() {
+        let support = { playable: true, freePlayable: true, reason: '', tier: 'free' };
+        try { if (typeof window.getTtsSupportStatus === 'function') support = window.getTtsSupportStatus() || support; } catch(_) {}
+        const unavailable = !support.playable;
+        const reason = support.reason || 'Playback is unavailable on this device.';
+        const playBtn = document.getElementById('shell-pause-btn');
+        if (playBtn) {
+            playBtn.disabled = unavailable;
+            playBtn.setAttribute('aria-disabled', String(unavailable));
+            playBtn.title = unavailable ? reason : 'Play current page';
+        }
+        document.querySelectorAll('.tts-btn[data-tts="page"]').forEach((btn) => {
+            btn.disabled = unavailable;
+            btn.setAttribute('aria-disabled', String(unavailable));
+            if (unavailable) btn.title = reason;
+            else btn.removeAttribute('title');
+        });
+        const autoplayBtn = document.getElementById('shell-autoplay-btn');
+        if (autoplayBtn) {
+            autoplayBtn.disabled = unavailable;
+            autoplayBtn.setAttribute('aria-disabled', String(unavailable));
+            if (unavailable) autoplayBtn.title = reason;
+            else autoplayBtn.removeAttribute('title');
+        }
+        const settingsBtn = document.getElementById('openReadingSettings');
+        if (settingsBtn) settingsBtn.title = unavailable ? reason : 'Reading settings';
+    }
+
+    function isCompactPlaybackView() {
+        try { return !!window.matchMedia && window.matchMedia('(max-width: 640px)').matches; } catch (_) { return window.innerWidth <= 640; }
     }
 
     function handlePausePlay() {
+        let status = { active: false, paused: false };
+        let countdown = { active: false };
+        try { if (typeof window.getPlaybackStatus === 'function') status = window.getPlaybackStatus() || status; } catch(_) {}
+        try { if (typeof window.getCountdownStatus === 'function') countdown = window.getCountdownStatus() || countdown; } catch(_) {}
+        if (!status.active) {
+            try {
+                if (countdown.active && typeof window.restartLastSpokenPageTts === 'function' && window.restartLastSpokenPageTts()) {
+                    setTimeout(syncPausePlayButton, 0);
+                    return;
+                }
+                if (typeof window.startFocusedPageTts === 'function' && window.startFocusedPageTts()) {
+                    setTimeout(syncPausePlayButton, 0);
+                    return;
+                }
+            } catch(_) {}
+        }
         try { if (typeof window.pauseOrResumeReading === 'function') window.pauseOrResumeReading(); } catch(_) {}
         syncPausePlayButton();
     }
 
-    // Autoplay button — syncs with #autoplayToggle checkbox inside volumePanel
-    function syncAutoplayButton() {
-        const btn = document.getElementById('shell-autoplay-btn');
-        if (!btn) return;
-        let enabled = false;
-        try { if (typeof window.getAutoplayStatus === 'function') enabled = !!window.getAutoplayStatus().enabled; } catch(_) {}
-        btn.classList.toggle('active', enabled);
+    function handleTtsStep(delta) {
+        let moved = false;
+        try { if (typeof window.ttsJumpSentence === 'function') moved = !!window.ttsJumpSentence(delta); } catch(_) {}
+        if (!moved) {
+            try { if (typeof window.ttsJumpPage === 'function') moved = !!window.ttsJumpPage(delta); } catch(_) {}
+        }
+        syncPausePlayButton();
+        return moved;
     }
 
-    function handleAutoplayToggle() {
-        try { if (typeof window.toggleAutoplay === 'function') window.toggleAutoplay(); } catch(_) {}
+    function syncAutoplayButton() {
+        const checkbox = document.getElementById('autoplayToggle');
+        if (!checkbox) return;
+        let enabled = false;
+        try { if (typeof window.getAutoplayStatus === 'function') enabled = !!window.getAutoplayStatus().enabled; } catch(_) {}
+        checkbox.checked = enabled;
+    }
+
+    function handleAutoplayToggle(force) {
+        try { if (typeof window.toggleAutoplay === 'function') window.toggleAutoplay(force); } catch(_) {}
         syncAutoplayButton();
     }
 
-    // Keep autoplay button in sync if checkbox changes (e.g. via volume panel)
+    function handleOpenReadingSettings() {
+        try {
+            if (typeof window.toggleReadingSettingsModal === 'function') {
+                window.toggleReadingSettingsModal('sound');
+                return true;
+            }
+            if (typeof window.openReadingSettingsModal === 'function') {
+                window.openReadingSettingsModal('sound');
+                return true;
+            }
+        } catch(_) {}
+        const panel = document.getElementById('volumePanel');
+        const trigger = document.getElementById('openReadingSettings') || document.getElementById('musicToggle');
+        if (!panel) return false;
+        try {
+            const isOpen = panel.style.display === 'flex' || panel.style.display === 'block' || !panel.classList.contains('hidden-section');
+            if (isOpen) {
+                panel.style.display = 'none';
+                panel.classList.add('hidden-section');
+                panel.setAttribute('aria-hidden', 'true');
+                return true;
+            }
+            panel.style.display = 'flex';
+            panel.classList.remove('hidden-section');
+            panel.setAttribute('aria-hidden', 'false');
+            if (trigger) {
+                panel.style.visibility = 'hidden';
+                const rect = trigger.getBoundingClientRect();
+                const panelW = panel.offsetWidth || 320;
+                const panelH = panel.offsetHeight || 420;
+                const gap = 10;
+                const top = Math.max(10, rect.bottom + gap > window.innerHeight ? rect.top - panelH - gap : rect.bottom + gap);
+                const left = Math.min(window.innerWidth - panelW - 10, Math.max(10, rect.right - panelW));
+                panel.style.top = `${top}px`;
+                panel.style.left = `${left}px`;
+                panel.style.visibility = 'visible';
+            }
+            return true;
+        } catch(_) {
+            return false;
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         const checkbox = document.getElementById('autoplayToggle');
-        const btn      = document.getElementById('shell-autoplay-btn');
-        if (checkbox && btn) {
+        if (checkbox) {
             checkbox.addEventListener('change', () => {
-                syncAutoplayButton();
+                handleAutoplayToggle(checkbox.checked);
             });
         }
-        // Sync tier pill and explorer swatch once app has loaded
-        setTimeout(() => { updateTierPill(); updateExplorerSwatchState(); syncPausePlayButton(); syncAutoplayButton(); }, 500);
+        const settingsBtn = document.getElementById('openReadingSettings');
+        if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.preventDefault(); handleOpenReadingSettings(); });
+        setTimeout(() => { updateTierPill(); updateExplorerSwatchState(); syncPlaybackUiAvailability(); syncPausePlayButton(); syncAutoplayButton(); }, 500);
+        window.setInterval(() => {
+            try {
+                const readingMode = document.getElementById('reading-mode');
+                if (readingMode && !readingMode.classList.contains('hidden-section')) {
+                    syncPlaybackUiAvailability();
+                    syncPausePlayButton();
+                }
+            } catch(_) {}
+        }, 250);
         patchRefreshHook();
 
         const bookSel = document.getElementById('bookSelect');
@@ -513,36 +630,6 @@
             pagesEl.addEventListener('focusin', () => updateProgressBar());
         }
 
-        // F2: Autoplay countdown badge — polls AUTOPLAY_STATE every 300ms, shows badge on button.
-        let _countdownInterval = null;
-        function _startCountdownPoll() {
-            if (_countdownInterval) return;
-            _countdownInterval = setInterval(() => {
-                const btn = document.getElementById('shell-autoplay-btn');
-                if (!btn) return;
-                let badge = document.getElementById('shell-countdown-badge');
-                try {
-                    if (!hasActiveReadingCards()) { if (badge) badge.remove(); return; }
-                    const countdown = (typeof window.getCountdownStatus === 'function') ? window.getCountdownStatus() : { pageIndex: -1, seconds: 0 };
-                    const idx = countdown.pageIndex;
-                    const sec = countdown.seconds;
-                    if (idx !== -1 && sec > 0) {
-                        if (!badge) {
-                            badge = document.createElement('span');
-                            badge.id = 'shell-countdown-badge';
-                            badge.style.cssText = 'margin-left:4px; font-size:0.65rem; font-weight:800; color:var(--theme-accent); background:var(--theme-accent-soft); border-radius:999px; padding:1px 6px;';
-                            btn.appendChild(badge);
-                        }
-                        badge.textContent = `Next: ${sec}…`;
-                    } else if (badge) {
-                        badge.remove();
-                    }
-                    syncPausePlayButton();
-                    syncAutoplayButton();
-                } catch(_) { if (badge) badge.remove(); }
-            }, 300);
-        }
-        _startCountdownPoll();
 
         // F3: Page advance pulse + end-of-book detection via MutationObserver.
         let _sessionCompletePending = false;
@@ -590,3 +677,68 @@
 
     // Engine scripts load dynamically after window.load; refresh shell library once boot settles.
     window.addEventListener('load', () => setTimeout(() => { refreshLibrary(); patchRefreshHook(); }, 350));
+
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+        try {
+            window.speechSynthesis.addEventListener('voiceschanged', () => {
+                syncPlaybackUiAvailability();
+                syncPausePlayButton();
+            });
+        } catch (_) {}
+    }
+
+    function snapshotShellControl(selector) {
+        const el = typeof selector === 'string' ? document.querySelector(selector) : selector;
+        if (!el) return null;
+        let rect = null;
+        try {
+            const r = el.getBoundingClientRect();
+            rect = { width: Math.round(r.width), height: Math.round(r.height), top: Math.round(r.top), left: Math.round(r.left) };
+        } catch (_) {}
+        return {
+            text: (el.textContent || '').replace(/\s+/g, ' ').trim(),
+            disabled: !!el.disabled,
+            ariaDisabled: el.getAttribute('aria-disabled'),
+            title: el.getAttribute('title') || '',
+            className: el.className || '',
+            rect
+        };
+    }
+
+    function getShellDiagnosticsSnapshot() {
+        const settingsPanel = document.getElementById('volumePanel');
+        const topBar = document.getElementById('reading-top-bar');
+        const bottomBar = document.querySelector('.reading-bottom-bar');
+        const readingMode = document.getElementById('reading-mode');
+        const pageBtns = Array.from(document.querySelectorAll('.tts-btn[data-tts="page"]'));
+        return {
+            readingVisible: !!(readingMode && !readingMode.classList.contains('hidden-section')),
+            settingsOpen: !!(settingsPanel && settingsPanel.style.display !== 'none' && !settingsPanel.classList.contains('hidden-section')),
+            controls: {
+                settings: snapshotShellControl('#openReadingSettings'),
+                exit: snapshotShellControl('.reading-top-exit'),
+                play: snapshotShellControl('#shell-pause-btn'),
+                prev: snapshotShellControl('#tts-prev-btn'),
+                next: snapshotShellControl('#tts-next-btn'),
+                autoplay: snapshotShellControl('#shell-autoplay-btn')
+            },
+            pageReadButtons: {
+                count: pageBtns.length,
+                disabledCount: pageBtns.filter((btn) => !!btn.disabled).length,
+                activeCount: pageBtns.filter((btn) => btn.classList.contains('tts-active')).length,
+                sample: pageBtns.slice(0, 3).map((btn) => snapshotShellControl(btn))
+            },
+            layout: {
+                topBar: topBar ? { clientWidth: topBar.clientWidth, scrollWidth: topBar.scrollWidth } : null,
+                topLeft: (() => {
+                    const el = document.querySelector('#reading-top-bar .reading-top-left');
+                    return el ? { clientWidth: el.clientWidth, scrollWidth: el.scrollWidth } : null;
+                })(),
+                bottomBar: bottomBar ? { clientWidth: bottomBar.clientWidth, scrollWidth: bottomBar.scrollWidth } : null
+            }
+        };
+    }
+
+    window.syncPlaybackUiAvailability = syncPlaybackUiAvailability;
+    window.handleOpenReadingSettings = handleOpenReadingSettings;
+    window.getShellDiagnosticsSnapshot = getShellDiagnosticsSnapshot;
