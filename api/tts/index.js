@@ -164,18 +164,14 @@ export default async function handler(req, res) {
 
     let resolvedVoiceId;
     let provider;
-    let providerRequested;
-    let azureFallback = false;
 
     if (useAzure) {
       provider = "azure";
-      providerRequested = "azure";
       const envFemale = requiredEnv("AZURE_VOICE_FEMALE") || "en-US-AriaNeural";
       const envMale   = requiredEnv("AZURE_VOICE_MALE")   || "en-US-RyanNeural";
       resolvedVoiceId = String(body?.voiceId || (voiceVariant === "male" ? envMale : envFemale)).trim();
     } else {
       provider = "polly";
-      providerRequested = "polly";
       const envStandard   = requiredEnv("POLLY_ENGINE_STANDARD") || requiredEnv("POLLY_ENGINE") || "standard";
       const envPremium    = requiredEnv("POLLY_ENGINE_PREMIUM")  || requiredEnv("POLLY_ENGINE") || "neural";
       const engine        = (debug ? envPremium : envStandard) === "standard" ? "standard" : "neural";
@@ -217,7 +213,6 @@ export default async function handler(req, res) {
           }
           console.warn("[tts] Azure failed, falling back to Polly:", azErr.message);
           provider = "polly";
-          azureFallback = true;
           resolvedVoiceId = voiceVariant === "male"
             ? (requiredEnv("POLLY_VOICE_ID_MALE") || pollyVoice)
             : pollyVoice;
@@ -293,7 +288,7 @@ export default async function handler(req, res) {
 
     const payload = { url, cacheHit, provider };
     if (wantSentenceMarks && Array.isArray(sentenceMarks)) payload.sentenceMarks = sentenceMarks;
-    if (debug) payload.debug = { providerRequested: providerRequested || provider, providerResolved: provider, voiceId: resolvedVoiceId, objectKey, textLength: text.length, cacheHit, azureFallback };
+    if (debug) payload.debug = { provider, voiceId: resolvedVoiceId, objectKey, textLength: text.length };
     return json(res, 200, payload);
 
   } catch (err) {
