@@ -75,6 +75,21 @@
   }
 
 // ---- Persistence strip (stabilization mode) ----
+// Keys listed here are purged on every boot to prevent stale runtime state
+// from contaminating tests or poisoning playback/routing/gating behavior.
+//
+// INTENTIONALLY NOT STRIPPED:
+//   rc_autoplay   — user preference (toggle state), not runtime state.
+//                   Stripping it would reset a visible user setting on every
+//                   refresh, which is a UX regression. It is safe to persist
+//                   because AUTOPLAY_STATE.enabled is always initialized from
+//                   the checkbox in initAutoplayToggle() and never drives
+//                   playback routing directly.
+//   rc_app_mode   — user preference (reading / comprehension / research mode).
+//   rc_thesis_text — user draft content.
+//
+// To stabilize autoplay during a test run, clear rc_autoplay manually or add
+// it here temporarily — do not leave it in the strip list in production.
 const RC_STRIPPED_PERSIST_KEYS = [
   "rc_tts_speed",
   "rc_browser_voice",
@@ -226,6 +241,15 @@ function loadPersistedSessionIfAny() {
     }
 
     currentPageIndex = Math.min(currentPageIndex, Math.max(0, pages.length - 1));
+
+    // PATCH(restore-path): Write the clamped restore index so applyPendingReadingRestore()
+    // called at the end of render() can scroll to the correct page.
+    // Without this write, __rcPendingRestorePageIndex stays at its boot value of -1
+    // and restore silently falls through, always landing on page 0.
+    if (pages.length > 0 && currentPageIndex >= 0) {
+      window.__rcPendingRestorePageIndex = currentPageIndex;
+    }
+
     return pages.length > 0;
   } catch (e) {
     return false;

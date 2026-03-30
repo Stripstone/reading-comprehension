@@ -62,7 +62,13 @@
         const mainNav = document.querySelector('nav');
         if (mainNav) mainNav.style.display = id === 'reading-mode' ? 'none' : '';
         if (wasReading && id !== 'reading-mode') {
-            try { if (typeof exitReadingSession === 'function') exitReadingSession(); else cleanupReadingTransientState(); } catch(_) {}
+            try {
+                let exitResult = null;
+                if (typeof exitReadingSession === 'function') exitResult = exitReadingSession();
+                else cleanupReadingTransientState();
+                // PATCH(diagnostics): record exit result in shell debug so it appears in getShellDiagnosticsSnapshot()
+                shellDebugRemember('lastControlAction', { type: 'exit-reading', exitResult });
+            } catch(_) {}
         }
         if (id === 'reading-mode') {
             initFocusMode();
@@ -224,60 +230,20 @@
         return !!(reading && !reading.classList.contains('hidden-section') && pagesEl && pagesEl.querySelector('.page'));
     }
 
+    // PATCH(authority-boundary): Shell no longer directly manipulates importer DOM.
+    // resetImporterState() in import.js is the single authoritative path:
+    // it clears UI and all internal parser state (_file, _zip, _tocItems, etc.)
+    // so the next open is always clean. The old shell version only reset UI,
+    // leaving internal state dirty and allowing stale file/parse data to persist.
     function clearImporterTransientUI() {
-        const inp = document.getElementById('importFileInput');
-        if (inp) inp.value = '';
-        const dropzone = document.getElementById('importDropzone');
-        if (dropzone) dropzone.classList.remove('is-dragover');
-        const uploadStatus = document.getElementById('importUploadStatus');
-        if (uploadStatus) { uploadStatus.style.display = 'none'; uploadStatus.textContent = ''; }
-        const scanBtn = document.getElementById('importScanBtn');
-        if (scanBtn) scanBtn.disabled = true;
-        const stageUpload = document.getElementById('importStageUpload');
-        const stagePick = document.getElementById('importStagePick');
-        const stageProgress = document.getElementById('importStageProgress');
-        if (stageUpload) stageUpload.style.display = '';
-        if (stagePick) stagePick.style.display = 'none';
-        if (stageProgress) stageProgress.style.display = 'none';
-        const selectionMeta = document.getElementById('importSelectionMeta');
-        if (selectionMeta) selectionMeta.textContent = 'Selected: 0';
-        const filter = document.getElementById('importFilter');
-        if (filter) filter.value = '';
-        const tocList = document.getElementById('importTocList');
-        if (tocList) tocList.innerHTML = '';
-        const previewTitle = document.getElementById('importPreviewTitle');
-        if (previewTitle) previewTitle.textContent = 'Select a section';
-        const previewBody = document.getElementById('importPreviewBody');
-        if (previewBody) previewBody.textContent = "You'll see a short preview here.";
-        const advPanel = document.getElementById('importAdvancedPanel');
-        if (advPanel) advPanel.style.display = 'none';
-        const progressFill = document.getElementById('importProgressFill');
-        if (progressFill) progressFill.style.width = '0%';
-        const progressMeta = document.getElementById('importProgressMeta');
-        if (progressMeta) progressMeta.textContent = 'Preparing';
-        const progressDetail = document.getElementById('importProgressDetail');
-        if (progressDetail) progressDetail.textContent = '0 pages created';
-        const doneBtn = document.getElementById('importDoneBtn');
-        if (doneBtn) doneBtn.style.display = 'none';
+        try { if (typeof resetImporterState === 'function') resetImporterState({ keepModalOpen: false }); } catch(_) {}
     }
 
+    // PATCH(authority-boundary): Shell no longer owns runtime cleanup.
+    // exitReadingSession() in library.js is the single authoritative path:
+    // it stops TTS, cancels countdown, clears music, and emits diagnostics.
     function cleanupReadingTransientState() {
-        try { if (typeof ttsStop === 'function') ttsStop(); } catch(_) {}
-        try { if (typeof ttsAutoplayCancelCountdown === 'function') ttsAutoplayCancelCountdown(); } catch(_) {}
-        try {
-            if (typeof window.toggleMusic === 'function' && typeof window.allSoundsMuted !== 'undefined' && !window.allSoundsMuted) {
-                window.toggleMusic();
-            }
-        } catch(_) {}
-        const vol = document.getElementById('volumePanel');
-        if (vol) vol.style.display = 'none';
-        const badge = document.getElementById('shell-countdown-badge');
-        if (badge) badge.remove();
-        const signal = document.getElementById('session-complete');
-        if (signal) signal.classList.add('hidden-section');
-        const prog = document.getElementById('shell-page-progress');
-        if (prog) prog.textContent = '—';
-        _readingStartTime = null;
+        try { if (typeof exitReadingSession === 'function') exitReadingSession(); } catch(_) {}
     }
 
     // ── Bottom bar controls ──────────────────────────────────────
@@ -324,12 +290,28 @@
             if (disabled) pageBtn.title = support.reason || 'Playback unavailable';
             else pageBtn.removeAttribute('title');
         });
+        // PATCH(speed-sync): Keep #shell-speed in sync with TTS_STATE.rate.
+        // Previously, if setPlaybackRate() was called from any path other than
+        // the shell select itself (e.g. programmatic change, restored preference),
+        // the select remained stale. Now it always reflects runtime truth.
+        try {
+            const speedSel = document.getElementById('shell-speed');
+            const runtimeRate = String(Number(status.playbackRate || 1));
+            if (speedSel && speedSel.value !== runtimeRate) {
+                // Only update if the value exists as an option, to avoid
+                // leaving the select in an invalid/blank state.
+                const hasOpt = Array.from(speedSel.options).some(o => o.value === runtimeRate);
+                if (hasOpt) speedSel.value = runtimeRate;
+            }
+        } catch (_) {}
+
         shellDebugRemember('lastPlaybackSync', {
             type: 'playback-sync',
             playback: status,
             countdown,
             support,
             speaking,
+            speedSynced: true,
             controls: {
                 playDisabled: !!(btn && btn.disabled),
                 prevDisabled: !!(prevBtn && prevBtn.disabled),
@@ -371,7 +353,20 @@
         return result;
     }
 
-    function handleAutoplayToggle() { return false; }
+    // PATCH(autoplay-authority): was a dead stub returning false.
+    // toggleAutoplay() in tts.js is the runtime owner of autoplay state.
+    // Shell forwards the intent and syncs the checkbox so the hidden #autoplayToggle
+    // reflects truth (ui.js reads it on boot, and the settings panel shows it).
+    function handleAutoplayToggle() {
+        let next = false;
+        try { if (typeof toggleAutoplay === 'function') next = !!toggleAutoplay(); } catch(_) {}
+        try {
+            const cb = document.getElementById('autoplayToggle');
+            if (cb) cb.checked = next;
+        } catch(_) {}
+        shellDebugRemember('lastControlAction', { type: 'autoplay-toggle', enabled: next });
+        return next;
+    }
 
     function ensureOptionFullLabels(selectEl) {
         if (!selectEl || !selectEl.options) return;

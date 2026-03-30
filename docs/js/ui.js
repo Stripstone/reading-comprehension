@@ -318,10 +318,12 @@
       function openReadingSettingsModal() {
         syncSlidersFromState();
         populateBrowserVoicePicker();
+        // PATCH(modal-visibility): style.display is the sole visibility authority.
+        // hidden-section class manipulation removed — it caused divergence when
+        // any code path set only one of the two systems.
         try {
-          volumePanel.classList.remove('hidden-section');
           volumePanel.setAttribute('aria-hidden', 'false');
-          volumePanel.style.visibility = 'visible';
+          volumePanel.style.visibility = '';
           volumePanel.style.display = 'flex';
           volumePanel.style.top = '';
           volumePanel.style.left = '';
@@ -330,8 +332,8 @@
       }
 
       function closeReadingSettingsModal() {
+        // PATCH(modal-visibility): style.display only — no hidden-section toggle.
         volumePanel.style.display = 'none';
-        volumePanel.classList.add('hidden-section');
         volumePanel.setAttribute('aria-hidden', 'true');
         return false;
       }

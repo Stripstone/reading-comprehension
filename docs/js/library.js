@@ -2176,6 +2176,10 @@ window.exitReadingSession = function exitReadingSession() {
   try { document.querySelectorAll('.page-active').forEach((el) => el.classList.remove('page-active')); } catch (_) {}
   try { const active = document.activeElement; if (active && typeof active.blur === 'function') active.blur(); } catch (_) {}
   try { if (window.music) { window.music.pause(); result.musicStopped = true; } } catch (_) {}
+  // PATCH(diagnostics): Push a named exit event into the TTS ring buffer so exit
+  // cleanup is visible and provable in diagnostics. Previously updateDiagnostics()
+  // re-read post-exit state but no event recorded what actually ran during cleanup.
+  try { if (typeof ttsDiagPush === 'function') ttsDiagPush('exit-reading-session', result); } catch (_) {}
   try { updateDiagnostics(); } catch (_) {}
   return result;
 };
