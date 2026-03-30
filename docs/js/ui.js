@@ -339,7 +339,7 @@
       });
 
       // Open the volume panel from the existing music button (no extra top-controls button).
-      function openSettingsPanel(tabName = 'sound') {
+      function openSettingsPanel(tabName = 'general') {
         hideAllPanels();
         syncSlidersFromState();
         populateBrowserVoicePicker();

@@ -249,18 +249,22 @@
         if (!btn) return;
         let status = { active: false, paused: false };
         try { if (typeof window.getPlaybackStatus === 'function') status = window.getPlaybackStatus() || status; } catch(_) {}
-        const active = !!status.active;
-        const paused = !!status.paused;
+        let countdown = { active: false };
+        try { if (typeof window.getCountdownStatus === 'function') countdown = window.getCountdownStatus() || countdown; } catch(_) {}
+        const active = !!status.active && !countdown.active;
+        const paused = !!status.paused && !countdown.active;
         btn.disabled = false;
         btn.classList.toggle('active', active && paused);
-        btn.title = active ? (paused ? 'Resume narration' : 'Pause narration') : 'Play current page';
+        btn.title = countdown.active ? 'Waiting for next page' : (active ? (paused ? 'Resume narration' : 'Pause narration') : 'Play current page');
         btn.innerHTML = (active && !paused)
             ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause'
             : '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Play';
+        if (countdown.active) btn.classList.remove('active');
         [prevBtn, nextBtn].forEach((control) => {
             if (!control) return;
-            control.classList.toggle('hidden-section', !active);
-            control.disabled = !active;
+            const countdown = (typeof window.getCountdownStatus === 'function') ? window.getCountdownStatus() || { active:false } : { active:false };
+            control.disabled = !active || !!countdown.active;
+            control.setAttribute('aria-disabled', control.disabled ? 'true' : 'false');
         });
     }
 
@@ -305,7 +309,7 @@
             });
         }
         const settingsBtn = document.getElementById('openReadingSettings');
-        if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.preventDefault(); const s = document.getElementById('musicToggle'); if (s) s.click(); });
+        if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.preventDefault(); if (typeof window.__openReadingSettings === 'function') window.__openReadingSettings('general'); else { const s = document.getElementById('musicToggle'); if (s) s.click(); } });
         setTimeout(() => { updateTierPill(); updateExplorerSwatchState(); syncPausePlayButton(); syncAutoplayButton(); }, 500);
         patchRefreshHook();
 
