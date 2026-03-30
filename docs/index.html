@@ -36,19 +36,27 @@
 <div id="volumePanel" style="display:none; position:fixed; z-index:1000; width:300px; max-width:92vw;">
     <div class="glass-card p-4 shadow-xl">
         <div class="flex items-center justify-between mb-3">
-            <span class="text-xs font-black uppercase tracking-wider text-slate-400">Sound &amp; Voice</span>
+            <span class="text-xs font-black uppercase tracking-wider text-slate-400">Settings</span>
             <button type="button" id="volumeCloseBtn" style="background:#f1f5f9; border:none; border-radius:8px; width:28px; height:28px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#64748b; font-size:0.9rem; transition:background 0.15s;">✕</button>
         </div>
+        <div class="settings-tabs mb-3" role="tablist" aria-label="Settings sections">
+            <button type="button" class="settings-tab-btn active" data-settings-tab="general" aria-selected="true">General</button>
+            <button type="button" class="settings-tab-btn" data-settings-tab="sound" aria-selected="false">Sound &amp; Voice</button>
+        </div>
+        <div class="settings-tab-panel active" data-settings-panel="general">
+            <div class="flex items-center justify-between mb-3 text-xs text-slate-500">
+                <span class="font-semibold">Autoplay</span>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <span class="text-slate-400">Next page auto</span>
+                    <input type="checkbox" id="autoplayToggle" style="accent-color:var(--theme-accent); width:15px; height:15px; cursor:pointer;">
+                </label>
+            </div>
+            <p class="text-xs text-slate-400 mb-1">Reading controls stay in the bottom bar. Sound &amp; Voice lives here.</p>
+        </div>
+        <div class="settings-tab-panel" data-settings-panel="sound">
         <div class="flex gap-2 mb-3">
             <select id="voiceFemaleSelect" class="flex-1 text-xs font-semibold border-2 border-slate-200 rounded-lg px-2 py-2 bg-white text-slate-600 outline-none min-w-0"></select>
             <select id="voiceMaleSelect"   class="flex-1 text-xs font-semibold border-2 border-slate-200 rounded-lg px-2 py-2 bg-white text-slate-600 outline-none min-w-0"></select>
-        </div>
-        <div class="flex items-center justify-between mb-3 text-xs text-slate-500">
-            <span class="font-semibold">Autoplay</span>
-            <label class="flex items-center gap-2 cursor-pointer">
-                <span class="text-slate-400">Next page auto</span>
-                <input type="checkbox" id="autoplayToggle" style="accent-color:var(--theme-accent); width:15px; height:15px; cursor:pointer;">
-            </label>
         </div>
         <div class="space-y-2 text-xs text-slate-500">
             <div class="flex items-center gap-2"><span class="w-16 flex-shrink-0 font-semibold">Voice</span><input id="vol_voice"    type="range" min="0" max="1" step="0.01" class="flex-1" style="accent-color:var(--theme-accent);"></div>
@@ -63,6 +71,7 @@
         <div class="mt-3 pt-3 border-t border-slate-100 flex justify-between items-center">
             <button type="button" id="toggleMusicBtn" class="btn-ghost px-3 py-1.5 rounded-lg text-xs font-bold">Music On/Off</button>
             <span class="text-xs text-slate-300">Volumes save locally</span>
+        </div>
         </div>
     </div>
 </div>
@@ -570,7 +579,7 @@
 <!-- READING MODE — Focus UI -->
 <main id="reading-mode" class="hidden-section">
 
-    <!-- TOP BAR: session-defining — fades on idle. Left scrolls, Exit always pinned right -->
+    <!-- TOP BAR: session-defining — remains visible during reading -->
     <div id="reading-top-bar" class="reading-top-bar">
         <div class="reading-top-left">
             <!-- modeSelect: wired by ui.js initModeSelector() -->
@@ -628,22 +637,22 @@
                 <option value="2">Speed: 2.0×</option>
             </select>
             <div class="reading-divider mx-1"></div>
-            <!-- Pause — calls ttsStop() / resumes TTS -->
-            <button id="shell-pause-btn" onclick="handlePausePlay()" class="pb-icon-btn" title="Pause narration">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-                Pause
+            <button id="shell-prev-section-btn" onclick="handleSectionJump(-1)" class="pb-icon-btn" title="Previous section">
+                ↺
             </button>
             <div class="reading-divider mx-1"></div>
-            <!-- Autoplay — mirrors hidden #autoplayToggle checkbox that tts.js reads -->
-            <button id="shell-autoplay-btn" onclick="handleAutoplayToggle()" class="pb-icon-btn" title="Toggle autoplay between pages">
+            <button id="shell-pause-btn" onclick="handlePausePlay()" class="pb-icon-btn" title="Play current page">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                Autoplay
+                Play
             </button>
             <div class="reading-divider mx-1"></div>
-            <!-- Sound & Voice — id="musicToggle" so ui.js wires it to open volumePanel -->
-            <button id="musicToggle" class="pb-icon-btn" title="Sound &amp; voice settings">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-                Sound &amp; Voice
+            <button id="shell-next-section-btn" onclick="handleSectionJump(1)" class="pb-icon-btn" title="Next section">
+                ↻
+            </button>
+            <div class="reading-divider mx-1"></div>
+            <button id="musicToggle" class="pb-icon-btn" title="Settings">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                Settings
             </button>
         </div>
         <!-- Page progress — plain text counter, no dots -->

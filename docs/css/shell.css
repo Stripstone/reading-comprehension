@@ -455,3 +455,14 @@
         }
         /* Only these pages need padding so they never slide behind footer */
     
+
+
+/* settings tabs + always-visible top bar */
+.settings-tabs{display:flex;gap:8px;}
+.settings-tab-btn{flex:1;border:1px solid #e2e8f0;background:#f8fafc;color:#64748b;border-radius:10px;padding:8px 10px;font-size:12px;font-weight:700;}
+.settings-tab-btn.active{background:rgba(79,70,229,.10);color:var(--theme-accent);border-color:rgba(79,70,229,.22);}
+.settings-tab-panel{display:none;}
+.settings-tab-panel.active{display:block;}
+.reading-top-bar.faded{opacity:1 !important;pointer-events:auto !important;transform:none !important;}
+#shell-prev-section-btn,#shell-next-section-btn{min-width:40px;justify-content:center;}
+#shell-prev-section-btn[disabled],#shell-next-section-btn[disabled]{opacity:.45;cursor:not-allowed;}
