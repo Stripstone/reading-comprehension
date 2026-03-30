@@ -726,3 +726,32 @@
     min-width: 58px;
   }
 }
+
+
+/* Pass current blocker fix — mobile top bar spans full width, no empty top-left space */
+@media (max-width: 640px) {
+  #reading-top-bar {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    width: 100vw;
+    max-width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    box-sizing: border-box;
+  }
+  #reading-top-bar .reading-top-spacer {
+    display: none !important;
+  }
+  #reading-top-bar .reading-top-left {
+    justify-self: stretch;
+    max-width: none;
+    width: 100%;
+    padding-right: 68px;
+    box-sizing: border-box;
+  }
+  #reading-top-bar .reading-top-actions {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+}

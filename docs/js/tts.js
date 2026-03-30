@@ -570,7 +570,8 @@ function getTtsSupportStatus() {
   const freePlayable = browserSupported && !!browserVoice;
   const basePlayable = tier === 'free' ? freePlayable : true;
   const blockedReason = String(TTS_STATE.playbackBlockedReason || '');
-  const playable = !blockedReason && basePlayable;
+  const retryableBlocked = blockedReason === 'speechSynthesis utterance error';
+  const playable = (!blockedReason || retryableBlocked) && basePlayable;
   return {
     tier,
     browserSupported,
@@ -580,7 +581,7 @@ function getTtsSupportStatus() {
     freePlayable,
     playable,
     selected: getSelectedVoicePreference(),
-    reason: playable ? '' : (blockedReason || 'No browser English voice is available on this device.')
+    reason: playable ? (retryableBlocked ? blockedReason : '') : (blockedReason || 'No browser English voice is available on this device.')
   };
 }
 
@@ -633,6 +634,7 @@ function toggleAutoplay(force) {
 function pauseOrResumeReading() {
   const before = getPlaybackStatus();
   if (!before.active) {
+    try { TTS_STATE.playbackBlockedReason = ''; } catch (_) {}
     try {
       if (typeof window.startFocusedPageTts === 'function') {
         const started = window.startFocusedPageTts();

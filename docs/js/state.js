@@ -76,14 +76,9 @@
 
 // ---- Persistence strip (stabilization mode) ----
 const RC_STRIPPED_PERSIST_KEYS = [
-  "rc_session_v2",
-  "rc_session_meta_v2",
   "rc_tts_speed",
   "rc_browser_voice",
-  "rc_voice_variant",
-  "rc_app_tier",
-  "rc_app_mode",
-  "rc_autoplay"
+  "rc_app_tier"
 ];
 
 function purgeStrippedRuntimePersistence() {
@@ -121,11 +116,42 @@ function schedulePersistSession() {
 }
 
 function persistSessionNow() {
-  return false;
+  try {
+    for (const p of (pageData || [])) {
+      const h = p?.pageHash;
+      if (!h) continue;
+      const record = {
+        v: 2,
+        savedAt: Date.now(),
+        consolidation: p?.consolidation || "",
+        rating: Number(p?.rating || 0) || 0,
+        isSandstone: !!p?.isSandstone,
+        aiExpanded: !!p?.aiExpanded,
+        aiFeedbackRaw: typeof p?.aiFeedbackRaw === 'string' ? p.aiFeedbackRaw : "",
+        aiAt: p?.aiAt ?? null,
+        aiRating: p?.aiRating ?? null,
+      };
+      localStorage.setItem(getConsolidationCacheKey(h), JSON.stringify(record));
+    }
+
+    const payload = {
+      v: 2,
+      savedAt: Date.now(),
+      pages: pages.slice(),
+      pageHashes: pageData.map(p => p?.pageHash || ""),
+      consolidations: pageData.map(p => p?.consolidation || "")
+    };
+    localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(payload));
+    localStorage.setItem(STORAGE_KEY_META, JSON.stringify({ savedAt: payload.savedAt }));
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 function clearPersistedSession() {
-  try { purgeStrippedRuntimePersistence(); } catch (_) {}
+  try { localStorage.removeItem(STORAGE_KEY_SESSION); } catch (_) {}
+  try { localStorage.removeItem(STORAGE_KEY_META); } catch (_) {}
 }
 
 function clearPersistedWorkForPageHashes(pageHashes, { clearAnchors = false } = {}) {
@@ -139,7 +165,71 @@ function clearPersistedWorkForPageHashes(pageHashes, { clearAnchors = false } = 
 }
 
 function loadPersistedSessionIfAny() {
-  return false;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SESSION);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.v !== 2) return false;
+    if (!Array.isArray(parsed.pages)) return false;
+
+    pages = parsed.pages;
+    const incomingHashes = Array.isArray(parsed.pageHashes) ? parsed.pageHashes : [];
+    const incomingConsolidations = Array.isArray(parsed.consolidations) ? parsed.consolidations : [];
+
+    pageData = pages.map((t, idx) => {
+      const pageHash = incomingHashes[idx] || "";
+      let consolidation = incomingConsolidations[idx] || "";
+      let rating = 0;
+      let isSandstone = false;
+      let aiExpanded = false;
+      let aiFeedbackRaw = "";
+      let aiAt = null;
+      let aiRating = null;
+      if (pageHash) {
+        try {
+          const rawC = localStorage.getItem(getConsolidationCacheKey(pageHash));
+          if (rawC) {
+            const rec = JSON.parse(rawC);
+            if (rec && typeof rec.consolidation === 'string') consolidation = rec.consolidation;
+            const r = Number(rec?.rating || 0);
+            rating = Number.isFinite(r) ? r : 0;
+            isSandstone = !!rec?.isSandstone;
+            aiExpanded = !!rec?.aiExpanded;
+            aiFeedbackRaw = typeof rec?.aiFeedbackRaw === 'string' ? rec.aiFeedbackRaw : "";
+            aiAt = rec?.aiAt ?? null;
+            aiRating = rec?.aiRating ?? null;
+          }
+        } catch (_) {}
+      }
+      return {
+        text: t,
+        consolidation,
+        aiExpanded,
+        aiFeedbackRaw,
+        aiAt,
+        aiRating,
+        charCount: (consolidation || "").length,
+        completedOnTime: true,
+        isSandstone,
+        rating,
+        pageHash,
+        anchors: null,
+        anchorVersion: 0,
+        anchorsMeta: null
+      };
+    });
+
+    if (pages.length !== pageData.length) {
+      const n = Math.min(pages.length, pageData.length);
+      pages = pages.slice(0, n);
+      pageData = pageData.slice(0, n);
+    }
+
+    currentPageIndex = Math.min(currentPageIndex, Math.max(0, pages.length - 1));
+    return pages.length > 0;
+  } catch (e) {
+    return false;
+  }
 }
 
 
@@ -147,7 +237,45 @@ function loadPersistedSessionIfAny() {
 // the session snapshot may not include pageHashes. In that case, we compute them on boot and then
 // rehydrate per-page persisted work (ratings / AI feedback / panel state) keyed by the hash.
 async function ensurePageHashesAndRehydrate() {
-  return;
+  try {
+    if (!Array.isArray(pages) || !Array.isArray(pageData) || !pages.length) return;
+    let changed = false;
+
+    for (let idx = 0; idx < pages.length; idx++) {
+      const text = pages[idx] || "";
+      const p = pageData[idx];
+      if (!p) continue;
+
+      if (!p.pageHash) {
+        const h = await stableHashText(text);
+        if (h) {
+          p.pageHash = h;
+          changed = true;
+        }
+      }
+
+      const h = p.pageHash;
+      if (!h) continue;
+
+      try {
+        const rawC = localStorage.getItem(getConsolidationCacheKey(h));
+        if (rawC) {
+          const rec = JSON.parse(rawC);
+          if (rec && typeof rec.consolidation === 'string') p.consolidation = rec.consolidation;
+          const r = Number(rec?.rating || 0);
+          p.rating = Number.isFinite(r) ? r : 0;
+          p.isSandstone = !!rec?.isSandstone;
+          p.aiExpanded = !!rec?.aiExpanded;
+          p.aiFeedbackRaw = typeof rec?.aiFeedbackRaw === 'string' ? rec.aiFeedbackRaw : "";
+          p.aiAt = rec?.aiAt ?? null;
+          p.aiRating = rec?.aiRating ?? null;
+          p.charCount = (p.consolidation || "").length;
+        }
+      } catch (_) {}
+    }
+
+    if (changed) persistSessionNow();
+  } catch (_) {}
 }
 
 // Stable-ish text hashing: must match the canonical pageHash used by anchors + cache keys.

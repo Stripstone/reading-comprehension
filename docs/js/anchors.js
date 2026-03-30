@@ -823,7 +823,7 @@ function writeAnchorsToCache(pageHash, payload) {
 
   // Voice variant (male/female) is session-only during stabilization.
   try {
-    const v = String(TTS_STATE.voiceVariant || window.__rcSessionVoiceVariant || '').toLowerCase();
+    const v = String(localStorage.getItem('rc_voice_variant') || TTS_STATE.voiceVariant || window.__rcSessionVoiceVariant || '').toLowerCase();
     if (v === 'male' || v === 'female') TTS_STATE.voiceVariant = v;
   } catch (_) {}
   sandSound.volume = typeof savedVol.sand === 'number' ? savedVol.sand : SAND_VOLUME;

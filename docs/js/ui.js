@@ -144,7 +144,7 @@
     }
 
     // Volume panel wiring
-    if (musicToggleBtn && volumePanel) {
+    if (volumePanel) {
       const sliders = {
         voice: document.getElementById('vol_voice'),
         music: document.getElementById('vol_music'),
@@ -170,6 +170,7 @@
       function setVoiceVariant(v) {
         const vv = String(v || '').toLowerCase() === 'male' ? 'male' : 'female';
         TTS_STATE.voiceVariant = vv;
+        try { localStorage.setItem('rc_voice_variant', vv); } catch (_) {}
         try { window.__rcSessionVoiceVariant = vv; } catch (_) {}
       }
 
@@ -358,11 +359,13 @@
       });
 
       // Open the volume panel from the existing music button or top-bar Settings button.
-      musicToggleBtn.addEventListener('click', (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        toggleReadingSettingsModal();
-      });
+      if (musicToggleBtn) {
+        musicToggleBtn.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          toggleReadingSettingsModal();
+        });
+      }
 
       const topSettingsBtn = document.getElementById('openReadingSettings');
       if (topSettingsBtn) {
@@ -387,31 +390,20 @@
       if (!debugEnabled) return;
       if (diagBtn && diagPanel && diagText) return;
 
-      // Button: match the music button styling and sit beside it.
+      // Button: fixed top-left everywhere by request.
       diagBtn = document.createElement('button');
       diagBtn.id = 'diagnosticsToggle';
       diagBtn.type = 'button';
       diagBtn.className = 'music-button';
       diagBtn.title = 'Diagnostics';
       diagBtn.innerHTML = '<span id="diagIcon">🔧</span>';
-
-      // IMPORTANT: .music-button is fixed bottom-right.
-      // Place diagnostics to the LEFT of the music button (same bottom edge).
-      diagBtn.style.right = '88px';
-      diagBtn.style.bottom = '20px';
-      // Ensure it sits above other fixed UI.
+      document.body.appendChild(diagBtn);
+      diagBtn.style.position = 'fixed';
+      diagBtn.style.top = '16px';
+      diagBtn.style.left = '16px';
+      diagBtn.style.right = 'auto';
+      diagBtn.style.bottom = 'auto';
       diagBtn.style.zIndex = '1001';
-
-      if (musicToggleBtn && musicToggleBtn.parentElement) {
-        musicToggleBtn.parentElement.insertBefore(diagBtn, musicToggleBtn);
-      } else {
-        // fallback: fixed top-right (only if the DOM changes)
-        document.body.appendChild(diagBtn);
-        diagBtn.style.position = 'fixed';
-        diagBtn.style.top = '16px';
-        diagBtn.style.right = '64px';
-        diagBtn.style.zIndex = '1000';
-      }
 
       // Panel: same conventions as the Sound panel (fixed, above the button)
       diagPanel = document.createElement('div');
@@ -453,11 +445,8 @@
           const panelW = panel.offsetWidth;
           const panelH = panel.offsetHeight;
           const gap = 10;
-          const top = Math.max(10, rect.top - panelH - gap);
-          const left = Math.min(
-            window.innerWidth - panelW - 10,
-            Math.max(10, rect.right - panelW)
-          );
+          const top = Math.max(10, Math.min(window.innerHeight - panelH - 10, rect.bottom + gap));
+          const left = Math.max(10, Math.min(window.innerWidth - panelW - 10, rect.left));
           panel.style.top = `${top}px`;
           panel.style.left = `${left}px`;
         } catch (_) {}
@@ -600,6 +589,11 @@
   const select = document.getElementById('modeSelect');
   if (!select) return;
 
+  try {
+    const saved = localStorage.getItem('rc_app_mode');
+    if (saved && ['reading','comprehension','research','thesis'].includes(saved)) appMode = saved === 'thesis' ? 'research' : saved;
+  } catch (_) {}
+
   select.value = appMode;
 
   select.addEventListener('change', () => {
@@ -613,6 +607,7 @@
     }
 
     appMode = newMode;
+    try { localStorage.setItem('rc_app_mode', appMode); } catch (_) {}
     render();
   });
 })();
@@ -717,9 +712,15 @@
 (function initAutoplayToggle() {
   const checkbox = document.getElementById('autoplayToggle');
   if (!checkbox) return;
-  checkbox.checked = !!AUTOPLAY_STATE.enabled;
+  try {
+    checkbox.checked = localStorage.getItem('rc_autoplay') === '1';
+    AUTOPLAY_STATE.enabled = checkbox.checked;
+  } catch (_) {
+    checkbox.checked = !!AUTOPLAY_STATE.enabled;
+  }
   checkbox.addEventListener('change', () => {
     AUTOPLAY_STATE.enabled = checkbox.checked;
+    try { localStorage.setItem('rc_autoplay', checkbox.checked ? '1':'0'); } catch (_) {}
     if (!AUTOPLAY_STATE.enabled) ttsAutoplayCancelCountdown();
   });
 })();
@@ -739,7 +740,6 @@ try {
 // ===================================
 (function () {
   const musicBtn = document.getElementById("musicToggle");
-  const diagBtn = document.getElementById("diagnosticsToggle");
   if (!musicBtn) return;
 
   const SNAP_THRESHOLD = 140; // px
@@ -756,9 +756,6 @@ try {
       ? `calc(var(--support-footer-height) + 20px)`
       : `20px`;
 
-    // Keep diagnostics button vertically aligned with the music button.
-    // (It sits to the left, but should share the same bottom offset logic.)
-    if (diagBtn) diagBtn.style.bottom = musicBtn.style.bottom;
   }
 
   // Throttle to one update per frame (prevents observer spam)
