@@ -1138,6 +1138,79 @@ if (browserTtsSupported()) {
 }
 
 
+function ttsJumpSentence(delta) {
+  const audio = TTS_STATE.audio;
+  if (audio && TTS_STATE.highlightMarks && TTS_STATE.highlightMarks.length) {
+    const t = (audio.currentTime || 0) * 1000;
+    const marks = TTS_STATE.highlightMarks;
+    const ends = TTS_STATE.highlightEnds || [];
+    let idx = 0;
+    for (let i = 0; i < marks.length; i++) {
+      const start = marks[i].time;
+      const end = ends[i] ?? Infinity;
+      if (t >= start && t < end) { idx = i; break; }
+      if (t >= start) idx = i;
+    }
+    const target = Math.max(0, Math.min(marks.length - 1, idx + (delta < 0 ? -1 : 1)));
+    try {
+      audio.currentTime = Math.max(0, (Number(marks[target].time) || 0) / 1000 - 0.02);
+      if (TTS_STATE.highlightSpans) {
+        TTS_STATE.highlightSpans.forEach((span, i) => span.style.setProperty('--tts-alpha', i === target ? '1' : '0'));
+      }
+      TTS_DEBUG.lastSkip = { at: new Date().toISOString(), type: 'sentence', delta, resolved: 'audio-marks', activeKey: TTS_STATE.activeKey || null, targetSentenceIndex: target };
+      ttsDiagPush('skip-sentence', TTS_DEBUG.lastSkip);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+  if (browserTtsSupported() && TTS_STATE.activeKey && TTS_STATE.browserSentenceRanges && TTS_STATE.browserSentenceRanges.length) {
+    const current = Math.max(0, Number(TTS_STATE.browserCurrentSentenceIndex) || 0);
+    const target = Math.max(0, Math.min(TTS_STATE.browserSentenceRanges.length - 1, current + (delta < 0 ? -1 : 1)));
+    const ok = browserSpeakPageFromSentence(TTS_STATE.activeKey, target);
+    TTS_DEBUG.lastSkip = { at: new Date().toISOString(), type: 'sentence', delta, resolved: ok ? 'browser-restart-from-sentence' : 'browser-restart-failed', activeKey: TTS_STATE.activeKey || null, targetSentenceIndex: target };
+    ttsDiagPush('skip-sentence', TTS_DEBUG.lastSkip);
+    return ok;
+  }
+  TTS_DEBUG.lastSkip = { at: new Date().toISOString(), type: 'sentence', delta, resolved: 'unavailable', activeKey: TTS_STATE.activeKey || null };
+  ttsDiagPush('skip-sentence', TTS_DEBUG.lastSkip);
+  return false;
+}
+function ttsJumpPage(delta) {
+  const key = String(TTS_STATE.activeKey || '');
+  const match = key.match(/^page-(\d+)$/);
+  if (!match) return false;
+  const currentIndex = Number(match[1]);
+  const nextIndex = currentIndex + (delta < 0 ? -1 : 1);
+  if (!Number.isFinite(nextIndex) || nextIndex < 0) return false;
+  if (typeof pages === 'undefined' || !pages[nextIndex]) return false;
+  try { if (typeof window.focusReadingPage === 'function') window.focusReadingPage(nextIndex, { behavior: 'smooth' }); } catch (_) {}
+  ttsSpeakQueue(`page-${nextIndex}`, [pages[nextIndex]]);
+  TTS_DEBUG.lastSkip = { at: new Date().toISOString(), type: 'page', delta, resolved: 'page-jump', targetPageIndex: nextIndex, activeKey: TTS_STATE.activeKey || null };
+  ttsDiagPush('skip-page', TTS_DEBUG.lastSkip);
+  return true;
+}
+function ttsRestartPage(pageIndex) {
+  const idx = Number(pageIndex);
+  if (!Number.isFinite(idx) || idx < 0) return false;
+  if (typeof pages === 'undefined' || !pages[idx]) return false;
+  try { if (typeof window.focusReadingPage === 'function') window.focusReadingPage(idx, { behavior: 'smooth' }); } catch (_) {}
+  ttsSpeakQueue(`page-${idx}`, [pages[idx]]);
+  ttsDiagPush('restart-page', { pageIndex: idx });
+  return true;
+}
+function restartLastSpokenPageTts() {
+  const countdown = getCountdownStatus();
+  if (countdown.active && Number.isFinite(countdown.pageIndex) && countdown.pageIndex >= 0) {
+    ttsAutoplayCancelCountdown();
+    return ttsRestartPage(countdown.pageIndex);
+  }
+  const key = String(TTS_STATE.lastPageKey || TTS_STATE.activeKey || '');
+  const match = key.match(/^page-(\d+)$/);
+  if (!match) return false;
+  return ttsRestartPage(Number(match[1]));
+}
+
 // Best-practice stop conditions:
 // - If the user navigates away or the page is unloaded, stop speaking.
 // - visibilitychange (tab switching) intentionally NOT included so audio
@@ -1156,3 +1229,6 @@ window.getTtsDiagnosticsSnapshot = getTtsDiagnosticsSnapshot;
 window.pauseOrResumeReading = pauseOrResumeReading;
 window.toggleAutoplay = toggleAutoplay;
 window.setPlaybackRate = setPlaybackRate;
+window.ttsJumpSentence = ttsJumpSentence;
+window.ttsJumpPage = ttsJumpPage;
+window.restartLastSpokenPageTts = restartLastSpokenPageTts;

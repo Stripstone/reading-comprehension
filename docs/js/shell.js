@@ -17,6 +17,21 @@
     const ALL_SECTIONS     = ['landing-page', 'login-page', 'dashboard', 'profile-page', 'reading-mode'];
     const SIDEBAR_SECTIONS = ['dashboard', 'profile-page'];
 
+
+    let SHELL_DEBUG = {
+        seq: 0,
+        lastPlaybackSync: null,
+        lastControlAction: null,
+        lastSkipAction: null,
+        lastProgressSnapshot: null
+    };
+    function shellDebugRemember(slot, data) {
+        const entry = Object.assign({ seq: ++SHELL_DEBUG.seq, at: new Date().toISOString() }, data || {});
+        SHELL_DEBUG[slot] = entry;
+        try { if (typeof updateDiagnostics === 'function') updateDiagnostics(); } catch (_) {}
+        return entry;
+    }
+
     function showSection(id) {
         const readingModeEl = document.getElementById('reading-mode');
         const wasReading = readingModeEl && !readingModeEl.classList.contains('hidden-section');
@@ -256,65 +271,118 @@
         const btn = document.getElementById('shell-play-btn');
         const labelEl = document.getElementById('shell-play-label');
         const iconEl = btn ? btn.querySelector('.shell-play-icon') : null;
-        if (btn && typeof getPlaybackStatus === 'function') {
-            const status = getPlaybackStatus();
+        const prevBtn = document.getElementById('shell-prev-btn');
+        const nextBtn = document.getElementById('shell-next-btn');
+        let status = { active: false, paused: false };
+        let countdown = { active: false };
+        let support = { playable: true, reason: '' };
+        try { if (typeof getPlaybackStatus === 'function') status = getPlaybackStatus() || status; } catch (_) {}
+        try { if (typeof getCountdownStatus === 'function') countdown = getCountdownStatus() || countdown; } catch (_) {}
+        try { if (typeof getTtsSupportStatus === 'function') support = getTtsSupportStatus() || support; } catch (_) {}
+        const speaking = !!status.active && !countdown.active;
+        const canPlay = !!(status.active || countdown.active || support.playable);
+        if (btn) {
             const label = status.active ? (status.paused ? 'Resume' : 'Pause') : 'Play';
             btn.classList.toggle('active', !!status.active && !status.paused);
-            btn.title = status.active ? (status.paused ? 'Resume narration' : 'Pause narration') : 'Play current page';
+            btn.title = status.active ? (status.paused ? 'Resume narration' : 'Pause narration') : (countdown.active ? 'Resume current page from countdown' : 'Play current page');
+            btn.disabled = !canPlay;
+            btn.setAttribute('aria-disabled', String(!canPlay));
             if (labelEl) labelEl.textContent = label;
             if (iconEl) {
                 iconEl.innerHTML = label === 'Pause'
                     ? '<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>'
                     : '<polygon points="8 5 19 12 8 19 8 5"></polygon>';
             }
-            try {
-                const support = (typeof getTtsSupportStatus === 'function') ? getTtsSupportStatus() : null;
-                btn.disabled = !!(support && !support.playable && !status.active);
-                btn.setAttribute('aria-disabled', String(!!btn.disabled));
-                document.querySelectorAll('.tts-btn[data-tts="page"]').forEach((pageBtn) => {
-                    const disabled = !!(support && !support.playable && !pageBtn.classList.contains('tts-active'));
-                    pageBtn.disabled = disabled;
-                    pageBtn.setAttribute('aria-disabled', String(disabled));
-                    if (support && !support.playable) pageBtn.title = support.reason || 'Playback unavailable';
-                    else pageBtn.removeAttribute('title');
-                });
-            } catch (_) {}
         }
-        try {
-            const ui = (typeof getRuntimeUiState === 'function') ? getRuntimeUiState() : null;
-            const canStep = !!(ui && ui.hasPages && ui.pageCount > 1);
-            ['shell-prev-btn', 'shell-next-btn'].forEach((id) => {
-                const stepBtn = document.getElementById(id);
-                if (!stepBtn) return;
-                stepBtn.disabled = !canStep;
-                stepBtn.setAttribute('aria-disabled', String(!canStep));
-            });
-        } catch (_) {}
-        try { if (typeof updateDiagnostics === 'function') updateDiagnostics(); } catch (_) {}
+        [prevBtn, nextBtn].forEach((control) => {
+            if (!control) return;
+            control.disabled = !speaking;
+            control.setAttribute('aria-disabled', String(!speaking));
+            control.title = speaking ? control.title.replace('disabled','').trim() : 'Skip is available while narration is actively speaking';
+        });
+        document.querySelectorAll('.tts-btn[data-tts="page"]').forEach((pageBtn) => {
+            const disabled = !support.playable && !pageBtn.classList.contains('tts-active');
+            pageBtn.disabled = disabled;
+            pageBtn.setAttribute('aria-disabled', String(disabled));
+            if (disabled) pageBtn.title = support.reason || 'Playback unavailable';
+            else pageBtn.removeAttribute('title');
+        });
+        shellDebugRemember('lastPlaybackSync', {
+            type: 'playback-sync',
+            playback: status,
+            countdown,
+            support,
+            speaking,
+            controls: {
+                playDisabled: !!(btn && btn.disabled),
+                prevDisabled: !!(prevBtn && prevBtn.disabled),
+                nextDisabled: !!(nextBtn && nextBtn.disabled)
+            }
+        });
     }
 
     function handlePausePlay() {
-        try { if (typeof pauseOrResumeReading === 'function') pauseOrResumeReading(); } catch(_) {}
+        let status = { active: false, paused: false };
+        let countdown = { active: false };
+        try { if (typeof getPlaybackStatus === 'function') status = getPlaybackStatus() || status; } catch (_) {}
+        try { if (typeof getCountdownStatus === 'function') countdown = getCountdownStatus() || countdown; } catch (_) {}
+        const before = { playback: status, countdown };
+        let route = 'pause-or-resume';
+        let result = false;
+        try {
+            if (!status.active) {
+                if (countdown.active && typeof restartLastSpokenPageTts === 'function') {
+                    route = 'restart-last-spoken-page';
+                    result = !!restartLastSpokenPageTts();
+                } else if (typeof startFocusedPageTts === 'function') {
+                    route = 'start-focused-page';
+                    result = !!startFocusedPageTts();
+                }
+                if (result) {
+                    setTimeout(syncShellPlaybackControls, 0);
+                    shellDebugRemember('lastControlAction', { type: 'play-toggle', route, before, result: true, after: (typeof getPlaybackStatus === 'function') ? getPlaybackStatus() : null });
+                    return true;
+                }
+            }
+            if (typeof pauseOrResumeReading === 'function') {
+                route = 'pause-or-resume-reading';
+                result = !!pauseOrResumeReading();
+            }
+        } catch (_) {}
         syncShellPlaybackControls();
+        shellDebugRemember('lastControlAction', { type: 'play-toggle', route, before, result: !!result, after: (typeof getPlaybackStatus === 'function') ? getPlaybackStatus() : null });
+        return result;
     }
 
     function handleAutoplayToggle() { return false; }
 
-    function handlePageStep(delta) {
-        const playbackBefore = (typeof getPlaybackStatus === 'function') ? getPlaybackStatus() : null;
-        try { if (typeof ttsAutoplayCancelCountdown === 'function') ttsAutoplayCancelCountdown(); } catch (_) {}
-        let nav = null;
-        try { if (typeof stepReadingPage === 'function') nav = stepReadingPage(delta, { behavior: 'smooth' }); } catch (_) {}
-        if (playbackBefore && (playbackBefore.active || playbackBefore.paused)) {
-            try { if (typeof ttsStop === 'function') ttsStop(); } catch (_) {}
-            setTimeout(() => {
-                try { if (nav && nav.ok && typeof startFocusedPageTts === 'function') startFocusedPageTts(); } catch (_) {}
-                syncShellPlaybackControls();
-            }, 40);
-        } else {
-            syncShellPlaybackControls();
+    function handleTtsStep(delta) {
+        const before = {
+            playback: (typeof getPlaybackStatus === 'function') ? getPlaybackStatus() : null,
+            countdown: (typeof getCountdownStatus === 'function') ? getCountdownStatus() : null,
+            runtime: (typeof getRuntimeUiState === 'function') ? getRuntimeUiState() : null
+        };
+        let moved = false;
+        let route = 'unavailable';
+        try { if (typeof ttsJumpSentence === 'function') { moved = !!ttsJumpSentence(delta); if (moved) route = 'sentence-jump'; } } catch (_) {}
+        if (!moved) {
+            try { if (typeof ttsJumpPage === 'function') { moved = !!ttsJumpPage(delta); if (moved) route = 'page-jump'; } } catch (_) {}
         }
-        return nav;
+        syncShellPlaybackControls();
+        shellDebugRemember('lastSkipAction', {
+            type: 'skip',
+            delta,
+            route,
+            moved,
+            before,
+            after: {
+                playback: (typeof getPlaybackStatus === 'function') ? getPlaybackStatus() : null,
+                countdown: (typeof getCountdownStatus === 'function') ? getCountdownStatus() : null,
+                runtime: (typeof getRuntimeUiState === 'function') ? getRuntimeUiState() : null,
+                tts: (typeof getTtsDiagnosticsSnapshot === 'function') ? getTtsDiagnosticsSnapshot() : null
+            }
+        });
+        return moved;
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -488,11 +556,12 @@
     function updateProgressBar() {
         const prog  = document.getElementById('shell-page-progress');
         if (!prog) return;
-        if (!hasActiveReadingCards()) { prog.textContent = '—'; return; }
+        if (!hasActiveReadingCards()) { prog.textContent = '—'; shellDebugRemember('lastProgressSnapshot', { type: 'progress', visible: false, label: '—' }); return; }
         const total = (typeof pages !== 'undefined' && Array.isArray(pages)) ? pages.length : 0;
         const cur   = (typeof lastFocusedPageIndex === 'number' && lastFocusedPageIndex >= 0)
                         ? lastFocusedPageIndex : 0;
         prog.textContent = total > 0 ? `Page ${cur + 1} / ${total}` : '—';
+        shellDebugRemember('lastProgressSnapshot', { type: 'progress', visible: true, label: prog.textContent, current: cur, total });
     }
 
     // ── App event bridge ─────────────────────────────────────────
@@ -627,9 +696,20 @@
         const bottomBar = document.querySelector('.reading-bottom-bar');
         const readingMode = document.getElementById('reading-mode');
         const pageBtns = Array.from(document.querySelectorAll('.tts-btn[data-tts="page"]'));
+        const topCluster = document.querySelector('#reading-top-bar .reading-top-left');
+        const topActions = document.querySelector('#reading-top-bar .reading-top-actions');
+        const bottomCluster = document.querySelector('.reading-bottom-bar .reading-bottom-left');
+        const bottomActions = document.querySelector('.reading-bottom-bar .reading-bottom-actions');
+        const progress = document.getElementById('shell-page-progress');
         return {
             readingVisible: !!(readingMode && !readingMode.classList.contains('hidden-section')),
             settingsOpen: !!(typeof window.isReadingSettingsModalOpen === 'function' && window.isReadingSettingsModalOpen()),
+            progressLabel: progress ? progress.textContent : null,
+            playback: (typeof window.getPlaybackStatus === 'function') ? window.getPlaybackStatus() : null,
+            countdown: (typeof window.getCountdownStatus === 'function') ? window.getCountdownStatus() : null,
+            support: (typeof window.getTtsSupportStatus === 'function') ? window.getTtsSupportStatus() : null,
+            runtime: (typeof window.getRuntimeUiState === 'function') ? window.getRuntimeUiState() : null,
+            tts: (typeof window.getTtsDiagnosticsSnapshot === 'function') ? window.getTtsDiagnosticsSnapshot() : null,
             controls: {
                 settings: snapshotShellControl('#openReadingSettings'),
                 exit: snapshotShellControl('.reading-top-exit'),
@@ -643,13 +723,16 @@
                 activeCount: pageBtns.filter((btn) => btn.classList.contains('tts-active')).length,
                 sample: pageBtns.slice(0, 3).map((btn) => snapshotShellControl(btn))
             },
+            debug: SHELL_DEBUG,
             layout: {
                 topBar: topBar ? { clientWidth: topBar.clientWidth, scrollWidth: topBar.scrollWidth } : null,
-                topLeft: (() => { const el = document.querySelector('#reading-top-bar .reading-top-left'); return el ? { clientWidth: el.clientWidth, scrollWidth: el.scrollWidth } : null; })(),
-                bottomBar: bottomBar ? { clientWidth: bottomBar.clientWidth, scrollWidth: bottomBar.scrollWidth } : null
+                topCluster: topCluster ? { clientWidth: topCluster.clientWidth, scrollWidth: topCluster.scrollWidth, offsetLeft: topCluster.offsetLeft } : null,
+                topActions: topActions ? { clientWidth: topActions.clientWidth, offsetLeft: topActions.offsetLeft } : null,
+                bottomBar: bottomBar ? { clientWidth: bottomBar.clientWidth, scrollWidth: bottomBar.scrollWidth } : null,
+                bottomCluster: bottomCluster ? { clientWidth: bottomCluster.clientWidth, scrollWidth: bottomCluster.scrollWidth, offsetLeft: bottomCluster.offsetLeft } : null,
+                bottomActions: bottomActions ? { clientWidth: bottomActions.clientWidth, offsetLeft: bottomActions.offsetLeft } : null
             }
         };
     };
-
     // Engine scripts load dynamically after window.load; refresh shell library once boot settles.
     window.addEventListener('load', () => setTimeout(() => { refreshLibrary(); patchRefreshHook(); }, 350));
