@@ -57,7 +57,7 @@ function ttsDiagPush(event, data = {}) {
 }
 
 function getStoredSelectedVoice() {
-  try { return String(window.__rcSessionVoiceSelection || ''); } catch (_) { return ''; }
+  try { return localStorage.getItem('rc_browser_voice') || ''; } catch (_) { return ''; }
 }
 
 function getSelectedVoicePreference() {
@@ -78,7 +78,7 @@ let TTS_AUDIO_UNLOCKED = false;
 const TTS_AUDIO_ELEMENT = new Audio();
 TTS_AUDIO_ELEMENT.preload = "auto";
 try {
-  const savedRate = Number(TTS_STATE.rate || 1) || 1;
+  const savedRate = Number(localStorage.getItem('rc_tts_speed') || '1') || 1;
   TTS_STATE.rate = savedRate;
   TTS_AUDIO_ELEMENT.defaultPlaybackRate = savedRate;
   TTS_AUDIO_ELEMENT.playbackRate = savedRate;
@@ -527,7 +527,7 @@ function browserPickVoice() {
 
     // User-selected voice takes priority if it's still available
     try {
-      const saved = getStoredSelectedVoice();
+      const saved = localStorage.getItem('rc_browser_voice');
       if (saved) {
         const match = enVoices.find(v => v.name === saved);
         if (match) return match;
@@ -570,8 +570,7 @@ function getTtsSupportStatus() {
   const freePlayable = browserSupported && !!browserVoice;
   const basePlayable = tier === 'free' ? freePlayable : true;
   const blockedReason = String(TTS_STATE.playbackBlockedReason || '');
-  const retryableBlocked = blockedReason === 'speechSynthesis utterance error';
-  const playable = (!blockedReason || retryableBlocked) && basePlayable;
+  const playable = !blockedReason && basePlayable;
   return {
     tier,
     browserSupported,
@@ -581,7 +580,7 @@ function getTtsSupportStatus() {
     freePlayable,
     playable,
     selected: getSelectedVoicePreference(),
-    reason: playable ? (retryableBlocked ? blockedReason : '') : (blockedReason || 'No browser English voice is available on this device.')
+    reason: playable ? '' : (blockedReason || 'No browser English voice is available on this device.')
   };
 }
 
@@ -619,6 +618,7 @@ function getCountdownStatus() {
 function setPlaybackRate(rate) {
   const value = Math.max(0.5, Math.min(3, Number(rate || 1) || 1));
   TTS_STATE.rate = value;
+  try { localStorage.setItem('rc_tts_speed', String(value)); } catch (_) {}
   try { TTS_AUDIO_ELEMENT.defaultPlaybackRate = value; TTS_AUDIO_ELEMENT.playbackRate = value; } catch (_) {}
   ttsDiagPush('set-playback-rate', { rate: value });
   return value;
@@ -626,6 +626,7 @@ function setPlaybackRate(rate) {
 
 function toggleAutoplay(force) {
   AUTOPLAY_STATE.enabled = typeof force === 'boolean' ? !!force : !AUTOPLAY_STATE.enabled;
+  try { localStorage.setItem('rc_autoplay', AUTOPLAY_STATE.enabled ? '1' : '0'); } catch (_) {}
   if (!AUTOPLAY_STATE.enabled) ttsAutoplayCancelCountdown();
   ttsDiagPush('toggle-autoplay', { enabled: !!AUTOPLAY_STATE.enabled });
   return AUTOPLAY_STATE.enabled;
@@ -634,7 +635,6 @@ function toggleAutoplay(force) {
 function pauseOrResumeReading() {
   const before = getPlaybackStatus();
   if (!before.active) {
-    try { TTS_STATE.playbackBlockedReason = ''; } catch (_) {}
     try {
       if (typeof window.startFocusedPageTts === 'function') {
         const started = window.startFocusedPageTts();
@@ -663,7 +663,7 @@ function getTtsDiagnosticsSnapshot() {
     voice: { variant: TTS_STATE.voiceVariant || 'female', selected: getStoredSelectedVoice(), selection: getSelectedVoicePreference(), activeBrowserVoice: TTS_STATE.activeBrowserVoiceName || null, effectiveBrowserVoice: TTS_STATE.browserVoice ? (TTS_STATE.browserVoice.name || null) : null },
     routing: getPreferredTtsRouteInfo(),
     supportStatus: getTtsSupportStatus(),
-    speed: { selected: Number(TTS_STATE.rate || 1), state: Number(TTS_STATE.rate || 1), audio: Number(TTS_AUDIO_ELEMENT.playbackRate || 1) },
+    speed: { selected: Number((typeof localStorage !== 'undefined' && localStorage.getItem('rc_tts_speed')) || TTS_STATE.rate || 1), state: Number(TTS_STATE.rate || 1), audio: Number(TTS_AUDIO_ELEMENT.playbackRate || 1) },
     browserSpeech: browserTtsSupported() ? { speaking: !!window.speechSynthesis.speaking, paused: !!window.speechSynthesis.paused, pending: !!window.speechSynthesis.pending, voices: (window.speechSynthesis.getVoices() || []).length, currentSentenceIndex: Number(TTS_STATE.browserCurrentSentenceIndex || 0), currentCharIndex: Number(TTS_STATE.browserCurrentCharIndex || 0), sentenceCount: Number(TTS_STATE.browserSentenceCount || 0) } : null,
     audio: { present: !!TTS_AUDIO_ELEMENT, paused: !!TTS_AUDIO_ELEMENT.paused, currentTime: Number(TTS_AUDIO_ELEMENT.currentTime || 0), playbackRate: Number(TTS_AUDIO_ELEMENT.playbackRate || 1), src: TTS_AUDIO_ELEMENT.getAttribute('src') || null, loop: !!TTS_AUDIO_ELEMENT.loop },
     highlight: { pageKey: TTS_STATE.highlightPageKey || null, spanCount: Array.isArray(TTS_STATE.highlightSpans) ? TTS_STATE.highlightSpans.length : 0, marksCount: Array.isArray(TTS_STATE.highlightMarks) ? TTS_STATE.highlightMarks.length : 0 },
@@ -806,7 +806,7 @@ async function pollyFetchUrl(text, opts = {}) {
   // If the user selected a specific cloud voice (stored as 'cloud:aura-orion-en'),
   // forward the model id to the backend as voiceId so it overrides the env default.
   try {
-    const saved = getStoredSelectedVoice();
+    const saved = localStorage.getItem('rc_browser_voice') || '';
     if (saved.startsWith('cloud:')) {
       payload.voiceId = saved.slice('cloud:'.length);
     }

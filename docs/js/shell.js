@@ -69,97 +69,17 @@
             updateTierPill();
             updateExplorerSwatchState();
             updateProgressBar();
-            try { if (typeof applyReadingTopBarResponsiveState === 'function') applyReadingTopBarResponsiveState(); } catch(_) {}
         }
         if (id === 'dashboard') refreshLibrary();
-        try { if (typeof window.syncDiagnosticsVisibility === 'function') window.syncDiagnosticsVisibility(); } catch (_) {}
 
         window.scrollTo(0, 0);
     }
 
-    // ── Focus mode fade ──────────────────────────────────────────
-    let focusModeTimer   = null;
-    let focusModeHandler = null;
-
+    // ── Focus mode visibility lock (Pass 1) ─────────────────────
     function initFocusMode() {
         const bar = document.getElementById('reading-top-bar');
-        const rm  = document.getElementById('reading-mode');
-        if (!bar || !rm) return;
-        if (focusModeHandler) {
-            ['mousemove', 'scroll', 'touchstart', 'click'].forEach(ev =>
-                rm.removeEventListener(ev, focusModeHandler));
-        }
-        focusModeHandler = null;
-        clearTimeout(focusModeTimer);
-        focusModeTimer = null;
+        if (!bar) return;
         bar.classList.remove('faded');
-    }
-
-
-    function applyReadingTopBarResponsiveState() {
-        const narrow = window.innerWidth <= 640;
-        const ids = [
-            ['bookSelect', 'Book'],
-            ['chapterSelect', 'CH.']
-        ];
-        ids.forEach(([id, shortLabel]) => {
-            const select = document.getElementById(id);
-            if (!select || !select.options) return;
-            Array.from(select.options).forEach((opt) => {
-                if (!opt.dataset.fullLabel) opt.dataset.fullLabel = opt.textContent;
-                opt.textContent = opt.dataset.fullLabel;
-            });
-            const selected = select.options[select.selectedIndex >= 0 ? select.selectedIndex : 0];
-            if (selected) {
-                select.title = selected.dataset.fullLabel || selected.textContent || '';
-                if (narrow) selected.textContent = shortLabel;
-            }
-        });
-    }
-    window.applyReadingTopBarResponsiveState = applyReadingTopBarResponsiveState;
-    window.addEventListener('resize', applyReadingTopBarResponsiveState);
-    document.addEventListener('DOMContentLoaded', () => {
-        applyReadingTopBarResponsiveState();
-        ['bookSelect','chapterSelect'].forEach((id) => {
-            const el = document.getElementById(id);
-            if (el && !el.__responsiveLabelBound) {
-                el.addEventListener('change', applyReadingTopBarResponsiveState);
-                el.__responsiveLabelBound = true;
-            }
-        });
-    });
-
-    // ── Modals ───────────────────────────────────────────────────
-    function openModal(id)  { const el = document.getElementById(id); if (!el) return; el.classList.remove('hidden-section'); if (el.classList.contains('modal-overlay')) el.style.display = 'flex'; }
-    function closeModal(id) { const el = document.getElementById(id); if (!el) return; el.classList.add('hidden-section'); if (el.classList.contains('modal-overlay')) el.style.display = 'none'; }
-
-    // ── Auth (SCAFFOLD) ──────────────────────────────────────────
-    // SCAFFOLD: replace login() with real Supabase auth flow
-    function login() {
-        showSection('dashboard');
-        try { refreshLibrary(); } catch(_) {}
-    }
-
-    // ── Profile tabs ─────────────────────────────────────────────
-    function switchTab(tabId) {
-        document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden-section'));
-        document.getElementById(tabId).classList.remove('hidden-section');
-        document.querySelectorAll('.profile-tab-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.tab === tabId);
-        });
-    }
-
-    // ── Tier — drives #tierSelect so ui.js applyTierAccess() fires ──
-    function setTier(btn) {
-        document.querySelectorAll('.tier-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        const map = { 'Basic': 'free', 'Pro': 'paid', 'Premium': 'premium' };
-        const value = map[btn.textContent.trim()] || 'free';
-        const sel = document.getElementById('tierSelect');
-        if (sel && sel.value !== value) { sel.value = value; sel.dispatchEvent(new Event('change')); }
-        const pill = document.getElementById('reading-tier-pill');
-        if (pill) pill.textContent = btn.textContent.trim();
-        updateExplorerSwatchState();
     }
 
     function updateTierPill() {
@@ -215,6 +135,7 @@
     function shellSetSpeed(value) {
         const rate = parseFloat(value) || 1;
         try { if (typeof setPlaybackRate === 'function') return setPlaybackRate(rate); } catch(_) {}
+        try { localStorage.setItem('rc_tts_speed', String(rate)); } catch(_) {}
         return rate;
     }
 
@@ -373,30 +294,6 @@
 
     function handleAutoplayToggle() { return false; }
 
-    function ensureOptionFullLabels(selectEl) {
-        if (!selectEl || !selectEl.options) return;
-        Array.from(selectEl.options).forEach((opt) => {
-            if (!opt.dataset.fullLabel) opt.dataset.fullLabel = opt.textContent;
-        });
-    }
-
-    function setSelectedOptionLabel(selectEl, shortLabel) {
-        if (!selectEl || !selectEl.options || selectEl.selectedIndex < 0) return;
-        ensureOptionFullLabels(selectEl);
-        const opt = selectEl.options[selectEl.selectedIndex];
-        if (!opt) return;
-        const full = opt.dataset.fullLabel || opt.textContent;
-        const narrow = window.innerWidth <= 640;
-        opt.textContent = narrow ? shortLabel : full;
-    }
-
-    function applyReadingTopBarAdaptiveLabels() {
-        try {
-            setSelectedOptionLabel(document.getElementById('bookSelect'), 'Book');
-            setSelectedOptionLabel(document.getElementById('chapterSelect'), 'CH.');
-        } catch (_) {}
-    }
-
     function handleTtsStep(delta) {
         const before = {
             playback: (typeof getPlaybackStatus === 'function') ? getPlaybackStatus() : null,
@@ -436,10 +333,6 @@
         const loadBtn = document.getElementById('loadBookSelection');
         const pageStart = document.getElementById('pageStart');
         const pageEnd   = document.getElementById('pageEnd');
-        applyReadingTopBarAdaptiveLabels();
-        window.addEventListener('resize', applyReadingTopBarAdaptiveLabels);
-        if (bookSel) bookSel.addEventListener('change', () => setTimeout(applyReadingTopBarAdaptiveLabels, 0));
-        if (chSel) chSel.addEventListener('change', () => setTimeout(applyReadingTopBarAdaptiveLabels, 0));
         if (bookSel && chSel && loadBtn && pageStart && pageEnd) {
             const waitForPages = (timeout = 2500) => new Promise(resolve => {
                 const started = Date.now();
@@ -454,7 +347,7 @@
                 const ready = await waitForPages();
                 if (ready) {
                     loadBtn.click();
-                    setTimeout(() => { try { if (typeof window.__jublyAfterRender === 'function') window.__jublyAfterRender(); } catch(_) {} applyReadingTopBarAdaptiveLabels(); }, 120)
+                    setTimeout(() => { try { if (typeof window.__jublyAfterRender === 'function') window.__jublyAfterRender(); } catch(_) {} }, 120);
                 }
             });
             chSel.addEventListener('change', async () => {
@@ -462,7 +355,7 @@
                 const ready = await waitForPages();
                 if (ready) {
                     loadBtn.click();
-                    setTimeout(() => { try { if (typeof window.__jublyAfterRender === 'function') window.__jublyAfterRender(); } catch(_) {} applyReadingTopBarAdaptiveLabels(); }, 120)
+                    setTimeout(() => { try { if (typeof window.__jublyAfterRender === 'function') window.__jublyAfterRender(); } catch(_) {} }, 120);
                 }
             });
         }

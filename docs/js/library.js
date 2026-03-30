@@ -2126,7 +2126,6 @@ window.focusReadingPage = function focusReadingPage(targetIndex, options = {}) {
   target.scrollIntoView({ behavior: options.behavior || 'smooth', block: 'start' });
   lastFocusedPageIndex = idx;
   try { currentPageIndex = idx; } catch (_) {}
-  try { if (window.TTS_STATE) window.TTS_STATE.playbackBlockedReason = ''; } catch (_) {}
   try { if (typeof updateDiagnostics === 'function') updateDiagnostics(); } catch (_) {}
   return { ok: true, index: idx, total };
 };
@@ -2145,8 +2144,6 @@ window.startFocusedPageTts = function startFocusedPageTts() {
   if (!text) return false;
   try { currentPageIndex = idx; } catch (_) {}
   lastFocusedPageIndex = idx;
-  try { if (window.TTS_STATE) window.TTS_STATE.playbackBlockedReason = ''; } catch (_) {}
-  try { if (typeof updateDiagnostics === 'function') updateDiagnostics(); } catch (_) {}
   ttsSpeakQueue(`page-${idx}`, [text]);
   return true;
 };

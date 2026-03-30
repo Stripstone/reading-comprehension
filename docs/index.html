@@ -33,10 +33,10 @@
 <span id="musicIcon" style="display:none;" aria-hidden="true">🔇</span>
 
 <!-- Volume panel — positioned and shown by app's initUtilityPanels() -->
-<div id="volumePanel" class="reading-settings-modal hidden-section" style="display:none;" aria-hidden="true">
-    <div class="reading-settings-card glass-card p-4 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="reading-settings-title">
+<div id="volumePanel" style="display:none; position:fixed; z-index:1000; width:300px; max-width:92vw;">
+    <div class="glass-card p-4 shadow-xl">
         <div class="flex items-center justify-between mb-3">
-            <span id="reading-settings-title" class="text-xs font-black uppercase tracking-wider text-slate-400">Sound &amp; Voice</span>
+            <span class="text-xs font-black uppercase tracking-wider text-slate-400">Sound &amp; Voice</span>
             <button type="button" id="volumeCloseBtn" style="background:#f1f5f9; border:none; border-radius:8px; width:28px; height:28px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#64748b; font-size:0.9rem; transition:background 0.15s;">✕</button>
         </div>
         <div class="flex gap-2 mb-3">
@@ -572,10 +572,10 @@
 
     <!-- TOP BAR: session-defining — fades on idle. Left scrolls, Exit always pinned right -->
     <div id="reading-top-bar" class="reading-top-bar">
-        <div class="reading-top-spacer" aria-hidden="true"></div>
+        <div class="reading-top-side reading-top-side-left">
+            <button id="openReadingSettings" type="button" class="pb-icon-btn reading-top-settings-btn" title="Reading settings">Settings</button>
+        </div>
         <div class="reading-top-left">
-            <button id="openReadingSettings" type="button" class="pb-icon-btn reading-top-settings-btn" aria-label="Open reading settings" title="Reading settings"><svg class="settings-gear" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg><span class="settings-label">Settings</span></button>
-            <div class="reading-divider"></div>
             <!-- modeSelect: wired by ui.js initModeSelector() -->
             <select id="modeSelect" class="reading-select">
                 <option value="reading" selected>Mode: Reading</option>
@@ -600,7 +600,7 @@
             <!-- Tier display — reflects current appTier; changed via Profile tier buttons -->
             <span id="reading-tier-pill" class="tier-pill">Basic</span>
         </div>
-        <div class="reading-top-actions">
+        <div class="reading-top-actions reading-top-side reading-top-side-right">
             <button onclick="showSection('dashboard')" class="reading-top-exit text-xs font-bold text-slate-400 hover:text-slate-800 transition bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg">Exit ✕</button>
         </div>
     </div>
@@ -623,8 +623,7 @@
 
     <!-- BOTTOM PLAYBACK BAR: moment controls — always visible -->
     <div class="reading-bottom-bar">
-        <div class="reading-bottom-spacer" aria-hidden="true"></div>
-        <div class="reading-bottom-left">
+        <div class="reading-bottom-side reading-bottom-side-left">
             <!-- Speed — runtime-owned via setPlaybackRate() -->
             <select id="shell-speed" class="reading-select" onchange="shellSetSpeed(this.value)">
                 <option value="1">Speed: 1.0×</option>
@@ -633,7 +632,8 @@
                 <option value="1.75">Speed: 1.75×</option>
                 <option value="2">Speed: 2.0×</option>
             </select>
-            <div class="reading-divider mx-1"></div>
+        </div>
+        <div class="reading-bottom-left reading-bottom-center">
             <button id="shell-prev-btn" onclick="handleTtsStep(-1)" class="pb-icon-btn pb-step-btn" title="Previous skip" disabled aria-disabled="true"><span class="pb-step-glyph" aria-hidden="true">↺</span><span class="sr-only">Previous skip</span></button>
             <button id="shell-play-btn" onclick="handlePausePlay()" class="pb-icon-btn" title="Play or pause narration">
                 <svg class="shell-play-icon" width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="8 5 19 12 8 19 8 5"/></svg>
@@ -642,7 +642,7 @@
             <button id="shell-next-btn" onclick="handleTtsStep(1)" class="pb-icon-btn pb-step-btn" title="Next skip" disabled aria-disabled="true"><span class="pb-step-glyph" aria-hidden="true">↻</span><span class="sr-only">Next skip</span></button>
         </div>
         <!-- Page progress — plain text counter, no dots -->
-        <div class="reading-bottom-actions flex-shrink-0">
+        <div class="reading-bottom-actions reading-bottom-side reading-bottom-side-right flex-shrink-0">
             <span class="page-progress" id="shell-page-progress">Page 1 / 1</span>
         </div>
     </div>
