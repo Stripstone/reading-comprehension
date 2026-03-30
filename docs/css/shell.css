@@ -501,3 +501,43 @@
 #tts-prev-btn[disabled],#tts-next-btn[disabled]{opacity:.45;cursor:default}
 @media (max-width:720px){#reading-top-bar{gap:.45rem;align-items:center}#reading-top-bar .reading-top-left{display:flex!important;grid-template-columns:none!important;width:auto;min-width:0;gap:.35rem}#reading-top-bar .reading-select{font-size:.72rem;max-width:30vw}#reading-top-bar .tier-pill{font-size:.58rem;max-width:18vw}.reading-bottom-left{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}.reading-bottom-left::-webkit-scrollbar{display:none}.reading-settings-body{grid-template-columns:1fr}.reading-settings-tabs{border-right:none;border-bottom:1px solid #e2e8f0;flex-direction:row;overflow:auto}.reading-settings-card{width:min(560px,94vw)}}
 @media (max-width:480px){#reading-top-bar{padding-left:8px;padding-right:8px}#reading-top-bar .reading-top-left{gap:.25rem;padding-right:0}#reading-top-bar .reading-select{font-size:.7rem;max-width:28vw;padding:4px 0}#reading-top-bar .tier-pill{max-width:16vw}#reading-top-bar .reading-top-action{padding:.38rem}.reading-settings-card{max-height:86vh}.reading-voice-selects{grid-template-columns:1fr}.reading-slider-row{grid-template-columns:72px minmax(0,1fr)}#reading-mode .page-text{max-height:34vh;font-size:.9rem}}
+
+
+/* Runtime objective patch: centered inline controls, adaptive titles, single settings location */
+.reading-top-bar { justify-content: center; position: fixed; }
+.reading-top-left {
+  flex: 0 1 auto;
+  width: min(100%, 760px);
+  max-width: calc(100% - 96px);
+  margin: 0 auto;
+  justify-content: center;
+}
+.reading-top-exit { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); }
+#bookControls, #chapterControls { min-width: 0; display: flex; align-items: center; }
+#bookSelect, #chapterSelect {
+  max-width: min(30vw, 220px);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.reading-top-settings-btn .settings-label { display: inline; }
+.reading-bottom-left { justify-content: center; }
+#shell-speed { flex: 0 0 auto; }
+@media (max-width: 820px) {
+  .reading-top-left { gap: 6px; max-width: calc(100% - 80px); }
+  #bookSelect, #chapterSelect { max-width: 24vw; }
+}
+@media (max-width: 640px) {
+  .reading-top-bar { padding-left: 10px; padding-right: 10px; }
+  .reading-top-left { justify-content: center; gap: 4px; max-width: calc(100% - 64px); }
+  .reading-top-settings-btn { padding-left: 8px; padding-right: 8px; }
+  .reading-top-settings-btn .settings-label { display: none; }
+  #bookSelect, #chapterSelect { max-width: 20vw; font-size: 0.72rem; }
+  .tier-pill { padding-left: 6px; padding-right: 6px; }
+}
+@media (max-width: 480px) {
+  #bookSelect, #chapterSelect { max-width: 18vw; }
+  .reading-top-left { max-width: calc(100% - 58px); }
+}

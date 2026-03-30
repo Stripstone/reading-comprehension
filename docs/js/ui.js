@@ -97,7 +97,7 @@
   // ===================================
 
   (function initUtilityPanels() {
-    const musicToggleBtn = document.getElementById('musicToggle');
+    const musicToggleBtn = document.getElementById('musicToggle') || document.getElementById('openReadingSettings');
     const toggleMusicBtn = document.getElementById('toggleMusicBtn');
     const volumePanel = document.getElementById('volumePanel');
     const volumeCloseBtn = document.getElementById('volumeCloseBtn');

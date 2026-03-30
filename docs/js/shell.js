@@ -180,6 +180,9 @@
         }
         const sel = document.getElementById('shell-speed');
         if (sel) sel.value = String(rate);
+        try {
+            if (typeof window.applyCurrentPlaybackRate === 'function') window.applyCurrentPlaybackRate();
+        } catch(_) {}
     }
 
     function hasActiveReadingCards() {
@@ -284,8 +287,13 @@
     }
 
     function handleTtsStep(delta) {
-        try { if (typeof window.ttsJumpSentence === 'function') window.ttsJumpSentence(delta); } catch(_) {}
+        let moved = false;
+        try { if (typeof window.ttsJumpSentence === 'function') moved = !!window.ttsJumpSentence(delta); } catch(_) {}
+        if (!moved) {
+            try { if (typeof window.ttsJumpPage === 'function') moved = !!window.ttsJumpPage(delta); } catch(_) {}
+        }
         syncPausePlayButton();
+        return moved;
     }
 
     function syncAutoplayButton() {

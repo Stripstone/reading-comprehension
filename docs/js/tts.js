@@ -62,7 +62,17 @@ function setPlaybackRate(value) {
     TTS_AUDIO_ELEMENT.defaultPlaybackRate = rate;
     TTS_AUDIO_ELEMENT.playbackRate = rate;
   } catch (_) {}
+  try {
+    if (TTS_STATE.audio) {
+      TTS_STATE.audio.defaultPlaybackRate = rate;
+      TTS_STATE.audio.playbackRate = rate;
+    }
+  } catch (_) {}
   return rate;
+}
+
+function applyCurrentPlaybackRate() {
+  return setPlaybackRate(getPlaybackRate());
 }
 
 function getPlaybackRate() {
@@ -996,6 +1006,7 @@ if (browserTtsSupported()) {
 
 
 window.setPlaybackRate = setPlaybackRate;
+window.applyCurrentPlaybackRate = applyCurrentPlaybackRate;
 window.getPlaybackRate = getPlaybackRate;
 window.getPlaybackStatus = getPlaybackStatus;
 window.getAutoplayStatus = getAutoplayStatus;
@@ -1024,10 +1035,23 @@ function ttsJumpSentence(delta) {
     return false;
   }
 }
+function ttsJumpPage(delta) {
+  const key = String(TTS_STATE.activeKey || '');
+  const match = key.match(/^page-(\d+)$/);
+  if (!match) return false;
+  const currentIndex = Number(match[1]);
+  const nextIndex = currentIndex + (delta < 0 ? -1 : 1);
+  if (!Number.isFinite(nextIndex) || nextIndex < 0) return false;
+  if (typeof pages === 'undefined' || !pages[nextIndex]) return false;
+  try { if (typeof window.setFocusedPageIndex === 'function') window.setFocusedPageIndex(nextIndex, { scroll: true, behavior: 'smooth' }); } catch (_) {}
+  ttsSpeakQueue(`page-${nextIndex}`, [pages[nextIndex]]);
+  return true;
+}
 window.getCountdownStatus = getCountdownStatus;
 window.pauseOrResumeReading = pauseOrResumeReading;
 window.toggleAutoplay = toggleAutoplay;
 window.ttsJumpSentence = ttsJumpSentence;
+window.ttsJumpPage = ttsJumpPage;
 
 // Best-practice stop conditions:
 // - If the user navigates away or the page is unloaded, stop speaking.
