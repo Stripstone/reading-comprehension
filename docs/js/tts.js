@@ -243,7 +243,7 @@ function ttsAutoplayScheduleNext(pageIndex) {
   btn.classList.add('tts-active');
 
   function updateBtn() {
-    if (btn) btn.textContent = `⏸ Next in ${AUTOPLAY_STATE.countdownSec}…`;
+    if (btn) btn.textContent = `▶ Next in ${AUTOPLAY_STATE.countdownSec}…`;
   }
   updateBtn();
 
