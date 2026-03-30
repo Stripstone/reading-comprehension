@@ -97,7 +97,7 @@
   // ===================================
 
   (function initUtilityPanels() {
-    const musicToggleBtn = document.getElementById('musicToggle') || document.getElementById('openReadingSettings');
+    const musicToggleBtn = document.getElementById('musicToggle');
     const toggleMusicBtn = document.getElementById('toggleMusicBtn');
     const volumePanel = document.getElementById('volumePanel');
     const volumeCloseBtn = document.getElementById('volumeCloseBtn');
@@ -139,7 +139,7 @@
     }
 
     function hideAllPanels() {
-      if (volumePanel) { volumePanel.style.display = 'none'; volumePanel.classList.add('hidden-section'); volumePanel.setAttribute('aria-hidden', 'true'); }
+      if (volumePanel) volumePanel.style.display = 'none';
       if (diagPanel) diagPanel.style.display = 'none';
     }
 
@@ -224,9 +224,9 @@
         placeholder.selected = !isThisVoiceActive || (!savedBrowser && savedVariant !== gender && isFree);
         selectEl.appendChild(placeholder);
 
-        // Cloud voices for Paid/Premium — Azure Neural voice catalogue.
-        // These remain explicit cloud selections and should stay on the cloud path
-        // rather than being silently treated as browser-voice equivalents.
+        // Cloud voices for Paid/Premium — Azure Neural voice catalogue
+        // Voices match what Edge browser exposes natively, so Edge users
+        // may get these for free via browserSpeakQueue (see tts.js Edge optimisation).
         if (!isFree) {
           const cloudGrp = document.createElement('optgroup');
           cloudGrp.label = '☁️ Cloud (Neural)';
@@ -314,78 +314,71 @@
       handleVoiceSelectChange(voiceFemaleSelect, 'female');
       handleVoiceSelectChange(voiceMaleSelect,   'male');
 
+      function openReadingSettingsModal() {
+        syncSlidersFromState();
+        populateBrowserVoicePicker();
+        try {
+          volumePanel.style.visibility = 'hidden';
+          volumePanel.style.display = 'block';
+          const trigger = document.getElementById('openReadingSettings') || musicToggleBtn;
+          const rect = trigger ? trigger.getBoundingClientRect() : { top: 80, right: window.innerWidth - 20 };
+          const panelW = volumePanel.offsetWidth || 360;
+          const panelH = volumePanel.offsetHeight || 420;
+          const gap = 10;
+          const top = Math.max(10, rect.top - panelH - gap);
+          const left = Math.min(window.innerWidth - panelW - 10, Math.max(10, rect.right - panelW));
+          volumePanel.style.top = `${top}px`;
+          volumePanel.style.left = `${left}px`;
+        } catch (_) {}
+        volumePanel.style.visibility = 'visible';
+        volumePanel.style.display = 'block';
+        return true;
+      }
+
+      function closeReadingSettingsModal() {
+        volumePanel.style.display = 'none';
+        return false;
+      }
+
+      function toggleReadingSettingsModal() {
+        const open = volumePanel.style.display === 'block';
+        hideAllPanels();
+        if (open) return false;
+        return openReadingSettingsModal();
+      }
+
+      window.openReadingSettingsModal = openReadingSettingsModal;
+      window.closeReadingSettingsModal = closeReadingSettingsModal;
+      window.toggleReadingSettingsModal = toggleReadingSettingsModal;
+      window.isReadingSettingsModalOpen = () => volumePanel.style.display === 'block';
+
       // Repopulate when voices load asynchronously (Chrome/Edge)
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.addEventListener('voiceschanged', populateBrowserVoicePicker);
       }
-
-      const settingsTabs = Array.from(volumePanel.querySelectorAll('[data-settings-tab]'));
-      settingsTabs.forEach((tab) => {
-        tab.addEventListener('click', () => {
-          const tabName = tab.dataset.settingsTab || 'general';
-          settingsTabs.forEach((btn) => btn.classList.toggle('active', btn === tab));
-          volumePanel.querySelectorAll('[data-settings-pane]').forEach((pane) => {
-            pane.classList.toggle('active', pane.dataset.settingsPane === tabName);
-          });
-        });
-      });
-
-      if (volumeCloseBtn) volumeCloseBtn.addEventListener('click', () => hideAllPanels());
-      volumePanel.addEventListener('click', (e) => { if (e.target === volumePanel) hideAllPanels(); });
 
       Object.entries(sliders).forEach(([key, el]) => {
         if (!el) return;
         el.addEventListener('input', () => setVolume(key, el.value));
       });
 
-      // Open the volume panel from the existing music button (no extra top-controls button).
-      function openSettingsPanel(tabName = 'sound') {
-        hideAllPanels();
-        syncSlidersFromState();
-        populateBrowserVoicePicker();
-        const host = document.getElementById('modeSelectHost');
-        const modeSelect = document.getElementById('modeSelect');
-        if (host && modeSelect && modeSelect.parentElement !== host) host.appendChild(modeSelect);
-        if (modeSelect) { modeSelect.classList.remove('hidden-section'); modeSelect.removeAttribute('aria-hidden'); }
-        volumePanel.style.display = 'flex';
-        volumePanel.classList.remove('hidden-section');
-        volumePanel.setAttribute('aria-hidden', 'false');
-        const tabs = Array.from(volumePanel.querySelectorAll('[data-settings-tab]'));
-        const panes = Array.from(volumePanel.querySelectorAll('[data-settings-pane]'));
-        tabs.forEach((tab) => tab.classList.toggle('active', tab.dataset.settingsTab === tabName));
-        panes.forEach((pane) => pane.classList.toggle('active', pane.dataset.settingsPane === tabName));
-      }
-
-      function isSettingsPanelOpen() {
-        return !!(volumePanel && volumePanel.style.display === 'flex' && !volumePanel.classList.contains('hidden-section'));
-      }
-
-      window.openReadingSettingsModal = function openReadingSettingsModal(tabName = 'sound') {
-        openSettingsPanel(tabName || 'sound');
-        return true;
-      };
-      window.closeReadingSettingsModal = function closeReadingSettingsModal() {
-        hideAllPanels();
-        return true;
-      };
-      window.toggleReadingSettingsModal = function toggleReadingSettingsModal(tabName = 'sound') {
-        if (isSettingsPanelOpen()) {
-          hideAllPanels();
-          return false;
-        }
-        openSettingsPanel(tabName || 'sound');
-        return true;
-      };
-      window.isReadingSettingsModalOpen = isSettingsPanelOpen;
-
+      // Open the volume panel from the existing music button or top-bar Settings button.
       musicToggleBtn.addEventListener('click', (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
-        const isOpen = volumePanel.style.display === 'flex';
-        if (isOpen) hideAllPanels();
-        else openSettingsPanel('sound');
+        toggleReadingSettingsModal();
       });
 
+      const topSettingsBtn = document.getElementById('openReadingSettings');
+      if (topSettingsBtn) {
+        topSettingsBtn.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          toggleReadingSettingsModal();
+        });
+      }
+
+      if (volumeCloseBtn) volumeCloseBtn.addEventListener('click', () => closeReadingSettingsModal());
       if (toggleMusicBtn) toggleMusicBtn.addEventListener('click', () => window.toggleMusic && window.toggleMusic());
     }
 
@@ -491,6 +484,7 @@
             voiceVariant: (() => { try { return localStorage.getItem('rc_voice_variant'); } catch(_) { return null; } })(),
             voiceSelection: (() => { try { return localStorage.getItem('rc_browser_voice'); } catch(_) { return null; } })(),
             ttsSpeed: (() => { try { return localStorage.getItem('rc_tts_speed'); } catch(_) { return null; } })(),
+            autoplay: (() => { try { return localStorage.getItem('rc_autoplay'); } catch(_) { return null; } })(),
           },
           tts: {
             variant: TTS_STATE?.voiceVariant || 'female',
@@ -506,6 +500,9 @@
           },
           ttsRuntime: (typeof window.getTtsDiagnosticsSnapshot === 'function') ? window.getTtsDiagnosticsSnapshot() : null,
           shell: (typeof window.getShellDiagnosticsSnapshot === 'function') ? window.getShellDiagnosticsSnapshot() : null,
+          runtime: (typeof window.getRuntimeUiState === 'function') ? window.getRuntimeUiState() : null,
+          restore: (typeof window.getReadingRestoreStatus === 'function') ? window.getReadingRestoreStatus() : null,
+          importer: (typeof window.getImporterDiagnosticsSnapshot === 'function') ? window.getImporterDiagnosticsSnapshot() : null,
           ai: lastAIDiagnostics || null,
           anchors: lastAnchorsDiagnostics || null,
         };
@@ -515,6 +512,12 @@
         diagPanel.style.display = 'block';
         positionPanelAboveButton(diagBtn, diagPanel);
       }
+
+      window.updateDiagnostics = function updateDiagnostics() {
+        try {
+          if (diagPanel && diagPanel.style.display === 'block') setDiagVisible(true);
+        } catch (_) {}
+      };
 
       diagBtn.addEventListener('click', (ev) => {
         ev.preventDefault();
@@ -813,3 +816,5 @@ try {
     mo.observe(pagesEl, { childList: true, subtree: true, characterData: true });
   }
 })();
+
+window.updateDiagnostics = window.updateDiagnostics || function updateDiagnostics() {};
