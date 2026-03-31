@@ -209,19 +209,7 @@
         .btn-subscribe:hover { background: var(--jubly-light); transform: translateY(-1px); }
         /* ── Focus Mode reading UI ── */
         #reading-mode { background: var(--theme-accent-soft); min-height: 100vh; padding: 0; }
-        .reading-top-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 30; display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,0.96); border-bottom: 1px solid #e2e8f0; backdrop-filter: blur(8px); transition: opacity 0.5s ease, transform 0.5s ease; }
-        .reading-top-bar.faded { opacity: 0; pointer-events: none; transform: translateY(-6px); }
-        /* Controls centred; exit pinned right */
-        .reading-top-spacer { min-width: 0; }
-        .reading-top-left { display: flex; align-items: center; gap: 6px; overflow-x: auto; min-width: 0; scrollbar-width: none; justify-content: center; justify-self: center; padding: 0 6px; -webkit-overflow-scrolling: touch; }
-        .reading-top-actions { display: flex; align-items: center; justify-content: flex-end; flex-shrink: 0; }
-        .reading-top-left::-webkit-scrollbar { display: none; }
-        .reading-top-exit { flex-shrink: 0; }
-        .reading-bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,0.97); border-top: 1px solid var(--jubly-border); backdrop-filter: blur(8px); box-shadow: 0 -4px 24px rgba(0,0,0,0.06); }
-        .reading-bottom-spacer { min-width: 0; }
-        .reading-bottom-left { display: flex; align-items: center; gap: 4px; overflow-x: auto; min-width: 0; scrollbar-width: none; -webkit-overflow-scrolling: touch; justify-content: center; justify-self: center; padding: 0 6px; }
-        .reading-bottom-actions { display: flex; align-items: center; justify-content: flex-end; flex-shrink: 0; }
-        .reading-bottom-left::-webkit-scrollbar { display: none; }
+        /* Reading bar layout — see consolidated system at end of file */
         /* Reading content wrapper — unconstrained on desktop, centred column on tablet/mobile */
         .reading-content { padding: 80px 0 96px; }
         .reading-select { font-size: 0.75rem; font-weight: 700; color: #475569; background: transparent; border: none; outline: none; cursor: pointer; padding: 4px 2px; white-space: nowrap; }
@@ -318,9 +306,6 @@
         @keyframes fadeChevron { 0%,100%{transform:translateY(0)} 50%{transform:translateY(3px)} }
         @media (min-width: 1025px) { .page-text-wrap .page-text-fade { display: none; } }
         @media (max-width: 640px) {
-            .reading-top-bar, .reading-bottom-bar { padding-left: 10px; padding-right: 10px; }
-            .reading-top-left, .reading-bottom-left { justify-content: center; }
-            .reading-top-exit { padding-left: 10px; padding-right: 10px; }
             .page-progress { font-size: 0.66rem; }
         }
 
@@ -392,132 +377,92 @@
             background-color: rgba(255, 230, 120, var(--tts-alpha));
             transition: background-color 220ms ease;
         }
-        /* Only these pages need padding so they never slide behind footer */
 
-@media (max-width: 768px) {
-  .reading-top-bar, .reading-bottom-bar { grid-template-columns: minmax(0,0.5fr) auto auto; gap: 6px; }
-  .reading-top-left, .reading-bottom-left { justify-content: center; }
-}
+/* ── Reading bars — consolidated single-source layout system ─────────────
+ *
+ * Layout model: position:relative flex container.
+ * Cluster: absolutely centered — independent of utility item width.
+ * Utility: margin-left:auto — pinned to far right.
+ * No spacers. No ghost columns. No multi-pass overrides.
+ * ──────────────────────────────────────────────────────────────────────── */
 
-
-/* Pass 1 — reading-view UX lock: centered clusters, far-right utility items, no top-bar fade */
-.reading-top-bar.faded {
-  opacity: 1 !important;
-  pointer-events: auto !important;
-  transform: none !important;
-}
-#reading-top-bar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
-  align-items: center;
-  gap: 12px;
-  justify-content: stretch;
-}
-#reading-top-bar .reading-top-spacer {
-  display: block;
-  min-width: 0;
-}
-#reading-top-bar .reading-top-left {
-  grid-column: 2;
-  justify-self: center;
-  justify-content: center;
-  width: auto;
-  max-width: min(1100px, calc(100vw - 180px));
-  padding-right: 0;
-}
-#reading-top-bar .reading-top-left > * { flex: 0 0 auto; }
-#reading-top-bar .reading-top-actions {
-  grid-column: 3;
-  justify-self: end;
+.reading-top-bar,
+.reading-bottom-bar {
+  position: fixed;
+  left: 0; right: 0;
+  z-index: 30;
   display: flex;
   align-items: center;
+  padding: 0 16px;
+  height: 52px;
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
-#reading-top-bar .reading-top-exit {
-  min-height: 36px;
-  white-space: nowrap;
+.reading-top-bar {
+  top: 0;
+  border-bottom: 1px solid var(--jubly-border);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+.reading-top-bar.faded {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-6px);
 }
 .reading-bottom-bar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
-  align-items: center;
-  gap: 12px;
-}
-.reading-bottom-bar .reading-bottom-spacer {
-  display: block;
-  min-width: 0;
-}
-.reading-bottom-bar .reading-bottom-left {
-  grid-column: 2;
-  justify-self: center;
-  justify-content: center;
-  width: auto;
-  max-width: min(820px, calc(100vw - 170px));
-  padding-right: 0;
-}
-.reading-bottom-bar .reading-bottom-left > * { flex: 0 0 auto; }
-.reading-bottom-bar .reading-bottom-actions {
-  grid-column: 3;
-  justify-self: end;
-  display: flex;
-  align-items: center;
-}
-.reading-bottom-bar .page-progress {
-  white-space: nowrap;
-}
-@media (max-width: 900px) {
-  #reading-top-bar,
-  .reading-bottom-bar {
-    gap: 8px;
-    padding-left: 10px;
-    padding-right: 10px;
-  }
-  #reading-top-bar .reading-top-left {
-    max-width: calc(100vw - 120px);
-    gap: 4px;
-  }
-  .reading-bottom-bar .reading-bottom-left {
-    max-width: calc(100vw - 118px);
-    gap: 4px;
-  }
-}
-@media (max-width: 640px) {
-  #reading-top-bar {
-    grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
-    gap: 6px;
-    padding-left: 8px;
-    padding-right: 8px;
-  }
-  #reading-top-bar .reading-top-left {
-    max-width: calc(100vw - 86px);
-    gap: 4px;
-  }
-  #reading-top-bar .reading-top-exit {
-    min-height: 34px;
-    padding-left: 10px;
-    padding-right: 10px;
-  }
-  #reading-top-bar .reading-select {
-    max-width: 26vw;
-    font-size: 0.72rem;
-  }
-  #reading-top-bar .tier-pill {
-    max-width: 18vw;
-  }
-  .reading-bottom-bar {
-    gap: 6px;
-    padding-left: 8px;
-    padding-right: 8px;
-  }
-  .reading-bottom-bar .reading-bottom-left {
-    max-width: calc(100vw - 94px);
-    gap: 4px;
-  }
-  .reading-bottom-bar .page-progress {
-    font-size: 0.68rem;
-  }
+  bottom: 0;
+  border-top: 1px solid var(--jubly-border);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.06);
 }
 
-/* Pass 1 revision — top bar safety, adaptive labels, centered settings modal */
+/* Centered cluster — truly centered, independent of utility width */
+.reading-top-left,
+.reading-bottom-left {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100vw - 160px);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* Far-right utility — pinned independently, doesn't affect centering */
+.reading-top-actions,
+.reading-bottom-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Exit button — same control family as the bar, not an external append */
+.reading-top-exit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: transparent;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #64748b;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.reading-top-exit:hover {
+  background: #f8fafc;
+  color: #1e293b;
+  border-color: #cbd5e1;
+}
+
+/* Settings modal — centered overlay, no overflow, adaptive on all sizes */
 .reading-settings-modal {
   position: fixed;
   inset: 0;
@@ -531,118 +476,102 @@
   z-index: 1000;
 }
 .reading-settings-card {
-  width: min(420px, calc(100vw - 2rem));
+  width: min(440px, calc(100vw - 2rem));
   max-width: 100%;
-  max-height: min(86vh, 760px);
-  overflow: auto;
+  max-height: min(86vh, 780px);
+  overflow-y: auto;
   border-radius: 20px;
 }
+
+/* Mode row inside settings modal */
+.settings-mode-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.settings-mode-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+}
+.settings-mode-select {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #475569;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 5px 10px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.settings-mode-select:hover {
+  border-color: #cbd5e1;
+}
+
+/* Gear icon — always present in settings button */
 .reading-top-settings-btn .settings-gear {
   flex: 0 0 auto;
 }
-.reading-top-settings-btn .settings-label {
-  display: inline;
-}
-#reading-top-bar {
-  grid-template-columns: minmax(0, 1fr) minmax(0, auto) auto;
-  gap: 10px;
-}
-#reading-top-bar .reading-top-left {
-  overflow: hidden;
-  max-width: min(960px, calc(100vw - 184px));
-  gap: 6px;
-}
-#reading-top-bar .reading-top-actions {
-  min-width: max-content;
-}
-#reading-top-bar .reading-select,
-#reading-top-bar #bookControls,
-#reading-top-bar #chapterControls {
-  min-width: 0;
-}
-#reading-top-bar #bookControls,
-#reading-top-bar #chapterControls {
-  display: flex;
-  align-items: center;
-}
-#reading-top-bar #bookSelect,
-#reading-top-bar #chapterSelect {
-  max-width: 180px;
-}
-#reading-top-bar .reading-top-exit {
-  position: relative;
-  z-index: 1;
-}
+
+/* One responsive pass — mobile compression */
 @media (max-width: 900px) {
-  #reading-top-bar {
-    gap: 8px;
+  .reading-top-bar,
+  .reading-bottom-bar {
+    padding: 0 12px;
+    height: 48px;
   }
-  #reading-top-bar .reading-top-left {
-    max-width: calc(100vw - 156px);
-  }
-  #reading-top-bar #bookSelect {
-    max-width: 130px;
-  }
-  #reading-top-bar #chapterSelect {
-    max-width: 90px;
+  .reading-top-left,
+  .reading-bottom-left {
+    gap: 4px;
+    max-width: calc(100vw - 130px);
   }
 }
 @media (max-width: 640px) {
-  #reading-top-bar {
-    gap: 4px;
-    padding-left: 8px;
-    padding-right: 8px;
+  .reading-top-bar,
+  .reading-bottom-bar {
+    padding: 0 10px;
+    height: 46px;
   }
-  #reading-top-bar .reading-top-left {
-    max-width: calc(100vw - 86px);
+  .reading-top-left,
+  .reading-bottom-left {
     gap: 3px;
-    overflow: hidden;
+    max-width: calc(100vw - 108px);
   }
-  #reading-top-bar .reading-divider {
+  .reading-top-left .reading-divider,
+  .reading-bottom-left .reading-divider {
     display: none;
   }
-  #reading-top-bar .reading-top-settings-btn {
-    min-width: 34px;
-    width: 34px;
-    height: 34px;
-    padding: 0;
-    gap: 0;
+  .reading-top-left .reading-select {
+    max-width: 28vw;
+    font-size: 0.7rem;
   }
-  #reading-top-bar .reading-top-settings-btn .settings-label {
-    display: none;
-  }
-  #reading-top-bar .reading-select {
-    padding-left: 0;
-    padding-right: 0;
-    font-size: 0.72rem;
-  }
-  #reading-top-bar #modeSelect {
-    max-width: 94px;
-  }
-  #reading-top-bar #bookSelect {
-    max-width: 52px;
-  }
-  #reading-top-bar #chapterSelect {
-    max-width: 38px;
-  }
-  #reading-top-bar .tier-pill {
-    max-width: 52px;
+  .reading-top-left .tier-pill {
+    max-width: 18vw;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  #reading-top-bar .reading-top-exit {
-    padding-left: 8px;
-    padding-right: 8px;
-    min-height: 34px;
+  .reading-top-exit {
+    height: 32px;
+    padding: 0 10px;
+    font-size: 0.7rem;
+  }
+  .page-progress {
+    font-size: 0.64rem;
+  }
+  .reading-top-settings-btn .settings-label {
+    display: none;
   }
 }
 
-#reading-top-bar .reading-top-left > * { min-width: 0; }
-#reading-top-bar #bookControls, #reading-top-bar #chapterControls { overflow: hidden; }
-
-
-
-/* Pass 1 revision fix — keep non-reading layouts centered, keep diagnostics scoped, and lock reading top bar */
+/* Dashboard / profile sidebar offset — co-located for reference */
 #dashboard.with-sidebar,
 #profile-page.with-sidebar {
   box-sizing: border-box;
@@ -658,100 +587,5 @@
     width: 100%;
     padding-left: 1rem !important;
     padding-right: 1rem !important;
-  }
-}
-
-#reading-top-bar {
-  display: grid !important;
-  grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr) !important;
-  align-items: center;
-  column-gap: 12px;
-}
-#reading-top-bar .reading-top-spacer {
-  display: block;
-  min-width: 0;
-}
-#reading-top-bar .reading-top-left {
-  justify-self: center;
-  justify-content: center;
-  overflow: hidden !important;
-  max-width: min(100%, calc(100vw - 220px));
-  padding: 0;
-}
-#reading-top-bar .reading-top-actions {
-  justify-self: end;
-  min-width: max-content;
-  position: relative;
-  z-index: 2;
-}
-#reading-top-bar .reading-select,
-#reading-top-bar #bookControls,
-#reading-top-bar #chapterControls,
-#reading-top-bar .tier-pill {
-  min-width: 0;
-}
-#reading-top-bar #bookSelect,
-#reading-top-bar #chapterSelect,
-#reading-top-bar #modeSelect {
-  text-overflow: ellipsis;
-  overflow: hidden;
-}
-@media (max-width: 900px) {
-  #reading-top-bar .reading-top-left {
-    max-width: calc(100vw - 170px);
-  }
-}
-@media (max-width: 640px) {
-  #reading-top-bar {
-    column-gap: 6px;
-    padding-left: 8px;
-    padding-right: 8px;
-  }
-  #reading-top-bar .reading-top-left {
-    max-width: calc(100vw - 78px);
-    gap: 4px;
-  }
-  #reading-top-bar #modeSelect {
-    max-width: 72px;
-  }
-  #reading-top-bar #bookSelect {
-    max-width: 44px;
-  }
-  #reading-top-bar #chapterSelect {
-    max-width: 36px;
-  }
-  #reading-top-bar .reading-top-exit {
-    padding-left: 8px;
-    padding-right: 8px;
-    min-width: 58px;
-  }
-}
-
-
-/* Pass current blocker fix — mobile top bar spans full width, no empty top-left space */
-@media (max-width: 640px) {
-  #reading-top-bar {
-    grid-template-columns: minmax(0, 1fr) auto !important;
-    width: 100vw;
-    max-width: 100vw;
-    margin-left: calc(50% - 50vw);
-    margin-right: calc(50% - 50vw);
-    box-sizing: border-box;
-  }
-  #reading-top-bar .reading-top-spacer {
-    display: none !important;
-  }
-  #reading-top-bar .reading-top-left {
-    justify-self: stretch;
-    max-width: none;
-    width: 100%;
-    padding-right: 68px;
-    box-sizing: border-box;
-  }
-  #reading-top-bar .reading-top-actions {
-    position: absolute;
-    right: 8px;
-    top: 50%;
-    transform: translateY(-50%);
   }
 }

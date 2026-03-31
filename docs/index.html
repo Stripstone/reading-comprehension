@@ -39,6 +39,15 @@
             <span id="reading-settings-title" class="text-xs font-black uppercase tracking-wider text-slate-400">Sound &amp; Voice</span>
             <button type="button" id="volumeCloseBtn" style="background:#f1f5f9; border:none; border-radius:8px; width:28px; height:28px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#64748b; font-size:0.9rem; transition:background 0.15s;">✕</button>
         </div>
+        <!-- modeSelect — moved from top bar; wired by ui.js initModeSelector() -->
+        <div class="settings-mode-row">
+            <span class="settings-mode-label">Mode</span>
+            <select id="modeSelect" class="settings-mode-select">
+                <option value="reading" selected>Reading</option>
+                <option value="comprehension">Comprehension</option>
+                <option value="research">Research</option>
+            </select>
+        </div>
         <div class="flex gap-2 mb-3">
             <select id="voiceFemaleSelect" class="flex-1 text-xs font-semibold border-2 border-slate-200 rounded-lg px-2 py-2 bg-white text-slate-600 outline-none min-w-0"></select>
             <select id="voiceMaleSelect"   class="flex-1 text-xs font-semibold border-2 border-slate-200 rounded-lg px-2 py-2 bg-white text-slate-600 outline-none min-w-0"></select>
@@ -570,18 +579,10 @@
 <!-- READING MODE — Focus UI -->
 <main id="reading-mode" class="hidden-section">
 
-    <!-- TOP BAR: session-defining — fades on idle. Left scrolls, Exit always pinned right -->
+    <!-- TOP BAR: session-defining — fades on idle. Cluster centered, Exit pinned far right -->
     <div id="reading-top-bar" class="reading-top-bar">
-        <div class="reading-top-spacer" aria-hidden="true"></div>
         <div class="reading-top-left">
             <button id="openReadingSettings" type="button" class="pb-icon-btn reading-top-settings-btn" aria-label="Open reading settings" title="Reading settings"><svg class="settings-gear" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg><span class="settings-label">Settings</span></button>
-            <div class="reading-divider"></div>
-            <!-- modeSelect: wired by ui.js initModeSelector() -->
-            <select id="modeSelect" class="reading-select">
-                <option value="reading" selected>Mode: Reading</option>
-                <option value="comprehension">Mode: Comprehension</option>
-                <option value="research">Mode: Research</option>
-            </select>
             <div class="reading-divider"></div>
             <!-- bookControls wraps bookSelect — initBookImporter() wires to this div -->
             <div id="bookControls" style="display:flex;align-items:center;">
@@ -601,7 +602,7 @@
             <span id="reading-tier-pill" class="tier-pill">Basic</span>
         </div>
         <div class="reading-top-actions">
-            <button onclick="showSection('dashboard')" class="reading-top-exit text-xs font-bold text-slate-400 hover:text-slate-800 transition bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg">Exit ✕</button>
+            <button type="button" onclick="showSection('dashboard')" class="reading-top-exit">Exit ✕</button>
         </div>
     </div>
 
@@ -623,7 +624,6 @@
 
     <!-- BOTTOM PLAYBACK BAR: moment controls — always visible -->
     <div class="reading-bottom-bar">
-        <div class="reading-bottom-spacer" aria-hidden="true"></div>
         <div class="reading-bottom-left">
             <!-- Speed — runtime-owned via setPlaybackRate() -->
             <select id="shell-speed" class="reading-select" onchange="shellSetSpeed(this.value)">
