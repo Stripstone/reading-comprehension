@@ -286,6 +286,9 @@ function ttsHighlightBlock(blockIdx) {
   TTS_STATE.highlightSpans.forEach((span, i) => {
     span.style.setProperty('--tts-alpha', i === blockIdx ? '1' : '0');
   });
+  // Keep TTS_STATE.activeBlockIndex consistent with visual highlight
+  // so skip/pause/resume all read from a single source of truth.
+  if (blockIdx >= 0) TTS_STATE.activeBlockIndex = blockIdx;
   try {
     const isMobile = window.matchMedia && window.matchMedia('(max-width: 480px)').matches;
     const pane = TTS_STATE.highlightPageEl;
@@ -662,7 +665,7 @@ let _browserSpeakGen = 0;
 // fire onerror before it starts — observed consistently as a 2-3ms gap
 // between skip/pause and browser-utterance-error in production diagnostics.
 // Fix: defer speak() by one event-loop tick so cancel fully flushes first.
-function browserSpeakPageFromSentence(key, blockIdx) {
+function browserSpeakPageFromSentence(key, blockIdx, reason) {
   if (!TTS_STATE.browserSpeakFromBlock) return false;
   if (TTS_STATE.activeKey !== key) return false;
   const ranges = TTS_STATE.browserSentenceRanges;
@@ -670,6 +673,7 @@ function browserSpeakPageFromSentence(key, blockIdx) {
   const target = Math.max(0, Math.min(ranges.length - 1, blockIdx));
   const speakFn = TTS_STATE.browserSpeakFromBlock;
   const sessionId = TTS_STATE.activeSessionId;
+  const entryReason = reason || 'skip-or-resume';
   // Claim this speak generation. A later call (rapid double-skip) increments
   // this before our setTimeout fires, so our deferred call self-aborts.
   const gen = ++_browserSpeakGen;
@@ -680,9 +684,15 @@ function browserSpeakPageFromSentence(key, blockIdx) {
   // the in-progress recovery (not the previous error string).
   TTS_STATE.playbackBlockedReason = '';
   try {
-    markIntentionalBrowserCancel('restart-from-block', { key, targetBlock: target, gen });
+    markIntentionalBrowserCancel('restart-from-block', { key, targetBlock: target, gen, reason: entryReason });
     window.speechSynthesis.cancel();
   } catch (_) {}
+
+  ttsDiagPush('browser-re-entry', {
+    key, blockIdx: target, gen, reason: entryReason,
+    outcomeClass: entryReason === 'speed-change' ? 'live-mutate' : 'preserved-re-entry',
+    sessionId,
+  });
 
   // Advance state synchronously so getPlaybackStatus() and highlight
   // reflect the target block immediately (before the deferred speak).
@@ -907,9 +917,29 @@ function getCountdownStatus() {
 
 function setPlaybackRate(rate) {
   const value = Math.max(0.5, Math.min(3, Number(rate || 1) || 1));
+  const prev = TTS_STATE.rate;
   TTS_STATE.rate = value;
+
+  // Cloud path: mutate playback rate live on the active audio element.
   try { TTS_AUDIO_ELEMENT.defaultPlaybackRate = value; TTS_AUDIO_ELEMENT.playbackRate = value; } catch (_) {}
-  ttsDiagPush('set-playback-rate', { rate: value });
+
+  const changed = Math.abs(value - prev) > 0.001;
+
+  // Browser path: re-enter the current block so the new rate takes effect
+  // on the utterance that is currently being spoken. Without re-entry the
+  // rate on the already-dispatched SpeechSynthesisUtterance is immutable.
+  if (changed && TTS_STATE.activeKey && TTS_STATE.browserSpeakFromBlock && !TTS_STATE.browserPaused) {
+    const key = TTS_STATE.activeKey;
+    const blockIdx = TTS_STATE.activeBlockIndex >= 0 ? TTS_STATE.activeBlockIndex : 0;
+    ttsDiagPush('set-playback-rate', { rate: value, prev, action: 'browser-live-re-entry', key, blockIdx });
+    try { browserSpeakPageFromSentence(key, blockIdx, 'speed-change'); } catch (_) {}
+  } else {
+    ttsDiagPush('set-playback-rate', {
+      rate: value,
+      prev,
+      action: changed ? (TTS_STATE.browserPaused ? 'rate-stored-paused' : 'cloud-live-mutate') : 'no-change',
+    });
+  }
   return value;
 }
 
@@ -952,6 +982,7 @@ function ttsStop() {
   TTS_STATE.browserIntentionalCancelMeta = null;
 
   ttsDiagPush('stop', {
+    outcomeClass: 'full-stop',
     sessionId: TTS_STATE.activeSessionId,
     lastPageKey: (typeof lastFocusedPageIndex === 'number' && lastFocusedPageIndex >= 0) ? `page-${lastFocusedPageIndex}` : null,
   });
@@ -981,6 +1012,21 @@ function ttsPause() {
   // Cloud path.
   if (TTS_STATE.audio) {
     try { TTS_STATE.audio.pause(); } catch (_) {}
+    // After audio.pause(), currentTime is frozen. Resolve the exact block at that
+    // timestamp so preservedBlock is as accurate as possible (no 16ms RAF lag).
+    if (TTS_STATE.highlightMarks && TTS_STATE.highlightMarks.length) {
+      try {
+        const t = TTS_STATE.audio.currentTime * 1000;
+        const marks = TTS_STATE.highlightMarks;
+        const ends = TTS_STATE.highlightEnds || [];
+        for (let i = 0; i < marks.length; i++) {
+          if (t >= marks[i].time && t < (ends[i] ?? Infinity)) {
+            TTS_STATE.activeBlockIndex = i;
+            break;
+          }
+        }
+      } catch (_) {}
+    }
     TTS_DEBUG.lastPauseStrategy = 'cloud-audio-pause';
   }
 
@@ -1026,9 +1072,17 @@ function ttsPause() {
     session: ttsSessionSnapshot(),
     controls: getPlaybackControlEligibility(),
   };
+  const outcomeClass = TTS_STATE.audio
+    ? 'live-mutate'      // cloud: audio.pause() — live interruption, not reset
+    : (TTS_STATE.browserPaused
+        ? (TTS_DEBUG.lastPauseStrategy === 'browser-speechsynthesis-pause'
+            ? 'live-mutate'    // native pause succeeded
+            : 'preserved-re-entry')  // cancel+re-enter path
+        : 'noop');
   const payload = {
     success: !!(TTS_STATE.pausedPageKey && TTS_STATE.pausedBlockIndex >= 0),
     pauseStrategy: TTS_DEBUG.lastPauseStrategy,
+    outcomeClass,
     preservedPageKey: TTS_STATE.pausedPageKey,
     preservedBlockIndex: TTS_STATE.pausedBlockIndex,
     before,
@@ -1063,10 +1117,17 @@ function ttsResume() {
   // Cloud path: resume audio from preserved currentTime.
   if (TTS_STATE.audio && TTS_STATE.audio.paused) {
     try {
-      TTS_STATE.audio.defaultPlaybackRate = Number(TTS_STATE.rate || 1);
-      TTS_STATE.audio.playbackRate = Number(TTS_STATE.rate || 1);
+      // Apply current rate (may have changed during pause) before resuming.
+      const resumeRate = Number(TTS_STATE.rate || 1) || 1;
+      TTS_STATE.audio.defaultPlaybackRate = resumeRate;
+      TTS_STATE.audio.playbackRate = resumeRate;
       TTS_STATE.audio.play().catch(() => {});
+      // Re-start the highlight RAF — it was stopped on pause to avoid
+      // advancing activeBlockIndex while the audio was silent.
       ttsStartHighlightLoop(TTS_STATE.audio);
+      // Ensure paused state is cleared so getPlaybackStatus() reflects resuming.
+      TTS_STATE.pausedBlockIndex = -1;
+      TTS_STATE.pausedPageKey = null;
     } catch (_) {}
     const after = {
       playback: getPlaybackStatus(),
@@ -1075,6 +1136,7 @@ function ttsResume() {
     };
     const payload = {
       success: true, resumed: true, restarted: false,
+      outcomeClass: 'live-mutate',
       route: 'cloud-audio-resume',
       resumedSessionId: Number(TTS_STATE.activeSessionId || 0),
       resumedPageKey: expectedPageKey,
@@ -1124,6 +1186,7 @@ function ttsResume() {
       success: !!ok,
       resumed: !!ok,
       restarted: !!ok,
+      outcomeClass: ok ? 'preserved-re-entry' : 'blocked',
       route: ok ? 'browser-restart-from-preserved-block' : 'browser-resume-rejected',
       resumedSessionId: Number(TTS_STATE.activeSessionId || 0),
       resumedPageKey: key,
@@ -1153,6 +1216,7 @@ function ttsResume() {
     success: true,
     resumed: true,
     restarted: false,
+    outcomeClass: 'live-mutate',
     route: 'browser-native-resume',
     resumedSessionId: Number(TTS_STATE.activeSessionId || 0),
     resumedPageKey: expectedPageKey,
@@ -1178,13 +1242,20 @@ function pauseOrResumeReading() {
         const started = window.startFocusedPageTts();
         route = 'start-focused-page';
         outcome = started ? 'started' : 'failed';
-        ttsDiagPush('pause-resume-action', { action: 'play', route, outcome, before, after: ttsBlockSnapshot() });
+        ttsDiagPush('pause-resume-action', {
+          action: 'play', route, outcome,
+          outcomeClass: started ? 'full-restart' : 'blocked',
+          before, after: ttsBlockSnapshot(),
+        });
         return getPlaybackStatus();
       }
     } catch (_) {}
     route = 'no-focused-page-fn';
     outcome = 'failed';
-    ttsDiagPush('pause-resume-action', { action: 'play', route, outcome, before, after: ttsBlockSnapshot() });
+    ttsDiagPush('pause-resume-action', {
+      action: 'play', route, outcome, outcomeClass: 'blocked',
+      before, after: ttsBlockSnapshot(),
+    });
     return before.playback;
   }
 

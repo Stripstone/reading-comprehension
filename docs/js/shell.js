@@ -321,7 +321,12 @@
             controls: {
                 playDisabled: !!(btn && btn.disabled),
                 prevDisabled: !!(prevBtn && prevBtn.disabled),
-                nextDisabled: !!(nextBtn && nextBtn.disabled)
+                nextDisabled: !!(nextBtn && nextBtn.disabled),
+                blockedReasons: {
+                    play: (!canPlay && eligibility.reasons) ? (eligibility.reasons.canPlay || '') : null,
+                    prev: (!eligibility.canSkipPrev && eligibility.reasons) ? (eligibility.reasons.canSkipPrev || '') : null,
+                    next: (!eligibility.canSkipNext && eligibility.reasons) ? (eligibility.reasons.canSkipNext || '') : null,
+                }
             }
         });
     }
@@ -345,10 +350,14 @@
                 // Active paused session exists — delegate Resume to runtime.
                 route = 'pause-or-resume-reading';
                 result = !!pauseOrResumeReading();
+                // Sync controls immediately so prev/next reflect resumed state.
+                setTimeout(syncShellPlaybackControls, 0);
             } else if (eligibility.canPause) {
                 // Actively speaking — delegate Pause to runtime.
                 route = 'pause-or-resume-reading';
                 result = !!pauseOrResumeReading();
+                // Sync controls immediately after pause so prev/next remain enabled.
+                setTimeout(syncShellPlaybackControls, 0);
             } else {
                 // No active session. Start from the current focused page.
                 // Countdown takes priority: user expects to restart the timed page.
