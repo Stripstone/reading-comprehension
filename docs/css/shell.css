@@ -216,9 +216,9 @@
         .reading-select:hover { color: var(--jubly-purple); }
         .reading-divider { width: 1px; height: 16px; background: #e2e8f0; flex-shrink: 0; }
         .tier-pill { font-size: 0.6rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 8px; border-radius: 999px; background: #f5f3ff; color: var(--jubly-purple); border: 1px solid #ddd6fe; white-space: nowrap; flex-shrink: 0; }
-        .pb-icon-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 32px; padding: 6px 10px; border-radius: 8px; font-size: 0.72rem; font-weight: 700; color: #64748b; background: transparent; border: none; cursor: pointer; transition: background 0.15s, color 0.15s; white-space: nowrap; flex-shrink: 0; }
-        #shell-prev-btn, #shell-next-btn { min-width: 32px; padding-left: 8px; padding-right: 8px; }
-        #shell-play-btn { min-width: 86px; }
+        .pb-icon-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 36px; padding: 7px 12px; border-radius: 8px; font-size: 0.82rem; font-weight: 700; color: #64748b; background: transparent; border: none; cursor: pointer; transition: background 0.15s, color 0.15s; white-space: nowrap; flex-shrink: 0; }
+        #shell-prev-btn, #shell-next-btn { min-width: 36px; padding-left: 10px; padding-right: 10px; }
+        #shell-play-btn { min-width: 98px; font-size: 0.84rem; }
         .pb-icon-btn:hover { background: #f1f5f9; color: #1e293b; }
         .pb-icon-btn.active { background: var(--theme-accent-soft); color: var(--theme-accent); }
         .page-progress { font-size: 0.7rem; font-weight: 700; color: #94a3b8; letter-spacing: 0.04em; white-space: nowrap; flex-shrink: 0; }
@@ -378,18 +378,25 @@
             transition: background-color 220ms ease;
         }
 
-/* ── Reading bars — consolidated single-source layout system ─────────────
+/* ── Reading bars — top adaptive lane + centered bottom playback ────────
  *
- * Layout model: position:relative flex container.
- * Cluster: absolutely centered — independent of utility item width.
- * Utility: margin-left:auto — pinned to far right.
- * No spacers. No ghost columns. No multi-pass overrides.
+ * Top bar:
+ * - fixed Settings on the left
+ * - Book + Chapter are the only adaptive controls
+ * - fixed tier pill
+ * - fixed Exit on the right, styled like Settings
+ *
+ * Bottom bar:
+ * - centered playback cluster
+ * - fixed page-progress lane on the right
+ * - mobile keeps the cluster centered
  * ──────────────────────────────────────────────────────────────────────── */
 
 .reading-top-bar,
 .reading-bottom-bar {
   position: fixed;
-  left: 0; right: 0;
+  left: 0;
+  right: 0;
   z-index: 30;
   display: flex;
   align-items: center;
@@ -399,70 +406,143 @@
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
+
 .reading-top-bar {
   top: 0;
   border-bottom: 1px solid var(--jubly-border);
   transition: opacity 0.5s ease, transform 0.5s ease;
 }
+
 .reading-top-bar.faded {
   opacity: 0;
   pointer-events: none;
   transform: translateY(-6px);
 }
+
 .reading-bottom-bar {
   bottom: 0;
   border-top: 1px solid var(--jubly-border);
   box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.06);
 }
 
-/* Centered cluster — truly centered, independent of utility width */
-.reading-top-left,
-.reading-bottom-left {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+/* Top bar layout */
+.reading-top-left {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1.15fr) minmax(0, 0.95fr) auto;
+  align-items: center;
+  column-gap: 8px;
+}
+
+.reading-top-left .reading-divider {
+  display: none;
+}
+
+#bookControls,
+#chapterControls {
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
-  max-width: calc(100vw - 160px);
+}
+
+#bookSelect,
+#chapterSelect {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Far-right utility — pinned independently, doesn't affect centering */
-.reading-top-actions,
-.reading-bottom-actions {
-  margin-left: auto;
+.reading-top-actions {
+  margin-left: 12px;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  flex-shrink: 0;
+  justify-content: flex-end;
 }
 
-/* Exit button — same control family as the bar, not an external append */
+/* Bottom bar layout */
+.reading-bottom-left {
+  position: absolute;
+  left: 50%;
+  transform: translateX(calc(-50% - 50px));
+  min-width: 0;
+  max-width: calc(100vw - 170px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.reading-bottom-actions {
+  margin-left: auto;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* Top fixed controls */
+.reading-top-settings-btn,
 .reading-top-exit {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
-  height: 34px;
-  padding: 0 12px;
+  min-height: 36px;
+  padding: 7px 12px;
   border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  background: transparent;
-  font-size: 0.72rem;
+  font-size: 0.82rem;
   font-weight: 700;
   color: #64748b;
+  background: transparent;
+  border: none;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: background 0.15s, color 0.15s;
   white-space: nowrap;
-}
-.reading-top-exit:hover {
-  background: #f8fafc;
-  color: #1e293b;
-  border-color: #cbd5e1;
+  flex: 0 0 auto;
 }
 
-/* Settings modal — centered overlay, no overflow, adaptive on all sizes */
+.reading-top-settings-btn:hover,
+.reading-top-exit:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
+.tier-pill {
+  min-width: 52px;
+  text-align: center;
+  flex: 0 0 auto;
+}
+
+/* Bottom fixed controls */
+#shell-speed {
+  min-width: 96px;
+  flex: 0 0 auto;
+}
+
+#shell-prev-btn,
+#shell-next-btn {
+  min-width: 38px;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+#shell-play-btn {
+  min-width: 104px;
+}
+
+.page-progress {
+  min-width: 72px;
+  text-align: right;
+  flex: 0 0 auto;
+}
+
+/* Settings modal */
 .reading-settings-modal {
   position: fixed;
   inset: 0;
@@ -475,6 +555,7 @@
   -webkit-backdrop-filter: blur(6px);
   z-index: 1000;
 }
+
 .reading-settings-card {
   width: min(440px, calc(100vw - 2rem));
   max-width: 100%;
@@ -483,7 +564,6 @@
   border-radius: 20px;
 }
 
-/* Mode row inside settings modal */
 .settings-mode-row {
   display: flex;
   align-items: center;
@@ -493,6 +573,7 @@
   padding-bottom: 12px;
   border-bottom: 1px solid #f1f5f9;
 }
+
 .settings-mode-label {
   font-size: 0.7rem;
   font-weight: 800;
@@ -500,6 +581,7 @@
   letter-spacing: 0.05em;
   color: #64748b;
 }
+
 .settings-mode-select {
   font-size: 0.8rem;
   font-weight: 700;
@@ -512,62 +594,121 @@
   cursor: pointer;
   transition: border-color 0.15s;
 }
+
 .settings-mode-select:hover {
   border-color: #cbd5e1;
 }
 
-/* Gear icon — always present in settings button */
 .reading-top-settings-btn .settings-gear {
   flex: 0 0 auto;
 }
 
-/* One responsive pass — mobile compression */
+/* Tablet */
 @media (max-width: 900px) {
   .reading-top-bar,
   .reading-bottom-bar {
     padding: 0 12px;
     height: 48px;
   }
-  .reading-top-left,
+
+  .reading-top-left {
+    column-gap: 6px;
+    grid-template-columns: auto minmax(0, 1.05fr) minmax(0, 0.9fr) auto;
+  }
+
   .reading-bottom-left {
-    gap: 4px;
-    max-width: calc(100vw - 130px);
+    gap: 5px;
+    max-width: calc(100vw - 152px);
+  }
+
+  .reading-top-actions {
+    margin-left: 10px;
+  }
+
+  .reading-top-settings-btn,
+  .reading-top-exit {
+    min-height: 34px;
+    padding: 6px 10px;
+    font-size: 0.76rem;
+  }
+
+  .tier-pill {
+    min-width: 48px;
+  }
+
+  #shell-speed {
+    min-width: 88px;
+  }
+
+  #shell-play-btn {
+    min-width: 96px;
+  }
+
+  .page-progress {
+    min-width: 64px;
   }
 }
+
+/* Mobile */
 @media (max-width: 640px) {
   .reading-top-bar,
   .reading-bottom-bar {
-    padding: 0 10px;
-    height: 46px;
+    padding: 0 8px;
   }
-  .reading-top-left,
+
+  .reading-top-left {
+    column-gap: 4px;
+    grid-template-columns: auto minmax(0, 1.05fr) minmax(0, 0.9fr) auto;
+  }
+
+  .reading-top-actions {
+    margin-left: 8px;
+  }
+
   .reading-bottom-left {
-    gap: 3px;
-    max-width: calc(100vw - 108px);
+    gap: 4px;
+    max-width: calc(100vw - 134px);
   }
-  .reading-top-left .reading-divider,
+
   .reading-bottom-left .reading-divider {
     display: none;
   }
-  .reading-top-left .reading-select {
-    max-width: 28vw;
-    font-size: 0.7rem;
-  }
-  .reading-top-left .tier-pill {
-    max-width: 18vw;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .reading-top-exit {
-    height: 32px;
-    padding: 0 10px;
-    font-size: 0.7rem;
-  }
-  .page-progress {
-    font-size: 0.64rem;
-  }
+
   .reading-top-settings-btn .settings-label {
     display: none;
+  }
+
+  .reading-top-settings-btn,
+  .reading-top-exit {
+    min-width: 34px;
+    min-height: 32px;
+    padding: 0 8px;
+    font-size: 0.72rem;
+  }
+
+  .tier-pill {
+    min-width: 42px;
+    padding: 2px 6px;
+  }
+
+  #shell-speed {
+    min-width: 78px;
+  }
+
+  #shell-prev-btn,
+  #shell-next-btn {
+    min-width: 34px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  #shell-play-btn {
+    min-width: 84px;
+  }
+
+  .page-progress {
+    min-width: 54px;
+    font-size: 0.64rem;
   }
 }
 
