@@ -908,8 +908,36 @@ function getCountdownStatus() {
 function setPlaybackRate(rate) {
   const value = Math.max(0.5, Math.min(3, Number(rate || 1) || 1));
   TTS_STATE.rate = value;
-  try { TTS_AUDIO_ELEMENT.defaultPlaybackRate = value; TTS_AUDIO_ELEMENT.playbackRate = value; } catch (_) {}
-  ttsDiagPush('set-playback-rate', { rate: value });
+
+  let liveApplied = 'stored-only';
+  try {
+    TTS_AUDIO_ELEMENT.defaultPlaybackRate = value;
+    TTS_AUDIO_ELEMENT.playbackRate = value;
+    if (TTS_STATE.audio) liveApplied = 'cloud-active-audio';
+  } catch (_) {}
+
+  try {
+    const key = String(TTS_STATE.activeKey || '');
+    const currentBlock = Number.isFinite(TTS_STATE.activeBlockIndex) && TTS_STATE.activeBlockIndex >= 0
+      ? TTS_STATE.activeBlockIndex
+      : Math.max(0, Number(TTS_STATE.browserCurrentSentenceIndex || 0));
+    const canRestartBrowser = !!(
+      key &&
+      !TTS_STATE.audio &&
+      !TTS_STATE.browserPaused &&
+      TTS_STATE.browserSentenceRanges &&
+      TTS_STATE.browserSentenceRanges.length &&
+      browserTtsSupported() &&
+      window.speechSynthesis &&
+      (window.speechSynthesis.speaking || window.speechSynthesis.pending)
+    );
+    if (canRestartBrowser) {
+      const restarted = browserSpeakPageFromSentence(key, currentBlock);
+      if (restarted) liveApplied = 'browser-restart-current-block';
+    }
+  } catch (_) {}
+
+  ttsDiagPush('set-playback-rate', { rate: value, liveApplied });
   return value;
 }
 
