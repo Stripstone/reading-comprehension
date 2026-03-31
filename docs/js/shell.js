@@ -75,6 +75,7 @@
             updateTierPill();
             updateExplorerSwatchState();
             updateProgressBar();
+            try { if (typeof applyReadingTopBarResponsiveState === 'function') applyReadingTopBarResponsiveState(); } catch(_) {}
         }
         if (id === 'dashboard') refreshLibrary();
         try { if (typeof window.syncDiagnosticsVisibility === 'function') window.syncDiagnosticsVisibility(); } catch (_) {}
@@ -101,7 +102,38 @@
     }
 
 
-
+    function applyReadingTopBarResponsiveState() {
+        const narrow = window.innerWidth <= 640;
+        const ids = [
+            ['bookSelect', 'Book'],
+            ['chapterSelect', 'CH.']
+        ];
+        ids.forEach(([id, shortLabel]) => {
+            const select = document.getElementById(id);
+            if (!select || !select.options) return;
+            Array.from(select.options).forEach((opt) => {
+                if (!opt.dataset.fullLabel) opt.dataset.fullLabel = opt.textContent;
+                opt.textContent = opt.dataset.fullLabel;
+            });
+            const selected = select.options[select.selectedIndex >= 0 ? select.selectedIndex : 0];
+            if (selected) {
+                select.title = selected.dataset.fullLabel || selected.textContent || '';
+                if (narrow) selected.textContent = shortLabel;
+            }
+        });
+    }
+    window.applyReadingTopBarResponsiveState = applyReadingTopBarResponsiveState;
+    window.addEventListener('resize', applyReadingTopBarResponsiveState);
+    document.addEventListener('DOMContentLoaded', () => {
+        applyReadingTopBarResponsiveState();
+        ['bookSelect','chapterSelect'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el && !el.__responsiveLabelBound) {
+                el.addEventListener('change', applyReadingTopBarResponsiveState);
+                el.__responsiveLabelBound = true;
+            }
+        });
+    });
 
     // ── Modals ───────────────────────────────────────────────────
     function openModal(id)  { const el = document.getElementById(id); if (!el) return; el.classList.remove('hidden-section'); if (el.classList.contains('modal-overlay')) el.style.display = 'flex'; }
@@ -363,7 +395,29 @@
         return next;
     }
 
+    function ensureOptionFullLabels(selectEl) {
+        if (!selectEl || !selectEl.options) return;
+        Array.from(selectEl.options).forEach((opt) => {
+            if (!opt.dataset.fullLabel) opt.dataset.fullLabel = opt.textContent;
+        });
+    }
 
+    function setSelectedOptionLabel(selectEl, shortLabel) {
+        if (!selectEl || !selectEl.options || selectEl.selectedIndex < 0) return;
+        ensureOptionFullLabels(selectEl);
+        const opt = selectEl.options[selectEl.selectedIndex];
+        if (!opt) return;
+        const full = opt.dataset.fullLabel || opt.textContent;
+        const narrow = window.innerWidth <= 640;
+        opt.textContent = narrow ? shortLabel : full;
+    }
+
+    function applyReadingTopBarAdaptiveLabels() {
+        try {
+            setSelectedOptionLabel(document.getElementById('bookSelect'), 'Book');
+            setSelectedOptionLabel(document.getElementById('chapterSelect'), 'CH.');
+        } catch (_) {}
+    }
 
     function handleTtsStep(delta) {
         const before = {
@@ -404,6 +458,10 @@
         const loadBtn = document.getElementById('loadBookSelection');
         const pageStart = document.getElementById('pageStart');
         const pageEnd   = document.getElementById('pageEnd');
+        applyReadingTopBarAdaptiveLabels();
+        window.addEventListener('resize', applyReadingTopBarAdaptiveLabels);
+        if (bookSel) bookSel.addEventListener('change', () => setTimeout(applyReadingTopBarAdaptiveLabels, 0));
+        if (chSel) chSel.addEventListener('change', () => setTimeout(applyReadingTopBarAdaptiveLabels, 0));
         if (bookSel && chSel && loadBtn && pageStart && pageEnd) {
             const waitForPages = (timeout = 2500) => new Promise(resolve => {
                 const started = Date.now();
@@ -418,7 +476,7 @@
                 const ready = await waitForPages();
                 if (ready) {
                     loadBtn.click();
-                    setTimeout(() => { try { if (typeof window.__jublyAfterRender === 'function') window.__jublyAfterRender(); } catch(_) {} }, 120)
+                    setTimeout(() => { try { if (typeof window.__jublyAfterRender === 'function') window.__jublyAfterRender(); } catch(_) {} applyReadingTopBarAdaptiveLabels(); }, 120)
                 }
             });
             chSel.addEventListener('change', async () => {
@@ -426,7 +484,7 @@
                 const ready = await waitForPages();
                 if (ready) {
                     loadBtn.click();
-                    setTimeout(() => { try { if (typeof window.__jublyAfterRender === 'function') window.__jublyAfterRender(); } catch(_) {} }, 120)
+                    setTimeout(() => { try { if (typeof window.__jublyAfterRender === 'function') window.__jublyAfterRender(); } catch(_) {} applyReadingTopBarAdaptiveLabels(); }, 120)
                 }
             });
         }
