@@ -185,6 +185,56 @@
 
     let _advancedMode = false;
 
+    function resetImporterState(opts = {}) {
+      const keepModalOpen = !!opts.keepModalOpen;
+      _file = null;
+      _zip = null;
+      _needsConversion = false;
+      _inputFormat = '';
+      _tocItems = [];
+      _activeId = null;
+      _spineHrefs = [];
+      _bookTitle = '';
+      setAdvancedMode(false);
+      if (fileInput) fileInput.value = '';
+      if (dropzone) dropzone.classList.remove('is-dragover');
+      if (uploadStatus) { uploadStatus.style.display = 'none'; uploadStatus.textContent = ''; }
+      if (tocList) tocList.innerHTML = '';
+      if (filterInput) filterInput.value = '';
+      if (selectionMeta) selectionMeta.textContent = 'No sections selected';
+      if (previewTitle) previewTitle.textContent = '';
+      if (previewBody) previewBody.innerHTML = '';
+      if (progMeta) progMeta.textContent = '';
+      if (progDetail) progDetail.textContent = '';
+      if (progFill) progFill.style.width = '0%';
+      if (doneBtn) doneBtn.style.display = 'none';
+      if (scanBtn) scanBtn.disabled = true;
+      if (doImportBtn) doImportBtn.disabled = true;
+      if (!keepModalOpen) {
+        if (modal) modal.style.display = 'none';
+        if (modal) modal.setAttribute('aria-hidden', 'true');
+      }
+      showStage('upload');
+      return true;
+    }
+
+    window.resetImporterState = function runtimeResetImporterState(opts = {}) {
+      return resetImporterState(opts);
+    };
+
+    window.getImporterDiagnosticsSnapshot = function getImporterDiagnosticsSnapshot() {
+      return {
+        hasFile: !!_file,
+        fileName: _file ? _file.name : null,
+        hasZip: !!_zip,
+        needsConversion: !!_needsConversion,
+        inputFormat: _inputFormat || '',
+        tocCount: Array.isArray(_tocItems) ? _tocItems.length : 0,
+        activeId: _activeId || null,
+        modalOpen: modal ? modal.style.display === 'flex' : false
+      };
+    };
+
     function setAdvancedMode(on) {
       _advancedMode = !!on;
       if (advancedPanel) advancedPanel.style.display = _advancedMode ? 'block' : 'none';
@@ -199,16 +249,13 @@
     }
 
     function showModal() {
+      resetImporterState({ keepModalOpen: true });
       modal.style.display = 'flex';
       modal.setAttribute('aria-hidden', 'false');
-      // reset view
-      showStage('upload');
-      setAdvancedMode(false);
     }
 
     function hideModal() {
-      modal.style.display = 'none';
-      modal.setAttribute('aria-hidden', 'true');
+      resetImporterState({ keepModalOpen: false });
     }
 
     function showStage(which) {

@@ -5,6 +5,36 @@
   // LOCAL LIBRARY (IndexedDB)
   // ===================================
   const LOCAL_DB_NAME = 'rc_local_library_v1';
+
+  function getFocusedOrInferredReadingPageIndex() {
+    try {
+      if (typeof lastFocusedPageIndex === 'number' && lastFocusedPageIndex >= 0) return lastFocusedPageIndex;
+    } catch (_) {}
+    try {
+      if (typeof inferCurrentPageIndex === 'function') {
+        const idx = inferCurrentPageIndex();
+        if (Number.isFinite(idx) && idx >= 0) return idx;
+      }
+    } catch (_) {}
+    return 0;
+  }
+
+  function applyPendingReadingRestore() {
+    try {
+      const idx = Number(window.__rcPendingRestorePageIndex ?? -1);
+      if (!Number.isFinite(idx) || idx < 0) return false;
+      const pageEls = document.querySelectorAll('.page');
+      const target = pageEls[idx];
+      if (!target) return false;
+      target.scrollIntoView({ behavior: 'auto', block: 'start' });
+      lastFocusedPageIndex = idx;
+      try { currentPageIndex = idx; } catch (_) {}
+      window.__rcPendingRestorePageIndex = -1;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
   const LOCAL_DB_VERSION = 1;
   const LOCAL_STORE_BOOKS = 'books';
 
@@ -1676,11 +1706,21 @@
       // TTS: Read page text
       const ttsPageBtn = page.querySelector('.tts-btn[data-tts="page"]');
       if (ttsPageBtn) {
+        try {
+          const support = (typeof getTtsSupportStatus === 'function') ? getTtsSupportStatus() : null;
+          if (support && !support.playable) {
+            ttsPageBtn.disabled = true;
+            ttsPageBtn.setAttribute('aria-disabled', 'true');
+            ttsPageBtn.title = support.reason || 'Playback unavailable';
+          }
+        } catch (_) {}
         ttsPageBtn.addEventListener("click", () => {
           if (AUTOPLAY_STATE.countdownPageIndex === i) {
             ttsAutoplayCancelCountdown();
             return;
           }
+          try { currentPageIndex = i; } catch (_) {}
+          lastFocusedPageIndex = i;
           ttsSpeakQueue(`page-${i}`, [text]);
         });
       }
@@ -1859,6 +1899,8 @@
     
     applyModeVisibility();
     if (typeof applyTierAccess === 'function') applyTierAccess();
+    try { applyPendingReadingRestore(); } catch (_) {}
+    try { if (typeof updateDiagnostics === 'function') updateDiagnostics(); } catch (_) {}
   }
 
   function applyModeVisibility() {
@@ -2067,3 +2109,86 @@
   })();
 
   // ===================================
+
+
+window.focusReadingPage = function focusReadingPage(targetIndex, options = {}) {
+  const pageEls = Array.from(document.querySelectorAll('.page'));
+  if (!pageEls.length) return { ok: false, reason: 'no-pages' };
+  const total = pageEls.length;
+  let idx = Number(targetIndex);
+  if (!Number.isFinite(idx)) idx = getFocusedOrInferredReadingPageIndex();
+  idx = ((idx % total) + total) % total;
+  const target = pageEls[idx];
+  if (!target) return { ok: false, reason: 'missing-target', index: idx, total };
+  const activeClass = 'page-active';
+  document.querySelectorAll('.' + activeClass).forEach((el) => el.classList.remove(activeClass));
+  target.classList.add(activeClass);
+  target.scrollIntoView({ behavior: options.behavior || 'smooth', block: 'start' });
+  lastFocusedPageIndex = idx;
+  try { currentPageIndex = idx; } catch (_) {}
+  try { if (window.TTS_STATE) window.TTS_STATE.playbackBlockedReason = ''; } catch (_) {}
+  try { if (typeof updateDiagnostics === 'function') updateDiagnostics(); } catch (_) {}
+  return { ok: true, index: idx, total };
+};
+
+window.stepReadingPage = function stepReadingPage(delta, options = {}) {
+  const total = Array.isArray(pages) ? pages.length : 0;
+  if (!total) return { ok: false, reason: 'no-pages', total: 0 };
+  const current = getFocusedOrInferredReadingPageIndex();
+  const next = ((current + Number(delta || 0)) % total + total) % total;
+  return window.focusReadingPage(next, options);
+};
+
+window.startFocusedPageTts = function startFocusedPageTts() {
+  const idx = getFocusedOrInferredReadingPageIndex();
+  const text = (Array.isArray(pages) && pages[idx]) ? pages[idx] : '';
+  if (!text) return false;
+  try { currentPageIndex = idx; } catch (_) {}
+  lastFocusedPageIndex = idx;
+  try { if (window.TTS_STATE) window.TTS_STATE.playbackBlockedReason = ''; } catch (_) {}
+  try { if (typeof updateDiagnostics === 'function') updateDiagnostics(); } catch (_) {}
+  ttsSpeakQueue(`page-${idx}`, [text]);
+  return true;
+};
+
+window.getCurrentReadingPageIndex = getFocusedOrInferredReadingPageIndex;
+
+window.startReadingFromPreview = async function startReadingFromPreview(bookId) {
+  const sourceSel = document.getElementById('importSource');
+  const bookSel = document.getElementById('bookSelect');
+  if (!sourceSel || !bookSel || !bookId) return false;
+  sourceSel.value = 'book';
+  sourceSel.dispatchEvent(new Event('change', { bubbles: true }));
+  const optionValues = Array.from(bookSel.options || []).map(opt => String(opt.value || ''));
+  const desiredBookId = optionValues.includes(String(bookId))
+    ? String(bookId)
+    : (optionValues.includes(`local:${bookId}`) ? `local:${bookId}` : String(bookId));
+  bookSel.value = desiredBookId;
+  bookSel.dispatchEvent(new Event('change', { bubbles: true }));
+  return true;
+};
+
+window.exitReadingSession = function exitReadingSession() {
+  const result = { ttsStopped: false, musicStopped: false, countdownCleared: false, pageCount: Array.isArray(pages) ? pages.length : 0, activePageIndex: getFocusedOrInferredReadingPageIndex() };
+  try { if (typeof ttsStop === 'function') { ttsStop(); result.ttsStopped = true; } } catch (_) {}
+  try { if (typeof ttsAutoplayCancelCountdown === 'function') { ttsAutoplayCancelCountdown(); result.countdownCleared = true; } } catch (_) {}
+  try { const signal = document.getElementById('session-complete'); if (signal) signal.classList.add('hidden-section'); } catch (_) {}
+  try { document.querySelectorAll('.page-active').forEach((el) => el.classList.remove('page-active')); } catch (_) {}
+  try { const active = document.activeElement; if (active && typeof active.blur === 'function') active.blur(); } catch (_) {}
+  try { if (window.music) { window.music.pause(); result.musicStopped = true; } } catch (_) {}
+  // PATCH(diagnostics): Push a named exit event into the TTS ring buffer so exit
+  // cleanup is visible and provable in diagnostics. Previously updateDiagnostics()
+  // re-read post-exit state but no event recorded what actually ran during cleanup.
+  try { if (typeof ttsDiagPush === 'function') ttsDiagPush('exit-reading-session', result); } catch (_) {}
+  try { updateDiagnostics(); } catch (_) {}
+  return result;
+};
+
+window.getRuntimeUiState = function getRuntimeUiState() {
+  return {
+    pageCount: Array.isArray(pages) ? pages.length : 0,
+    activePageIndex: getFocusedOrInferredReadingPageIndex(),
+    hasPages: Array.isArray(pages) && pages.length > 0,
+    restore: (typeof window.getReadingRestoreStatus === 'function') ? window.getReadingRestoreStatus() : null
+  };
+};

@@ -8,267 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Lora:wght@400;500&family=Crimson+Pro:wght@400;600;700&display=swap" rel="stylesheet">
     <!-- JSZip: required for EPUB import (app's import.js) -->
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-    <style>
-        /*
-         * ── COLOR SYSTEM ────────────────────────────────────────────────────────
-         *
-         * Two parallel sets of CSS variables are intentional:
-         *
-         *   --jubly-*      Brand constants. Never change. Used for permanent UI
-         *                  elements (logo, buttons, borders, focus rings).
-         *
-         *   --theme-*      User-switchable. Change when the user picks a theme.
-         *                  Used for reading mode accents, active states, highlights.
-         *                  Default values match --jubly-purple so both systems look
-         *                  identical until the user selects a different theme.
-         *
-         *   --jubly-brand-blue / --jubly-brand-yellow
-         *                  Decorative illustration colors (landing hero only).
-         *                  Not theme-switchable. Do not use elsewhere.
-         *
-         * ── MERGE NOTES ─────────────────────────────────────────────────────────
-         * Search "MERGE:" throughout this file for every app handoff point.
-         * ────────────────────────────────────────────────────────────────────────
-         */
-        :root {
-            /* Brand constants */
-            --jubly-purple:      #6344F5;
-            --jubly-purple-deep: #4b32bc;
-            --jubly-light:       #F8F7FF;
-            --jubly-border:      #E2E8F0;
-            --text-dark:         #1E293B;
-            /* Decorative illustration colors — landing hero only */
-            --jubly-brand-blue:   #1cb0f6;
-            --jubly-brand-yellow: #ffc800;
-            /* Theme accent — default matches brand purple, overridden per theme */
-            --theme-accent:      #6344F5;
-            --theme-accent-deep: #4b32bc;
-            --theme-accent-soft: #ede9fe;
-            /* Support footer height — used by app's music button position logic */
-            --support-footer-height: 52px;
-            /* App CSS variable aliases — bridge between app's var names and shell's */
-            --border:       #E2E8F0;
-            --secondary-bg: #ffffff;
-            --text-primary: #1E293B;
-            --accent:       #6344F5;
-            /* Reading-mode variable bridge — lets themes restyle page cards and TTS
-               highlights without touching engine JS. Default matches jubly purple. */
-            --rm-accent:      var(--jubly-purple);
-            --rm-accent-soft: #ede9fe;
-            --rm-card-bg:     #ffffff;
-            --rm-page-bg:     #f5f3ff;
-            --rm-text:        #1e293b;
-            --rm-text-2:      #64748b;
-            --rm-border:      #e2e8f0;
-            --rm-shadow:      0 4px 16px rgba(99,68,245,0.08);
-            --rm-btn-bg:      rgba(99,68,245,0.07);
-            --rm-btn-hover:   rgba(99,68,245,0.14);
-        }
-        /* Theme overrides — applied as body class by setTheme() */
-        body.theme-green  { --theme-accent: #22c55e; --theme-accent-deep: #16a34a; --theme-accent-soft: #dcfce7; --rm-accent:#22c55e; --rm-accent-soft:#dcfce7; --rm-btn-bg:rgba(34,197,94,0.08); --rm-btn-hover:rgba(34,197,94,0.15); --rm-page-bg:#f0fdf4; --rm-shadow:0 4px 16px rgba(34,197,94,0.10); }
-        body.theme-purple { --theme-accent: #a78bfa; --theme-accent-deep: #7c3aed; --theme-accent-soft: #ede9fe; --rm-accent:#a78bfa; --rm-accent-soft:#ede9fe; --rm-btn-bg:rgba(167,139,250,0.08); --rm-btn-hover:rgba(167,139,250,0.15); --rm-page-bg:#faf5ff; --rm-shadow:0 4px 16px rgba(167,139,250,0.10); }
-        /*
-         * Explorer theme — Pro/Premium only. Activates parchment aesthetic + ember particles.
-         * Full texture/typography overhaul ships separately via theme.css / components.css.
-         * This block covers the color system bridge so app features respond correctly.
-         */
-        body.theme-explorer {
-            --theme-accent:      #c17d4a;
-            --theme-accent-deep: #8B2500;
-            --theme-accent-soft: #f5ede4;
-            --accent:            #c17d4a;
-            --rm-accent:      #c17d4a;
-            --rm-accent-soft: #f5ede0;
-            --rm-card-bg:     #f5f1e8;
-            --rm-page-bg:     #ebe7de;
-            --rm-text:        #2b2520;
-            --rm-text-2:      #6b5d54;
-            --rm-border:      #e8dfd4;
-            --rm-shadow:      0 4px 16px rgba(139,111,87,0.12);
-            --rm-btn-bg:      rgba(193,125,74,0.10);
-            --rm-btn-hover:   rgba(193,125,74,0.18);
-        }
-        body.theme-explorer #reading-mode {
-            background:      #d8d6d1;
-            --border:        #e8dfd4;
-            --secondary-bg:  #dfddd8;
-            --text-primary:  #2b2520;
-        }
-        body.theme-explorer #fireCanvas   { display: block !important; }
-
-        /* Utility classes for consistent brand/theme color usage */
-        .text-brand      { color: var(--jubly-purple); }
-        .bg-brand        { background-color: var(--jubly-purple); }
-        .text-accent     { color: var(--theme-accent); }
-        .bg-accent-soft  { background-color: var(--theme-accent-soft); }
-        .border-accent   { border-color: var(--theme-accent); }
-        body { font-family: 'Inter', sans-serif; color: var(--text-dark); background-color: #fff; }
-        .reading-font { font-family: 'Lora', serif; }
-        .hero-float { animation: float 6s ease-in-out infinite; }
-        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
-        .btn-jubly { background: var(--jubly-purple); color: white; transition: transform 0.15s ease, box-shadow 0.15s ease; box-shadow: 0 4px 0px 0px var(--jubly-purple-deep); }
-        .btn-jubly:hover  { transform: translateY(-1px); box-shadow: 0 5px 0px 0px var(--jubly-purple-deep); }
-        .btn-jubly:active { transform: translateY(3px);  box-shadow: 0 0px 0px 0px var(--jubly-purple-deep); }
-        .btn-ghost { background: transparent; color: var(--jubly-purple); border: 2px solid var(--jubly-purple); transition: transform 0.15s ease, background 0.15s ease; }
-        .btn-ghost:hover { background: var(--jubly-light); transform: translateY(-1px); }
-        .btn-theme { background: var(--theme-accent); color: white; transition: transform 0.15s ease, box-shadow 0.15s ease; box-shadow: 0 4px 0px 0px var(--theme-accent-deep); }
-        .btn-theme:hover  { transform: translateY(-1px); box-shadow: 0 5px 0px 0px var(--theme-accent-deep); }
-        .btn-theme:active { transform: translateY(3px);  box-shadow: 0 0px 0px 0px var(--theme-accent-deep); }
-        .glass-card { background: white; border: 1px solid var(--jubly-border); border-radius: 12px; }
-        .section-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 1.5rem; }
-        .hidden-section { display: none !important; }
-        .page-card { transition: opacity 0.4s cubic-bezier(0.4,0,0.2,1), transform 0.4s cubic-bezier(0.4,0,0.2,1), border-color 0.3s ease; opacity: 0.3; transform: scale(0.96); }
-        .page-card.active { opacity: 1; transform: scale(1); border-color: var(--theme-accent); }
-        .speaking-word { background-color: var(--theme-accent-soft); border-bottom: 2px solid var(--theme-accent); border-radius: 2px; }
-        .modal-overlay { backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
-        .profile-tab-btn.active { background-color: #f1f5f9; color: var(--jubly-purple); font-weight: 700; }
-        .tier-btn { padding: 3px 11px; border-radius: 999px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; border: 2px solid #e2e8f0; color: #94a3b8; cursor: pointer; transition: all 0.15s ease; background: transparent; }
-        .tier-btn.active { border-color: var(--jubly-purple); color: var(--jubly-purple); background: #f5f3ff; }
-        .toggle-switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
-        .toggle-switch input { opacity: 0; width: 0; height: 0; }
-        .toggle-track { position: absolute; inset: 0; background: #cbd5e1; border-radius: 999px; cursor: pointer; transition: background 0.2s; }
-        .toggle-track::before { content: ''; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; background: white; border-radius: 50%; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
-        .toggle-switch input:checked + .toggle-track { background: var(--jubly-purple); }
-        .toggle-switch input:checked + .toggle-track::before { transform: translateX(20px); }
-        .theme-swatch { width: 34px; height: 34px; border-radius: 50%; cursor: pointer; border: 3px solid transparent; transition: border-color 0.15s, transform 0.15s; box-shadow: 0 2px 6px rgba(0,0,0,0.12); }
-        .theme-swatch:hover { transform: scale(1.1); }
-        .theme-swatch.selected { border-color: #1e293b; }
-        .pricing-card { border: 2px solid #e2e8f0; border-radius: 16px; padding: 1.5rem; flex: 1; transition: border-color 0.2s, transform 0.2s; background: white; }
-        .pricing-card.featured { border-color: var(--jubly-purple); background: #f5f3ff; transform: scale(1.02); }
-        .sub-hero { background: linear-gradient(135deg, #6344F5 0%, #a78bfa 100%); border-radius: 16px; padding: 2rem; color: white; }
-        .theme-dot { background: var(--theme-accent); width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-        /* ── Sidebar ── */
-        .sidebar-btn { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 6px; border-radius: 10px; color: #94a3b8; font-size: 0.58rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; transition: background 0.15s, color 0.15s; width: 52px; cursor: pointer; background: transparent; border: none; }
-        .sidebar-btn:hover { background: #f1f5f9; color: var(--jubly-purple); }
-        .sidebar-btn.active { color: var(--jubly-purple); background: #f5f3ff; }
-        /* Sidebar offset: !important overrides Tailwind's mx-auto */
-        .with-sidebar { margin-left: 68px !important; }
-        @media (max-width: 640px) { .with-sidebar { margin-left: 0 !important; } #app-sidebar { display: none !important; } }
-        /* Support footer is fixed to viewport bottom, clearing the sidebar */
-        #supportFooter { position: fixed; bottom: 0; right: 0; z-index: 40; }
-        @media (max-width: 640px) { #supportFooter { left: 0; } }
-        #dashboard, #profile-page { padding-bottom: calc(var(--support-footer-height) + 24px); }
-        /* ── Explorer theme swatch ── */
-        .explorer-locked { position: relative; }
-        .explorer-locked::after { content: 'Pro+'; position: absolute; top: -4px; right: -4px; background: var(--jubly-purple); color: white; font-size: 0.5rem; font-weight: 800; padding: 1px 4px; border-radius: 999px; letter-spacing: 0.04em; }
-        /* ── Nav subscribe ── */
-        .btn-subscribe { background: white; color: var(--jubly-purple); border: 2px solid var(--jubly-purple); padding: 6px 16px; border-radius: 8px; font-weight: 700; font-size: 0.8rem; cursor: pointer; transition: background 0.15s, transform 0.15s; }
-        .btn-subscribe:hover { background: var(--jubly-light); transform: translateY(-1px); }
-        /* ── Focus Mode reading UI ── */
-        #reading-mode { background: var(--theme-accent-soft); min-height: 100vh; padding: 0; }
-        .reading-top-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,0.96); border-bottom: 1px solid #e2e8f0; backdrop-filter: blur(8px); transition: opacity 0.5s ease, transform 0.5s ease; }
-        .reading-top-bar.faded { opacity: 0; pointer-events: none; transform: translateY(-6px); }
-        /* Left controls scroll horizontally on narrow; Exit is pinned right and never clips */
-        .reading-top-left { display: flex; align-items: center; gap: 6px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; justify-content: center; }
-        .reading-top-left::-webkit-scrollbar { display: none; }
-        .reading-top-exit { flex-shrink: 0; margin-left: 0; }
-        .reading-bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,0.97); border-top: 1px solid var(--jubly-border); backdrop-filter: blur(8px); box-shadow: 0 -4px 24px rgba(0,0,0,0.06); }
-        .reading-bottom-left { display: flex; align-items: center; gap: 4px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; justify-content: center; }
-        .reading-bottom-left::-webkit-scrollbar { display: none; }
-        .reading-content { padding: 80px 0 96px; }
-        .reading-select { font-size: 0.75rem; font-weight: 700; color: #475569; background: transparent; border: none; outline: none; cursor: pointer; padding: 4px 2px; white-space: nowrap; }
-        .reading-select:hover { color: var(--jubly-purple); }
-        .reading-divider { width: 1px; height: 16px; background: #e2e8f0; flex-shrink: 0; }
-        .tier-pill { font-size: 0.6rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 8px; border-radius: 999px; background: #f5f3ff; color: var(--jubly-purple); border: 1px solid #ddd6fe; white-space: nowrap; flex-shrink: 0; }
-        .pb-icon-btn { display: flex; align-items: center; gap: 5px; padding: 6px 10px; border-radius: 8px; font-size: 0.72rem; font-weight: 700; color: #64748b; background: transparent; border: none; cursor: pointer; transition: background 0.15s, color 0.15s; white-space: nowrap; flex-shrink: 0; }
-        .pb-icon-btn:hover { background: #f1f5f9; color: #1e293b; }
-        .pb-icon-btn.active { background: var(--theme-accent-soft); color: var(--theme-accent); }
-        .page-progress { font-size: 0.7rem; font-weight: 700; color: #94a3b8; letter-spacing: 0.04em; white-space: nowrap; flex-shrink: 0; }
-        /* ── F3: Page advance pulse ── */
-        @keyframes pageAdvancePulse { 0%,100% { color: #94a3b8; } 50% { color: var(--theme-accent); } }
-        .page-advance-pulse { animation: pageAdvancePulse 0.5s ease; }
-        /* ── F4: Reading surface quality — responsive pages container ── */
-        #reading-mode #pages { max-width: 900px; margin: 0 auto; padding: 0 2rem; }
-        @media (max-width: 1024px) { #reading-mode #pages { padding: 0 1.5rem; } }
-        @media (max-width: 768px)  { #reading-mode #pages { padding: 0 1rem; } }
-        #session-complete { max-width: 900px; margin: 0 auto; padding: 0 2rem; }
-        .page-text { line-height: 1.75; font-size: 1rem; }
-
-        /* ── Reading mode page card styles (scoped; zero effect outside reading mode) ── */
-        #reading-mode .page {
-            background: var(--rm-card-bg); border: 1px solid var(--rm-border);
-            border-left: 4px solid var(--rm-accent); border-radius: 12px;
-            padding: 28px; margin-bottom: 24px; box-shadow: var(--rm-shadow);
-            position: relative; overflow: hidden;
-            animation: rmSlideIn 0.4s ease-out backwards;
-            transition: border-left-color 0.3s, box-shadow 0.3s;
-        }
-        @media (max-width: 1024px) { #reading-mode .page { padding: 22px 20px; } }
-        @media (max-width: 768px)  { #reading-mode .page { padding: 18px 16px; } }
-        #reading-mode .page.page-active {
-            border-left-width: 6px;
-            box-shadow: var(--rm-shadow), -6px 0 12px -2px rgba(99,68,245,0.20);
-        }
-        body.theme-explorer #reading-mode .page.page-active {
-            box-shadow: var(--rm-shadow), -6px 0 12px -2px rgba(193,125,74,0.35);
-        }
-        @keyframes rmSlideIn { from { opacity:0; transform:translateX(-16px); } to { opacity:1; transform:translateX(0); } }
-        #reading-mode .page-header {
-            font-size: 0.78rem; font-weight: 800; text-transform: uppercase;
-            letter-spacing: 0.06em; color: var(--rm-accent); margin-bottom: 12px;
-        }
-        #reading-mode .page-text {
-            background: var(--rm-page-bg); border-radius: 8px; padding: 16px 18px;
-            margin-bottom: 14px; line-height: 1.7; font-size: 1rem;
-            color: var(--rm-text); font-family: 'Lora', serif;
-            overflow-wrap: anywhere; word-break: break-word; overflow-x: hidden;
-            position: relative;
-        }
-        @media (max-width: 1024px) {
-            #reading-mode .page-text {
-                max-height: 48vh; overflow-y: auto; overscroll-behavior: contain;
-                font-size: 0.97rem;
-            }
-        }
-        @media (max-width: 768px) {
-            #reading-mode .page-text {
-                max-height: 40vh; overflow-y: auto; overscroll-behavior: contain;
-                font-size: 0.93rem; line-height: 1.65;
-            }
-        }
-        /* "Continue" affordance — fade + chevron at bottom of scrollable text.
-           .page-text-wrap is injected by window.__jublyAfterRender after render().
-           On desktop the wrapper is present but the fade is hidden. */
-        .page-text-wrap { position: relative; }
-        .page-text-wrap .page-text-fade {
-            position: absolute; bottom: 0; left: 0; right: 0; height: 48px;
-            background: linear-gradient(to bottom, transparent, var(--rm-page-bg));
-            border-radius: 0 0 8px 8px; pointer-events: none;
-            display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px;
-            transition: opacity 0.2s;
-        }
-        .page-text-wrap .page-text-fade::after {
-            content: '▾';
-            font-size: 0.9rem; color: var(--rm-accent); opacity: 0.7;
-            animation: fadeChevron 1.4s ease-in-out infinite;
-        }
-        .page-text-wrap.scrolled-to-end .page-text-fade { opacity: 0; pointer-events: none; }
-        @keyframes fadeChevron { 0%,100%{transform:translateY(0)} 50%{transform:translateY(3px)} }
-        @media (min-width: 1025px) {
-            .page-text-wrap .page-text-fade { display: none; }
-        }
-        #reading-mode .top-btn {
-            background: var(--rm-btn-bg); border: none; border-radius: 8px;
-            font-family: 'Inter', sans-serif; font-size: 0.82rem; font-weight: 700;
-            color: var(--rm-accent); cursor: pointer; padding: 8px 14px;
-            transition: background 0.15s, transform 0.12s;
-        }
-        #reading-mode .top-btn:hover  { background: var(--rm-btn-hover); transform: translateY(-1px); }
-        #reading-mode .top-btn:active { transform: translateY(0); }
-        #reading-mode .top-btn.tts-active { background: var(--rm-btn-hover); box-shadow: 0 0 0 2px var(--rm-accent); }
-        #reading-mode .hint-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
-        #reading-mode .page-actions { display: flex; justify-content: flex-end; gap: 8px; margin: 6px 0 4px; }
-        #reading-mode .anchors-row   { display: flex; justify-content: flex-end; margin: 4px 0 2px; }
-        #reading-mode .anchors-nav   { display: flex; justify-content: flex-end; margin: 4px 0 14px; }
-        /* TTS sentence highlight — --tts-alpha is set by tts.js at runtime */
-        #reading-mode .tts-sentence {
-            --tts-alpha: 0;
-            border-radius: 6px; padding: 0 2px;
-            background-color: rgba(255, 230, 120, var(--tts-alpha));
-            transition: background-color 220ms ease;
-        }
-        /* Only these pages need padding so they never slide behind footer */
-    </style>
+    <link rel="stylesheet" href="css/shell.css">
 </head>
 <body class="bg-white">
 
@@ -293,10 +33,10 @@
 <span id="musicIcon" style="display:none;" aria-hidden="true">🔇</span>
 
 <!-- Volume panel — positioned and shown by app's initUtilityPanels() -->
-<div id="volumePanel" style="display:none; position:fixed; z-index:1000; width:300px; max-width:92vw;">
-    <div class="glass-card p-4 shadow-xl">
+<div id="volumePanel" class="reading-settings-modal" style="display:none;" aria-hidden="true">
+    <div class="reading-settings-card glass-card p-4 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="reading-settings-title">
         <div class="flex items-center justify-between mb-3">
-            <span class="text-xs font-black uppercase tracking-wider text-slate-400">Sound &amp; Voice</span>
+            <span id="reading-settings-title" class="text-xs font-black uppercase tracking-wider text-slate-400">Sound &amp; Voice</span>
             <button type="button" id="volumeCloseBtn" style="background:#f1f5f9; border:none; border-radius:8px; width:28px; height:28px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#64748b; font-size:0.9rem; transition:background 0.15s;">✕</button>
         </div>
         <div class="flex gap-2 mb-3">
@@ -352,164 +92,145 @@
 </div>
 
 <!-- Import Book modal — full structure required by import.js -->
-<div id="importBookModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px); z-index:200; align-items:center; justify-content:center; padding:1.5rem;" aria-hidden="true">
-    <div style="background:white; border-radius:16px; max-width:780px; width:100%; max-height:88vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.2);">
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:1.25rem 1.5rem; border-bottom:1px solid #e2e8f0;">
-            <h2 id="importBookTitle" style="font-size:1.1rem; font-weight:800; margin:0;">➕ Import Document</h2>
-            <button id="importBookClose" type="button" style="padding:4px 10px; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; background:white; font-size:0.8rem;">✕</button>
+<div id="importBookModal" class="modal-overlay" style="display:none;" aria-hidden="true">
+    <div class="modal import-modal" role="dialog" aria-modal="true" aria-labelledby="importBookTitle">
+        <div class="modal-header">
+            <h2 id="importBookTitle">➕ Import Book</h2>
+            <button id="importBookClose" class="modal-close" type="button" aria-label="Close">✕</button>
         </div>
-        <div style="padding:1.5rem;">
-            <!-- Stage: Upload -->
+        <div class="modal-body">
+            <!-- Stage 1: Upload -->
             <div id="importStageUpload" class="import-stage">
-                <div id="importDropzone" role="button" tabindex="0" aria-label="Upload book or document" style="border:2px dashed #e2e8f0; border-radius:12px; padding:3rem 2rem; text-align:center; cursor:pointer; transition:border-color 0.15s;">
-                    <div style="font-size:2rem; margin-bottom:0.75rem;">📄</div>
-                    <div style="font-weight:700; color:#475569; margin-bottom:0.5rem;">Drag &amp; drop a book or document here</div>
-                    <button id="importBrowseBtn" type="button" style="margin-top:0.5rem; padding:8px 20px; background:var(--jubly-purple); color:white; border:none; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer;">Browse for File</button>
-                    <input id="importFileInput" class="import-file-input" type="file" accept=".epub,application/epub+zip,.pdf,.doc,.docx,.rtf,.odt,.txt,.html,.htm,.mobi,.fb2" style="display:none;">
+                <div class="import-dropzone" id="importDropzone" role="button" tabindex="0" aria-label="Upload book or document">
+                    <div class="text-4xl mb-3">📄</div>
+                    <div class="import-dropzone-title">Drag &amp; drop a book here</div>
+                    <div class="import-dropzone-sub">EPUB, PDF, DOCX, TXT and more</div>
+                    <button id="importBrowseBtn" type="button" class="btn-secondary mt-3">Browse for File</button>
+                    <input id="importFileInput" class="import-file-input" type="file" accept=".epub,application/epub+zip,.pdf,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.rtf,.odt,.txt,.text,.html,.htm,.mobi,.fb2" />
                 </div>
-                <p style="font-size:0.75rem; color:#94a3b8; margin-top:0.75rem; text-align:center;">Files are converted to EPUB before importing. Nothing is stored permanently on a server.</p>
-                <div id="importUploadStatus" style="display:none; margin-top:0.75rem; font-size:0.82rem; color:#475569;"></div>
-                <div style="margin-top:0.75rem;">
-                    <button id="importScanBtn" type="button" disabled style="padding:8px 20px; background:var(--jubly-purple); color:white; border:none; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; opacity:0.5;">Scan Contents</button>
+                <div class="import-hint">Files are processed locally. Nothing is stored permanently on a server.</div>
+                <div id="importUploadStatus" class="import-status" style="display:none;"></div>
+                <div class="import-actions mt-3">
+                    <button id="importScanBtn" type="button" class="btn-primary" disabled>Scan Contents</button>
                 </div>
             </div>
-            <!-- Stage: Pick chapters -->
+            <!-- Stage 2: Chapter picker -->
             <div id="importStagePick" class="import-stage" style="display:none;">
-                <div style="display:flex; gap:1rem; height:380px;">
-                    <div style="flex:1; display:flex; flex-direction:column; min-width:0;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-                            <span style="font-weight:800; font-size:0.82rem; color:#1e293b;">Contents</span>
-                            <div style="display:flex; gap:6px;">
-                                <button id="importSelectAll"  type="button" style="padding:3px 8px; font-size:0.7rem; border:1px solid #e2e8f0; border-radius:5px; cursor:pointer; background:white;">All</button>
-                                <button id="importSelectNone" type="button" style="padding:3px 8px; font-size:0.7rem; border:1px solid #e2e8f0; border-radius:5px; cursor:pointer; background:white;">None</button>
-                                <button id="importSelectMain" type="button" style="padding:3px 8px; font-size:0.7rem; border:1px solid #e2e8f0; border-radius:5px; cursor:pointer; background:white;">Main</button>
+                <div class="import-picker">
+                    <div class="import-picker-left">
+                        <div class="import-picker-head">
+                            <div class="import-picker-title">Contents</div>
+                            <div class="import-picker-tools">
+                                <button id="importSelectAll"  type="button" class="btn-mini">Select all</button>
+                                <button id="importSelectNone" type="button" class="btn-mini">Select none</button>
+                                <button id="importSelectMain" type="button" class="btn-mini">Main chapters</button>
                             </div>
                         </div>
-                        <input id="importFilter" type="text" placeholder="Filter sections…" style="width:100%; padding:6px 10px; font-size:0.82rem; border:2px solid #e2e8f0; border-radius:8px; margin-bottom:0.5rem; outline:none; box-sizing:border-box;">
-                        <div id="importTocList" style="flex:1; overflow-y:auto; border:2px solid #e2e8f0; border-radius:8px; padding:0.5rem;"></div>
-                        <!-- Advanced panel -->
-                        <div id="importAdvancedPanel" style="display:none; border:2px solid #e2e8f0; border-radius:8px; padding:0.75rem; margin-top:0.5rem; font-size:0.8rem;">
-                            <div style="font-weight:800; margin-bottom:0.5rem; color:#475569;">Advanced</div>
-                            <div style="display:flex; gap:8px; align-items:center; margin-bottom:0.4rem;">
-                                <label style="color:#475569;">Page size</label>
-                                <select id="importPageSize" style="padding:4px 8px; font-size:0.8rem; border:1px solid #e2e8f0; border-radius:6px; outline:none;">
-                                    <option value="1200">Small (~1200 chars)</option>
-                                    <option value="1600" selected>Medium (~1600 chars)</option>
-                                    <option value="2000">Large (~2000 chars)</option>
-                                </select>
+                        <input id="importFilter" class="import-filter" type="text" placeholder="Filter sections…" />
+                        <div id="importTocList" class="import-toc"></div>
+                        <div id="importAdvancedPanel" class="import-advanced-panel" style="display:none;">
+                            <div class="import-advanced-title">Advanced</div>
+                            <div class="import-advanced-body">
+                                <div class="import-adv-row">
+                                    <label for="importPageSize">Page size</label>
+                                    <select id="importPageSize"><option value="1200">Small (~1200 chars)</option><option value="1600" selected>Medium (~1600 chars)</option><option value="2000">Large (~2000 chars)</option></select>
+                                </div>
+                                <div class="import-adv-row"><label class="import-adv-check"><input id="importKeepParagraphs" type="checkbox" checked> Keep paragraphs together</label></div>
+                                <div class="import-adv-row"><label class="import-adv-check"><input id="importCleanupHeadings" type="checkbox" checked> Cleanup decorative headings</label></div>
                             </div>
-                            <label style="display:flex; gap:6px; align-items:center; color:#475569; margin-bottom:0.3rem; cursor:pointer;"><input id="importKeepParagraphs"  type="checkbox" checked> Keep paragraphs together</label>
-                            <label style="display:flex; gap:6px; align-items:center; color:#475569; cursor:pointer;"><input id="importCleanupHeadings" type="checkbox" checked> Cleanup headings</label>
                         </div>
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.5rem;">
-                            <span id="importSelectionMeta" style="font-size:0.75rem; color:#94a3b8;">Selected: 0</span>
-                            <div style="display:flex; gap:6px;">
-<button id="importAdvancedToggle" type="button" style="padding:5px 12px; font-size:0.75rem; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; background:white;">Advanced</button>
-                                <button id="importDoImport"       type="button" style="padding:5px 14px; font-size:0.75rem; background:var(--jubly-purple); color:white; border:none; border-radius:6px; cursor:pointer; font-weight:700;">Import selected</button>
+                        <div class="import-footerbar">
+                            <div id="importSelectionMeta" class="import-selection-meta">Selected: 0</div>
+                            <div style="display:flex;gap:6px;align-items:center;">
+                                <button id="importBackBtn"        type="button" class="btn-mini" style="display:none;">Back</button>
+                                <button id="importAdvancedToggle" type="button" class="btn-mini">Advanced</button>
+                                <button id="importDoImport"       type="button" class="btn-primary">Import selected</button>
                             </div>
                         </div>
                     </div>
-                    <div style="width:240px; flex-shrink:0; display:flex; flex-direction:column; min-width:0;">
-                        <div style="font-weight:800; font-size:0.82rem; color:#1e293b; margin-bottom:0.5rem;">Preview</div>
-                        <div id="importPreviewTitle" style="font-weight:700; font-size:0.82rem; color:#475569; margin-bottom:0.4rem;">Select a section</div>
-                        <div id="importPreviewBody"  style="flex:1; overflow-y:auto; font-size:0.8rem; color:#64748b; line-height:1.6; border:2px solid #e2e8f0; border-radius:8px; padding:0.75rem;">You'll see a short preview here.</div>
+                    <div class="import-picker-right">
+                        <div class="import-preview-head">Preview</div>
+                        <div id="importPreviewTitle" class="import-preview-title">Select a section</div>
+                        <div id="importPreviewBody"  class="import-preview-body">You'll see a short preview here.</div>
                     </div>
+                </div>
+                <div class="import-actions mt-3" style="justify-content:flex-end;">
+                    <div class="import-hint" style="margin:0;">Tip: Dedication/Index/etc. are unchecked by default.</div>
                 </div>
             </div>
-            <!-- Stage: Progress -->
-            <div id="importStageProgress" class="import-stage" style="display:none; text-align:center; padding:2rem 0;">
-                <div style="font-weight:800; font-size:1rem; color:#1e293b; margin-bottom:0.75rem;">Importing…</div>
-                <div id="importProgressMeta"   style="font-size:0.82rem; color:#64748b; margin-bottom:0.75rem;">Preparing</div>
-                <div style="background:#f1f5f9; border-radius:999px; height:8px; overflow:hidden; max-width:300px; margin:0 auto 0.75rem;">
-                    <div id="importProgressFill" style="height:100%; background:var(--jubly-purple); border-radius:999px; width:0%; transition:width 0.3s;"></div>
+            <!-- Stage 3: Progress -->
+            <div id="importStageProgress" class="import-stage" style="display:none;">
+                <div class="import-progress">
+                    <div class="import-progress-title">Importing…</div>
+                    <div id="importProgressMeta"   class="import-progress-meta">Preparing</div>
+                    <div class="import-progress-bar"><div id="importProgressFill" class="import-progress-fill" style="width:0%;"></div></div>
+                    <div id="importProgressDetail" class="import-progress-detail">0 pages created</div>
                 </div>
-                <div id="importProgressDetail" style="font-size:0.75rem; color:#94a3b8; margin-bottom:1rem;">0 pages created</div>
-                <button id="importDoneBtn" type="button" style="display:none; padding:8px 24px; background:var(--jubly-purple); color:white; border:none; border-radius:8px; font-weight:700; cursor:pointer;">Done</button>
+                <div class="import-actions mt-3" style="justify-content:flex-end;">
+                    <button id="importDoneBtn" type="button" class="btn-jubly px-6 py-2.5 rounded-xl font-bold text-sm" style="display:none;">Done</button>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Manage Library modal — content built dynamically by library.js -->
-<div id="manageLibraryModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px); z-index:200; align-items:center; justify-content:center; padding:1.5rem;" aria-hidden="true">
-    <div style="background:white; border-radius:16px; max-width:520px; width:100%; max-height:80vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.2);">
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:1.25rem 1.5rem; border-bottom:1px solid #e2e8f0;">
-            <h2 id="manageLibraryTitle" style="font-size:1.1rem; font-weight:800; margin:0;">🗂️ Library (This device)</h2>
-            <button id="manageLibraryClose" type="button" style="padding:4px 10px; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; background:white; font-size:0.8rem;">✕</button>
+<!-- Manage Library Modal — wired by library.js initManageLibraryModal() -->
+<div id="manageLibraryModal" class="modal-overlay" style="display:none;" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="manageLibraryTitle">
+        <div class="modal-header">
+            <h2 id="manageLibraryTitle">🗂️ Library (This device)</h2>
+            <button id="manageLibraryClose" class="modal-close" type="button" aria-label="Close">✕</button>
         </div>
-        <div style="padding:1.5rem;">
-            <p style="font-size:0.78rem; color:#94a3b8; margin-bottom:1rem;">Delete removes the book from this device. Your cloud books remain available.</p>
-            <div id="manageLibraryList" style="display:flex; flex-direction:column; gap:0.5rem;"></div>
+        <div class="modal-body">
+            <p class="import-hint" style="margin-top:0; margin-bottom:12px;">Delete removes the book from this device. Your work is not recoverable.</p>
+            <div id="manageLibraryList" class="library-list"></div>
         </div>
     </div>
 </div>
-
-<!-- Mobile hamburger menu — wired by app's initTopMenu() -->
-<div id="topMenu" style="display:none;" role="menu" aria-label="Top menu">
-    <button id="topMenuLibrary" type="button" role="menuitem">🗂️ Library</button>
-    <button id="topMenuImport"  type="button" role="menuitem">➕ Import</button>
-    <button id="topMenuHow"     type="button" role="menuitem">📘 How This Works</button>
-</div>
-<button id="topMenuBtn" type="button" style="display:none;" aria-haspopup="true" aria-expanded="false">☰</button>
 
 <!--
     Hidden app controls — wired by app JS, not directly visible in shell UI.
     These must exist in the DOM for the app to function correctly.
 -->
 <div id="app-hidden-controls" style="display:none; visibility:hidden; position:absolute; left:-9999px;" aria-hidden="true">
-    <!-- Source / tier / thesis -->
     <select id="importSource"><option value="book" selected>Book</option><option value="text">Text</option></select>
     <select id="tierSelect">
-        <option value="free"    selected>Basic</option>
+        <option value="free" selected>Basic</option>
         <option value="paid">Pro</option>
         <option value="premium">Premium</option>
     </select>
     <div id="thesisRow"><textarea id="thesisInput" placeholder="Enter your research thesis…"></textarea></div>
-    <!-- Book / chapter / page range -->
-    <div id="bookControls">
-        <select id="bookSelect"><option value="">Loading…</option></select>
-        <div id="chapterControls"><select id="chapterSelect"><option value="">Select a book first</option></select></div>
-        <div id="pageControls">
-            <select id="pageStart"><option value="">Loading…</option></select>
-            <select id="pageEnd"><option value="">Loading…</option></select>
-        </div>
+    <div id="pageControls">
+        <select id="pageStart"><option value="">Loading…</option></select>
+        <select id="pageEnd"><option value="">Loading…</option></select>
     </div>
-    <!-- Text paste input -->
     <div id="textControls"><textarea id="bulkInput" placeholder="Paste text here…"></textarea></div>
-    <!-- Comprehension knobs — hidden in reading mode by applyModeVisibility() -->
     <div class="goal-time-row">
         <input type="number" id="goalTimeInput" min="5">
         <input type="number" id="goalCharInput" min="10">
         <div class="difficulty-toggle">
-            <button id="difficultyEasy"   type="button" class="difficulty-btn" aria-pressed="false">Easy</button>
+            <button id="difficultyEasy" type="button" class="difficulty-btn" aria-pressed="false">Easy</button>
             <button id="difficultyMedium" type="button" class="difficulty-btn" aria-pressed="false">Medium</button>
-            <button id="difficultyHard"   type="button" class="difficulty-btn" aria-pressed="false">Hard</button>
+            <button id="difficultyHard" type="button" class="difficulty-btn" aria-pressed="false">Hard</button>
         </div>
     </div>
-    <!-- Page actions -->
     <div class="goal-actions">
-        <button id="loadBookSelection"   type="button">Load Pages</button>
+        <button id="loadBookSelection" type="button">Load Pages</button>
         <button id="appendBookSelection" type="button">Add Pages</button>
         <button type="button" onclick="if(typeof clearPages==='function')clearPages()">Clear Pages</button>
     </div>
-    <!-- How It Works trigger — wired by initHowItWorksModal() -->
     <button id="howItWorksBtn" type="button">How This Works</button>
-    <!-- Import / library triggers — wired by import.js / library.js -->
-    <button id="importBookBtn"   type="button">Import Book</button>
-    <button id="manageLibraryBtn" type="button">Manage Library</button>
-    <!-- Verdict / submit (comprehension mode) -->
     <div class="controls"><button class="submit-btn" id="submitBtn" onclick="if(typeof submitEvaluation==='function')submitEvaluation()" disabled>Submit for Evaluation</button></div>
     <div class="verdict-section" id="verdictSection" style="display:none;">
         <div class="tier-name" id="tierName"></div>
         <div class="score-breakdown">
             <div class="score-item"><div class="score-label">Completion</div><div class="score-value" id="completionScore">0</div></div>
             <div class="score-item"><div class="score-label">Depth</div><div class="score-value" id="depthScore">0</div></div>
-            <div class="score-item"><div class="score-label">Reflection</div><div class="score-value" id="reflectionScore">0</div></div>
+            <div class="score-item"><div class="score-label">Clarity</div><div class="score-value" id="clarityScore">0</div></div>
         </div>
-        <div class="total-score"><div class="score-label">Total Score</div><div class="score-value" id="totalScore">0</div></div>
+        <div class="verdict-text" id="verdictText"></div>
     </div>
 </div>
-<!-- ═══════════════════════════════════════════════════════════ -->
 
 <nav class="bg-white border-b border-slate-200 sticky top-0 z-50 px-6 py-3">
     <div class="max-w-5xl mx-auto flex justify-between items-center">
@@ -616,53 +337,55 @@
 </div>
 
 <!-- DASHBOARD -->
-<main id="dashboard" class="hidden-section py-12 px-6 with-sidebar">
-    <div class="max-w-4xl mx-auto">
+<main id="dashboard" class="hidden-section max-w-5xl mx-auto py-12 px-6 with-sidebar">
     <header class="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-4">
         <div>
             <h2 class="text-3xl font-extrabold text-slate-900 tracking-tight">Library</h2>
             <p id="dashboard-subtitle" class="text-slate-500 text-sm mt-1">You've completed <strong>2 sessions</strong> this week. Keep the momentum going.</p>
         </div>
-        <!-- Manage + New Document: proxy to hidden engine buttons -->
         <div class="flex items-center gap-2">
-            <button onclick="document.getElementById('manageLibraryBtn').click()" class="btn-ghost px-4 py-2.5 rounded-lg font-bold text-sm">🗂️ Manage</button>
-            <button onclick="document.getElementById('importBookBtn').click()" class="btn-jubly px-6 py-2.5 rounded-lg font-bold text-sm shadow-sm">+ New Document</button>
+            <button id="manageLibraryBtn" class="px-4 py-2.5 rounded-lg font-bold text-sm border-2 border-slate-200 text-slate-500 hover:bg-slate-50 transition">🗂️ Manage</button>
+            <button id="importBookBtn"    class="btn-jubly px-6 py-2.5 rounded-lg font-bold text-sm shadow-sm">+ Import Book</button>
         </div>
     </header>
 
-    <!-- POPULATED STATE — book rows injected dynamically by refreshShellLibrary() -->
+    <!-- POPULATED STATE — rows injected by refreshLibrary() after import -->
     <div id="library-populated" class="hidden-section">
-        <div id="library-rows" class="glass-card overflow-hidden shadow-sm">
+        <div class="glass-card overflow-hidden shadow-sm">
             <div class="bg-slate-50 border-b border-slate-200 px-6 py-3 flex text-xs font-bold text-slate-400 uppercase tracking-wider">
                 <div class="flex-grow">Document Name</div>
-                <div class="w-32">Status</div>
-                <div class="w-32">Time</div>
+                <div class="w-32 hidden md:block">Status</div>
+                <div class="w-32 hidden md:block">Time</div>
                 <div class="w-8"></div>
             </div>
-            <!-- rows appended by refreshShellLibrary() -->
+            <div id="library-rows"></div>
         </div>
     </div>
 
-    <!-- COLD-START EMPTY STATE (shown when no documents exist) -->
-    <div id="library-empty" class="hidden-section">
-        <div class="glass-card shadow-sm py-16 px-8 text-center">
+    <!-- COLD-START EMPTY STATE -->
+    <div id="library-empty">
+        <div id="empty-drop-zone"
+             class="glass-card shadow-sm py-16 px-8 text-center transition-all"
+             style="border:2px dashed transparent; cursor:pointer;"
+             onclick="document.getElementById('importBookBtn').click()"
+             ondragover="event.preventDefault(); this.style.borderColor='var(--jubly-purple)'; this.style.background='var(--jubly-light)';"
+             ondragleave="this.style.borderColor='transparent'; this.style.background='';"
+             ondrop="emptyStateDrop(event)">
             <div class="text-5xl mb-5">📭</div>
-            <h3 class="text-xl font-extrabold text-slate-800 mb-2">Start here — add your first document</h3>
-            <p class="text-slate-400 text-sm mb-8 max-w-sm mx-auto leading-relaxed">Upload a book, article, or PDF. jubly breaks it into pages, reads it aloud, and keeps your place.</p>
-            <button onclick="document.getElementById('importBookBtn').click()" class="btn-jubly px-8 py-3 rounded-xl font-bold text-sm inline-flex items-center gap-2">
+            <h3 class="text-xl font-extrabold text-slate-800 mb-2">Start here — import your first book</h3>
+            <p class="text-slate-400 text-sm mb-8 max-w-sm mx-auto leading-relaxed">Drop a file here, or click to browse. jubly breaks it into pages, reads it aloud, and keeps your place.</p>
+            <div class="inline-flex items-center gap-2 btn-jubly px-8 py-3 rounded-xl font-bold text-sm pointer-events-none">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                Upload your first document
-            </button>
-            <p class="text-xs text-slate-300 mt-6">PDF, EPUB, or DOCX · Up to 50MB</p>
+                Import your first book
+            </div>
+            <p class="text-xs text-slate-300 mt-6">EPUB, PDF, DOCX, TXT and more</p>
         </div>
     </div>
 
-    </div>
 </main>
 
 <!-- PROFILE PAGE -->
-<main id="profile-page" class="hidden-section py-12 px-6 with-sidebar">
-    <div class="max-w-4xl mx-auto">
+<main id="profile-page" class="hidden-section max-w-5xl mx-auto py-12 px-6 with-sidebar">
     <div class="flex flex-col md:flex-row gap-10">
         <aside class="w-full md:w-64 flex-shrink-0">
             <!-- Mobile only: nav shortcut (sidebar hidden on small screens) -->
@@ -684,9 +407,9 @@
                 </div>
                 <div class="flex gap-1.5 mb-5">
                     <!-- Tier buttons write to appTier and call applyTierAccess() for real feature gating -->
-                    <button class="tier-btn" onclick="setTier(this,'free')">Basic</button>
-                    <button class="tier-btn active" onclick="setTier(this,'paid')">Pro</button>
-                    <button class="tier-btn" onclick="setTier(this,'premium')">Premium</button>
+                    <button class="tier-btn" onclick="setTier(this)">Basic</button>
+                    <button class="tier-btn active" onclick="setTier(this)">Pro</button>
+                    <button class="tier-btn" onclick="setTier(this)">Premium</button>
                 </div>
                 <nav class="flex flex-col gap-1">
                     <button data-tab="tab-profile"       onclick="switchTab('tab-profile')"       class="profile-tab-btn active text-left px-4 py-2.5 rounded-lg font-semibold text-slate-600 hover:bg-slate-100 transition text-sm">Profile</button>
@@ -842,7 +565,6 @@
             </div>
         </section>
     </div>
-    </div>
 </main>
 
 <!-- READING MODE — Focus UI -->
@@ -850,30 +572,37 @@
 
     <!-- TOP BAR: session-defining — fades on idle. Left scrolls, Exit always pinned right -->
     <div id="reading-top-bar" class="reading-top-bar">
+        <div class="reading-top-spacer" aria-hidden="true"></div>
         <div class="reading-top-left">
-            <!-- modeSelect — wired by app's initModeSelector() → render() on change -->
+            <button id="openReadingSettings" type="button" class="pb-icon-btn reading-top-settings-btn" aria-label="Open reading settings" title="Reading settings"><svg class="settings-gear" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg><span class="settings-label">Settings</span></button>
+            <div class="reading-divider"></div>
+            <!-- modeSelect: wired by ui.js initModeSelector() -->
             <select id="modeSelect" class="reading-select">
-                <option value="reading"       selected>Mode: Reading</option>
-                <option value="comprehension"         >Mode: Comprehension</option>
-                <option value="research"      disabled>Mode: Research (soon)</option>
+                <option value="reading" selected>Mode: Reading</option>
+                <option value="comprehension">Mode: Comprehension</option>
+                <option value="research">Mode: Research</option>
             </select>
             <div class="reading-divider"></div>
-            <!-- shell-book-display — display mirror of #bookSelect (canonical in #app-hidden-controls).
-                 Wired to engine in Pass 2. -->
-            <select id="shell-book-display" class="reading-select">
-                <option value="">Book: Loading…</option>
-            </select>
+            <!-- bookControls wraps bookSelect — initBookImporter() wires to this div -->
+            <div id="bookControls" style="display:flex;align-items:center;">
+                <select id="bookSelect" class="reading-select">
+                    <option value="">Book: —</option>
+                </select>
+            </div>
             <div class="reading-divider"></div>
-            <!-- shell-chapter-display — display mirror of #chapterSelect (canonical in #app-hidden-controls).
-                 Wired to engine in Pass 2. -->
-            <select id="shell-chapter-display" class="reading-select">
-                <option value="">Ch: —</option>
-            </select>
+            <!-- chapterControls wraps chapterSelect — initBookImporter() wires to this div -->
+            <div id="chapterControls" style="display:flex;align-items:center;">
+                <select id="chapterSelect" class="reading-select">
+                    <option value="">Chapter: —</option>
+                </select>
+            </div>
             <div class="reading-divider"></div>
             <!-- Tier display — reflects current appTier; changed via Profile tier buttons -->
             <span id="reading-tier-pill" class="tier-pill">Basic</span>
         </div>
-        <button onclick="showSection('dashboard')" class="reading-top-exit text-xs font-bold text-slate-400 hover:text-slate-800 transition bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg">Exit ✕</button>
+        <div class="reading-top-actions">
+            <button onclick="showSection('dashboard')" class="reading-top-exit text-xs font-bold text-slate-400 hover:text-slate-800 transition bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg">Exit ✕</button>
+        </div>
     </div>
 
     <!-- CONTENT -->
@@ -886,7 +615,7 @@
             <div class="glass-card p-8 text-center" style="border-color: var(--theme-accent); border-width: 2px;">
                 <div class="text-3xl mb-3">✓</div>
                 <h3 class="font-extrabold text-lg text-slate-800 mb-1">Session complete</h3>
-                <p class="text-sm text-slate-400 mb-6">You read <strong id="stat-pages">0</strong> pages · <strong id="stat-minutes">~0</strong> min</p>
+                <p id="session-stats" class="text-sm text-slate-400 mb-6">You read <strong id="stat-pages">—</strong> pages · <strong id="stat-minutes">—</strong> min</p>
                 <button onclick="showSection('dashboard')" class="btn-theme px-8 py-3 rounded-xl font-bold text-sm">Back to Library →</button>
             </div>
         </div>
@@ -894,39 +623,27 @@
 
     <!-- BOTTOM PLAYBACK BAR: moment controls — always visible -->
     <div class="reading-bottom-bar">
+        <div class="reading-bottom-spacer" aria-hidden="true"></div>
         <div class="reading-bottom-left">
-            <!-- Speed — shell-controlled; applies to cloud audio + browser TTS via shellSetSpeed() -->
+            <!-- Speed — runtime-owned via setPlaybackRate() -->
             <select id="shell-speed" class="reading-select" onchange="shellSetSpeed(this.value)">
-                <option value="1.0">Speed: 1.0×</option>
+                <option value="1">Speed: 1.0×</option>
                 <option value="1.25">Speed: 1.25×</option>
                 <option value="1.5">Speed: 1.5×</option>
                 <option value="1.75">Speed: 1.75×</option>
-                <option value="2.0">Speed: 2.0×</option>
+                <option value="2">Speed: 2.0×</option>
             </select>
             <div class="reading-divider mx-1"></div>
-            <!-- Pause/Play — calls ttsPause() / ttsResume() from app's tts.js -->
-            <button id="shell-pause-btn" onclick="handlePausePlay()" class="pb-icon-btn" title="Pause narration">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-                Pause
+            <button id="shell-prev-btn" onclick="handleTtsStep(-1)" class="pb-icon-btn pb-step-btn" title="Previous skip" disabled aria-disabled="true"><span class="pb-step-glyph" aria-hidden="true">↺</span><span class="sr-only">Previous skip</span></button>
+            <button id="shell-play-btn" onclick="handlePausePlay()" class="pb-icon-btn" title="Play or pause narration">
+                <svg class="shell-play-icon" width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="8 5 19 12 8 19 8 5"/></svg>
+                <span id="shell-play-label">Play</span>
             </button>
-            <div class="reading-divider mx-1"></div>
-            <!-- Autoplay — syncs with #autoplayToggle checkbox (inside volumePanel) -->
-            <button id="shell-autoplay-btn" onclick="handleAutoplayToggle()" class="pb-icon-btn" title="Toggle autoplay between pages">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                Autoplay
-            </button>
-            <div class="reading-divider mx-1"></div>
-            <!-- Sound & Voice — id="musicToggle" wired directly by app's initUtilityPanels()
-                 to open the volumePanel; position measured from this element's real coords. -->
-            <button id="musicToggle" class="pb-icon-btn" title="Sound &amp; voice settings">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-                Sound &amp; Voice
-            </button>
+            <button id="shell-next-btn" onclick="handleTtsStep(1)" class="pb-icon-btn pb-step-btn" title="Next skip" disabled aria-disabled="true"><span class="pb-step-glyph" aria-hidden="true">↻</span><span class="sr-only">Next skip</span></button>
         </div>
-        <!-- Page progress — updated by updateProgressBar() -->
-        <div class="flex items-center gap-3 flex-shrink-0">
-            <span class="page-progress" id="shell-page-progress">Page — / —</span>
-            <div class="flex gap-1" id="shell-page-dots"></div>
+        <!-- Page progress — plain text counter, no dots -->
+        <div class="reading-bottom-actions flex-shrink-0">
+            <span class="page-progress" id="shell-page-progress">Page 1 / 1</span>
         </div>
     </div>
 
@@ -997,572 +714,7 @@
     </div>
 </div>
 
-<script>
-    // ============================================================
-    // jubly — Shell + App bridge
-    // ============================================================
-    //
-    // PERMANENT (shell navigation and app wiring):
-    //   showSection(), initFocusMode(), switchTab(), openModal(),
-    //   closeModal(), setTheme(), handleExplorerSwatch(),
-    //   setTier(), updateTierPill(), handlePausePlay(),
-    //   handleAutoplayToggle(), updateProgressBar(),
-    //   showSessionComplete(), renderDashboard(), startReading()
-    //
-    // SCAFFOLD (remove on real auth wiring):
-    //   login() — simulates auth; replace with Supabase auth flow
-    // ============================================================
-
-    // ── Section routing ──────────────────────────────────────────
-    const ALL_SECTIONS     = ['landing-page', 'login-page', 'dashboard', 'profile-page', 'reading-mode'];
-    const SIDEBAR_SECTIONS = ['dashboard', 'profile-page'];
-
-    function showSection(id) {
-        ALL_SECTIONS.forEach(s => document.getElementById(s).classList.add('hidden-section'));
-        document.getElementById(id).classList.remove('hidden-section');
-
-        const isPublic  = id === 'landing-page' || id === 'login-page';
-        const isLanding = id === 'landing-page';
-
-        document.getElementById('nav-user-controls').classList.toggle('hidden-section', isPublic);
-        const landingControls = document.getElementById('nav-landing-controls');
-        if (landingControls) landingControls.style.display = isLanding ? 'flex' : 'none';
-        const footer = document.getElementById('landing-footer');
-        if (footer) footer.classList.toggle('hidden-section', id !== 'landing-page');
-
-        // Sidebar
-        const sidebar = document.getElementById('app-sidebar');
-        if (sidebar) sidebar.style.display = SIDEBAR_SECTIONS.includes(id) ? 'flex' : 'none';
-        const sbLibrary = document.getElementById('sb-library');
-        if (sbLibrary) sbLibrary.classList.toggle('active', id === 'dashboard');
-
-        // Support footer: visible on logged-in non-reading pages only
-        const supportFooter = document.getElementById('supportFooter');
-        if (supportFooter) supportFooter.style.display = SIDEBAR_SECTIONS.includes(id) ? 'block' : 'none';
-
-        // Reading mode: hide nav for focus, restore on exit
-        const mainNav = document.querySelector('nav');
-        if (mainNav) mainNav.style.display = id === 'reading-mode' ? 'none' : '';
-        if (id === 'reading-mode') {
-            initFocusMode();
-            syncShellDisplays();
-            updateProgressBar();
-        }
-        if (id === 'dashboard') {
-            // Refresh library list whenever user navigates to dashboard
-            try { refreshShellLibrary(); } catch(_) {}
-        }
-
-        window.scrollTo(0, 0);
-    }
-
-    // ── Focus mode fade ──────────────────────────────────────────
-    let focusModeTimer   = null;
-    let focusModeHandler = null;
-
-    function initFocusMode() {
-        // Restore persisted TTS speed into the dropdown and the audio element.
-        try {
-            const savedSpeed = localStorage.getItem('rc_tts_speed');
-            if (savedSpeed) {
-                const sel = document.getElementById('shell-speed');
-                if (sel) sel.value = savedSpeed;
-                shellSetSpeed(savedSpeed);
-            }
-        } catch(_) {}
-
-        const bar = document.getElementById('reading-top-bar');
-        const rm  = document.getElementById('reading-mode');
-        if (!bar || !rm) return;
-        if (focusModeHandler) {
-            ['mousemove', 'scroll', 'touchstart', 'click'].forEach(ev =>
-                rm.removeEventListener(ev, focusModeHandler));
-        }
-        bar.classList.remove('faded');
-        function resetFade() {
-            bar.classList.remove('faded');
-            clearTimeout(focusModeTimer);
-            focusModeTimer = setTimeout(() => bar.classList.add('faded'), 3000);
-        }
-        focusModeHandler = resetFade;
-        resetFade();
-        ['mousemove', 'scroll', 'touchstart', 'click'].forEach(ev =>
-            rm.addEventListener(ev, resetFade, { passive: true }));
-        bar.addEventListener('mouseenter', () => { bar.classList.remove('faded'); clearTimeout(focusModeTimer); });
-        bar.addEventListener('mouseleave', resetFade);
-    }
-
-    // ── Modals ───────────────────────────────────────────────────
-    function openModal(id)  { document.getElementById(id).classList.remove('hidden-section'); }
-    function closeModal(id) { document.getElementById(id).classList.add('hidden-section'); }
-
-    // ── Auth (SCAFFOLD) ──────────────────────────────────────────
-    // SCAFFOLD: replace login() with real Supabase auth flow
-    function login() {
-        showSection('profile-page');
-        // Use real pages array once app is loaded; fall back to mock state
-        const hasPages = (typeof pages !== 'undefined' && Array.isArray(pages) && pages.length > 0);
-        renderDashboard(hasPages);
-    }
-
-    // ── Profile tabs ─────────────────────────────────────────────
-    function switchTab(tabId) {
-        document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden-section'));
-        document.getElementById(tabId).classList.remove('hidden-section');
-        document.querySelectorAll('.profile-tab-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.tab === tabId);
-        });
-    }
-
-    // ── Tier — bridges profile buttons to app's appTier ──────────
-    // tierMap: shell display → app internal value
-    const TIER_MAP = { 'free': 'Basic', 'paid': 'Pro', 'premium': 'Premium' };
-
-    function setTier(btn, tierValue) {
-        // Update profile button active state
-        document.querySelectorAll('.tier-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-
-        // Write to app's appTier variable and hidden tierSelect
-        if (typeof appTier !== 'undefined') {
-            appTier = tierValue;
-            try { localStorage.setItem('rc_app_tier', tierValue); } catch(_) {}
-            try { if (typeof tokenReset === 'function') tokenReset(); } catch(_) {}
-            try { if (typeof applyTierAccess === 'function') applyTierAccess(); } catch(_) {}
-        }
-        const sel = document.getElementById('tierSelect');
-        if (sel) { sel.value = tierValue; sel.dispatchEvent(new Event('change')); }
-
-        // Update Explorer swatch lock state and reading tier pill
-        updateExplorerSwatchState();
-        updateTierPill();
-    }
-
-    function updateTierPill() {
-        const pill  = document.getElementById('reading-tier-pill');
-        const tier  = (typeof appTier !== 'undefined') ? appTier : 'free';
-        if (pill) pill.textContent = TIER_MAP[tier] || 'Basic';
-    }
-
-    // ── Theme ────────────────────────────────────────────────────
-    function setTheme(theme, btn) {
-        document.body.classList.remove('theme-green', 'theme-purple', 'theme-explorer');
-        if (theme !== 'default') document.body.classList.add('theme-' + theme);
-        document.querySelectorAll('#theme-swatches .theme-swatch').forEach(s => s.classList.remove('selected'));
-        btn.querySelector('.theme-swatch').classList.add('selected');
-    }
-
-    // Explorer swatch: unlock for paid/premium, gate for free
-    function handleExplorerSwatch() {
-        const tier = (typeof appTier !== 'undefined') ? appTier : 'free';
-        if (tier === 'free') {
-            openModal('pricing-modal');
-        } else {
-            setTheme('explorer', document.getElementById('explorer-swatch-btn'));
-        }
-    }
-
-    function updateExplorerSwatchState() {
-        const btn  = document.getElementById('explorer-swatch-btn');
-        const tier = (typeof appTier !== 'undefined') ? appTier : 'free';
-        if (!btn) return;
-        if (tier === 'free') {
-            btn.classList.add('explorer-locked');
-            btn.title = 'Upgrade to Pro+ to unlock Explorer theme';
-            btn.querySelector('.theme-swatch').style.opacity = '0.6';
-        } else {
-            btn.classList.remove('explorer-locked');
-            btn.title = 'Explorer theme';
-            btn.querySelector('.theme-swatch').style.opacity = '1';
-        }
-    }
-
-    function promptExplorerUpgrade() { openModal('pricing-modal'); }
-
-    // ── F1: TTS Speed Control (shell-only) ────────────────────────
-    // Patches window.speechSynthesis.speak once so every browser TTS utterance
-    // inherits the saved rate without touching tts.js.
-    (function patchSpeechSynthesisRate() {
-        if (!window.speechSynthesis) return;
-        const _origSpeak = window.speechSynthesis.speak.bind(window.speechSynthesis);
-        window.speechSynthesis.speak = function(utter) {
-            try { utter.rate = parseFloat(localStorage.getItem('rc_tts_speed') || '1') || 1; } catch(_) {}
-            return _origSpeak(utter);
-        };
-    })();
-
-    function shellSetSpeed(value) {
-        const rate = parseFloat(value) || 1;
-        try { localStorage.setItem('rc_tts_speed', String(rate)); } catch(_) {}
-        // Apply immediately to the engine's shared cloud audio element.
-        try { if (typeof TTS_AUDIO_ELEMENT !== 'undefined') TTS_AUDIO_ELEMENT.playbackRate = rate; } catch(_) {}
-    }
-
-    // ── Bottom bar controls ──────────────────────────────────────
-
-    // Pause/Play — calls app's tts.js functions if available.
-    // Guards against first-use case where TTS was never started (TTS_STATE.activeKey is null).
-    function handlePausePlay() {
-        const btn = document.getElementById('shell-pause-btn');
-        if (!btn) return;
-        try {
-            const isActive    = (typeof TTS_STATE !== 'undefined') && !!TTS_STATE.activeKey;
-            const isPausedView = btn.classList.contains('active'); // button shows "Play" = user paused
-            if (!isActive && !isPausedView) {
-                // TTS was never started — do nothing (avoids spurious ttsResume calls)
-                return;
-            }
-            if (isPausedView) {
-                // Resume from pause
-                btn.classList.remove('active');
-                btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause';
-                if (typeof ttsResume === 'function') ttsResume();
-            } else {
-                // Pause active TTS
-                btn.classList.add('active');
-                btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Play';
-                if (typeof ttsPause === 'function') ttsPause();
-            }
-        } catch(_) {}
-    }
-
-    // Autoplay button — syncs with #autoplayToggle checkbox inside volumePanel
-    function handleAutoplayToggle() {
-        const checkbox = document.getElementById('autoplayToggle');
-        const btn      = document.getElementById('shell-autoplay-btn');
-        if (!checkbox || !btn) return;
-        checkbox.checked = !checkbox.checked;
-        checkbox.dispatchEvent(new Event('change'));
-        btn.classList.toggle('active', checkbox.checked);
-    }
-
-    // Keep autoplay button in sync if checkbox changes (e.g. via volume panel)
-    document.addEventListener('DOMContentLoaded', () => {
-        const checkbox = document.getElementById('autoplayToggle');
-        const btn      = document.getElementById('shell-autoplay-btn');
-        if (checkbox && btn) {
-            checkbox.addEventListener('change', () => {
-                btn.classList.toggle('active', checkbox.checked);
-            });
-        }
-        // Sync tier pill and explorer swatch once app has loaded
-        setTimeout(() => { updateTierPill(); updateExplorerSwatchState(); }, 500);
-    });
-
-    // ── Dashboard state ──────────────────────────────────────────
-    // ── Library list — driven by engine's #bookSelect ────────────
-    // Called whenever bookSelect options change (MutationObserver) or after boot settle.
-    // Reads the engine's canonical select, renders one row per book, wires each row to
-    // set bookSelect.value and open the preview modal before reading starts.
-    function refreshShellLibrary() {
-        const bookSel   = document.getElementById('bookSelect');
-        const populated = document.getElementById('library-populated');
-        const empty     = document.getElementById('library-empty');
-        const table     = document.getElementById('library-rows');
-        if (!populated || !empty || !table) return;
-
-        // Collect all books (skip the blank placeholder option)
-        const books = [];
-        if (bookSel) {
-            bookSel.querySelectorAll('option').forEach(opt => {
-                if (opt.value) books.push({ value: opt.value, title: opt.textContent.trim() });
-            });
-        }
-
-        const hasBooks = books.length > 0;
-        populated.classList.toggle('hidden-section', !hasBooks);
-        empty.classList.toggle('hidden-section', hasBooks);
-
-        const subtitle = document.getElementById('dashboard-subtitle');
-        if (subtitle) subtitle.style.display = hasBooks ? '' : 'none';
-
-        if (!hasBooks) return;
-
-        // Preserve header row, clear book rows, re-append
-        const header = table.querySelector('.bg-slate-50');
-        table.innerHTML = '';
-        if (header) table.appendChild(header);
-
-        books.forEach(book => {
-            const row = document.createElement('div');
-            row.className = 'px-6 py-4 flex items-center hover:bg-slate-50 cursor-pointer transition-colors border-b border-slate-100';
-            row.addEventListener('click', () => {
-                // Set engine canonical select to this book, let engine load it
-                const bs = document.getElementById('bookSelect');
-                if (bs && bs.value !== book.value) {
-                    bs.value = book.value;
-                    bs.dispatchEvent(new Event('change'));
-                }
-                openPreview(book.title);
-            });
-
-            const nameDiv = document.createElement('div');
-            nameDiv.className = 'flex-grow flex items-center gap-3';
-
-            const icon = document.createElement('div');
-            icon.className = 'w-8 h-8 rounded flex items-center justify-center text-lg bg-accent-soft text-accent';
-            icon.textContent = '📄';
-
-            const txtDiv = document.createElement('div');
-            const pTitle = document.createElement('p');
-            pTitle.className = 'font-semibold text-slate-800 text-sm';
-            pTitle.textContent = book.title;
-            const pSub = document.createElement('p');
-            pSub.className = 'text-xs text-slate-400';
-            pSub.textContent = 'Saved on this device';
-            txtDiv.appendChild(pTitle);
-            txtDiv.appendChild(pSub);
-            nameDiv.appendChild(icon);
-            nameDiv.appendChild(txtDiv);
-
-            const statusDiv = document.createElement('div');
-            statusDiv.className = 'w-32';
-            statusDiv.innerHTML = '<span class="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-bold">Ready</span>';
-
-            const timeDiv = document.createElement('div');
-            timeDiv.className = 'w-32 text-sm text-slate-400 font-medium';
-            timeDiv.textContent = '—';
-
-            const arrow = document.createElement('div');
-            arrow.className = 'w-8 text-slate-300';
-            arrow.textContent = '→';
-
-            row.appendChild(nameDiv);
-            row.appendChild(statusDiv);
-            row.appendChild(timeDiv);
-            row.appendChild(arrow);
-            table.appendChild(row);
-        });
-    }
-
-    // hasDocuments: legacy parameter kept for compatibility; actual state derived from bookSelect
-    function renderDashboard(hasDocuments) {
-        // Defer slightly so engine's bookSelect population has time to settle
-        setTimeout(refreshShellLibrary, 50);
-    }
-
-    // ── F7: Reading time tracker (shell-only) ────────────────────
-    let _readingStartTime = null;
-
-    // ── Reading session ──────────────────────────────────────────
-    function openPreview(title) {
-        document.getElementById('preview-title').innerText = title;
-        openModal('preview-modal');
-    }
-
-    function startReading() {
-        closeModal('preview-modal');
-        _readingStartTime = Date.now();
-        // Trigger engine's load flow — reads canonical hidden selects, calls render() internally.
-        // Fall back to render() directly only if loadBookSelection is absent.
-        const loadBtn = document.getElementById('loadBookSelection');
-        if (loadBtn) {
-            loadBtn.click();
-        } else {
-            try { if (typeof render === 'function') render(); } catch(_) {}
-        }
-        showSection('reading-mode');
-        const signal = document.getElementById('session-complete');
-        if (signal) signal.classList.add('hidden-section');
-        updateProgressBar();
-    }
-
-    // Session complete signal — uses real pages[] and shell reading timer
-    function showSessionComplete() {
-        const signal = document.getElementById('session-complete');
-        if (!signal) return;
-        const pageCount = (typeof pages !== 'undefined' && Array.isArray(pages)) ? pages.length : 0;
-        const elapsed   = _readingStartTime ? Date.now() - _readingStartTime : 0;
-        const mins      = elapsed > 0 ? Math.max(1, Math.round(elapsed / 60000)) : Math.max(1, Math.round(pageCount * 1.5));
-        document.getElementById('stat-pages').textContent   = pageCount;
-        document.getElementById('stat-minutes').textContent = mins;
-        signal.classList.remove('hidden-section');
-        signal.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-
-    // Page progress bar — uses real pages[] from app state
-    function updateProgressBar() {
-        const prog  = document.getElementById('shell-page-progress');
-        const dots  = document.getElementById('shell-page-dots');
-        const total = (typeof pages !== 'undefined' && Array.isArray(pages)) ? pages.length : 0;
-        const cur   = (typeof lastFocusedPageIndex === 'number' && lastFocusedPageIndex >= 0)
-                        ? lastFocusedPageIndex : 0;
-        if (prog) prog.textContent = total > 0 ? `Page ${cur + 1} / ${total}` : 'Page — / —';
-        if (dots && total > 0) {
-            dots.innerHTML = Array.from({ length: Math.min(total, 20) }, (_, i) =>
-                `<div class="w-2 h-2 rounded-full" style="background:${i <= cur ? 'var(--theme-accent)' : '#e2e8f0'}"></div>`
-            ).join('');
-        }
-    }
-
-    // ── App event bridge ─────────────────────────────────────────
-    // Called by app's goToNext() / nextCard equivalent at session end
-    // The app will call showSessionComplete() directly once wired;
-    // this is a fallback shim for the transition period.
-    window.jublySessionComplete = showSessionComplete;
-
-    // ── Pass 2 — Functional Wiring ───────────────────────────────
-    //
-    // BOOK / CHAPTER DISPLAY MIRRORS
-    // #bookSelect and #chapterSelect are canonical engine selects, hidden in
-    // #app-hidden-controls. The visible reading-bar selects (shell-book-display,
-    // shell-chapter-display) mirror their state in both directions:
-    //   Engine → Shell: MutationObserver copies options when engine populates them.
-    //   Shell → Engine: change event copies value and re-fires engine's own handler.
-    //
-    // EXIT READING CLEANUP
-    // The Exit button's inline onclick calls showSection('dashboard'). This listener
-    // fires on the same click to stop TTS and autoplay before the view switches.
-    // ─────────────────────────────────────────────────────────────
-
-    function _mirrorSelect(src, dst) {
-        if (!src || !dst) return;
-        dst.innerHTML = src.innerHTML;
-        dst.value     = src.value;
-    }
-
-    // Called after engine boot to sync initial state into shell displays.
-    function syncShellDisplays() {
-        _mirrorSelect(
-            document.getElementById('bookSelect'),
-            document.getElementById('shell-book-display')
-        );
-        _mirrorSelect(
-            document.getElementById('chapterSelect'),
-            document.getElementById('shell-chapter-display')
-        );
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-        const bookSrc = document.getElementById('bookSelect');
-        const bookDst = document.getElementById('shell-book-display');
-        const chSrc   = document.getElementById('chapterSelect');
-        const chDst   = document.getElementById('shell-chapter-display');
-
-        // Shell display → engine select: user picks from visible dropdown.
-        // Copy value to hidden canonical select and fire engine's own change handler.
-        if (bookSrc && bookDst) {
-            bookDst.addEventListener('change', () => {
-                bookSrc.value = bookDst.value;
-                bookSrc.dispatchEvent(new Event('change'));
-            });
-        }
-        if (chSrc && chDst) {
-            chDst.addEventListener('change', () => {
-                chSrc.value = chDst.value;
-                chSrc.dispatchEvent(new Event('change'));
-            });
-        }
-
-        // Engine select → shell display: engine populates options asynchronously
-        // after its dynamic script chain completes. MutationObserver catches every
-        // childList mutation (option add/remove) and keeps shell in sync.
-        // Also refreshes the visible library list whenever the book catalogue changes
-        // (e.g. after a successful import via window.__rcRefreshBookSelect).
-        if (bookSrc && bookDst) {
-            new MutationObserver(() => {
-                bookDst.innerHTML = bookSrc.innerHTML;
-                bookDst.value     = bookSrc.value;
-                refreshShellLibrary();
-            }).observe(bookSrc, { childList: true });
-        }
-        if (chSrc && chDst) {
-            new MutationObserver(() => _mirrorSelect(chSrc, chDst))
-                .observe(chSrc, { childList: true });
-        }
-
-        // After a successful import the engine fires Done; refresh shell library explicitly.
-        const importDoneBtn = document.getElementById('importDoneBtn');
-        if (importDoneBtn) {
-            importDoneBtn.addEventListener('click', () => refreshShellLibrary());
-        }
-
-        // Keep progress bar in sync as the user scrolls or focuses pages.
-        const pagesEl = document.getElementById('pages');
-        if (pagesEl) {
-            pagesEl.addEventListener('scroll',  () => updateProgressBar());
-            pagesEl.addEventListener('focusin', () => updateProgressBar());
-        }
-
-        // F2: Autoplay countdown badge — polls AUTOPLAY_STATE every 300ms, shows badge on button.
-        let _countdownInterval = null;
-        function _startCountdownPoll() {
-            if (_countdownInterval) return;
-            _countdownInterval = setInterval(() => {
-                const btn = document.getElementById('shell-autoplay-btn');
-                if (!btn) return;
-                let badge = document.getElementById('shell-countdown-badge');
-                try {
-                    const idx = (typeof AUTOPLAY_STATE !== 'undefined') ? AUTOPLAY_STATE.countdownPageIndex : -1;
-                    const sec = (typeof AUTOPLAY_STATE !== 'undefined') ? AUTOPLAY_STATE.countdownSec      : 0;
-                    if (idx !== -1 && sec > 0) {
-                        if (!badge) {
-                            badge = document.createElement('span');
-                            badge.id = 'shell-countdown-badge';
-                            badge.style.cssText = 'margin-left:4px; font-size:0.65rem; font-weight:800; color:var(--theme-accent); background:var(--theme-accent-soft); border-radius:999px; padding:1px 6px;';
-                            btn.appendChild(badge);
-                        }
-                        badge.textContent = `Next: ${sec}…`;
-                    } else if (badge) {
-                        badge.remove();
-                    }
-                } catch(_) { if (badge) badge.remove(); }
-            }, 300);
-        }
-        _startCountdownPoll();
-
-        // F3: Page advance pulse + end-of-book detection via MutationObserver.
-        let _sessionCompletePending = false;
-        const _pagesContainer = document.getElementById('pages');
-        if (_pagesContainer) {
-            new MutationObserver(() => {
-                // Pulse progress indicator on any page advance.
-                const prog = document.getElementById('shell-page-progress');
-                if (prog && !prog.classList.contains('page-advance-pulse')) {
-                    prog.classList.add('page-advance-pulse');
-                    prog.addEventListener('animationend', () => prog.classList.remove('page-advance-pulse'), { once: true });
-                }
-                // Detect last page reached: active page is the last one.
-                try {
-                    const total = (typeof pages !== 'undefined' && Array.isArray(pages)) ? pages.length : 0;
-                    if (total < 1) return;
-                    const activeEl = _pagesContainer.querySelector('.page-active');
-                    if (!activeEl) return;
-                    const allPages = Array.from(_pagesContainer.querySelectorAll('.page'));
-                    const activeIdx = allPages.indexOf(activeEl);
-                    if (activeIdx === total - 1 && !_sessionCompletePending) {
-                        _sessionCompletePending = true;
-                        // 500ms debounce: wait to confirm no further page-active transition follows.
-                        setTimeout(() => {
-                            _sessionCompletePending = false;
-                            const stillActive = _pagesContainer.querySelector('.page-active');
-                            const stillLast   = stillActive && Array.from(_pagesContainer.querySelectorAll('.page')).indexOf(stillActive) === total - 1;
-                            const noCountdown = (typeof AUTOPLAY_STATE === 'undefined') || AUTOPLAY_STATE.countdownPageIndex === -1;
-                            if (stillLast && noCountdown) showSessionComplete();
-                        }, 500);
-                    }
-                } catch(_) {}
-            }, { attributes: true, subtree: true, attributeFilter: ['class'] });
-        }
-
-        // Exit reading: stop TTS, cancel autoplay, clear countdown poll before navigating away.
-        // The button's inline onclick still fires (showSection) — this just cleans up first.
-        const exitBtn = document.querySelector('.reading-top-exit');
-        if (exitBtn) {
-            exitBtn.addEventListener('click', () => {
-                try { if (typeof ttsStop === 'function') ttsStop(); } catch(_) {}
-                try { if (typeof ttsAutoplayCancelCountdown === 'function') ttsAutoplayCancelCountdown(); } catch(_) {}
-                if (_countdownInterval) { clearInterval(_countdownInterval); _countdownInterval = null; }
-                const badge = document.getElementById('shell-countdown-badge');
-                if (badge) badge.remove();
-            });
-        }
-    });
-
-    // Engine scripts load dynamically after window.load; sync displays and library once boot settles.
-    window.addEventListener('load', () => setTimeout(() => { syncShellDisplays(); refreshShellLibrary(); }, 350));
-
-</script>
+<script src="js/shell.js"></script>
 
 <!-- ── App scripts ──────────────────────────────────────────────
      Load order matches original index.html exactly.

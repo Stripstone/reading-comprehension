@@ -144,7 +144,7 @@
     }
 
     // Volume panel wiring
-    if (musicToggleBtn && volumePanel) {
+    if (volumePanel) {
       const sliders = {
         voice: document.getElementById('vol_voice'),
         music: document.getElementById('vol_music'),
@@ -171,6 +171,7 @@
         const vv = String(v || '').toLowerCase() === 'male' ? 'male' : 'female';
         TTS_STATE.voiceVariant = vv;
         try { localStorage.setItem('rc_voice_variant', vv); } catch (_) {}
+        try { window.__rcSessionVoiceVariant = vv; } catch (_) {}
       }
 
       // Voice selects — two dropdowns, one per gender.
@@ -193,8 +194,8 @@
         if (!selectEl) return;
         const isFree      = typeof appTier !== 'undefined' && appTier === 'free';
         const isActive    = String(TTS_STATE?.voiceVariant || 'female').toLowerCase() === gender;
-        const savedBrowser = (() => { try { return localStorage.getItem('rc_browser_voice') || ''; } catch(_) { return ''; } })();
-        const savedVariant = (() => { try { return localStorage.getItem('rc_voice_variant') || 'female'; } catch(_) { return 'female'; } })();
+        const savedBrowser = (() => { try { return (typeof getStoredSelectedVoice === 'function' ? getStoredSelectedVoice() : (window.__rcSessionVoiceSelection || '')) || ''; } catch(_) { return ''; } })();
+        const savedVariant = (() => { try { return String(TTS_STATE?.voiceVariant || window.__rcSessionVoiceVariant || 'female'); } catch(_) { return 'female'; } })();
         const isThisVoiceActive = isActive && (savedVariant === gender);
 
         const allVoices = (window.speechSynthesis?.getVoices() || [])
@@ -302,10 +303,10 @@
           setVoiceVariant(gender);
           if (val.startsWith('polly:') || val.startsWith('cloud:')) {
             // Cloud voice — store the full value so pollyFetchUrl can forward the model id
-            try { localStorage.setItem('rc_browser_voice', val); } catch(_) {}
+            try { window.__rcSessionVoiceSelection = val; } catch(_) {}
           } else {
             // Browser voice
-            try { localStorage.setItem('rc_browser_voice', val); } catch(_) {}
+            try { window.__rcSessionVoiceSelection = val; } catch(_) {}
           }
           populateBrowserVoicePicker();
         });
@@ -313,6 +314,41 @@
 
       handleVoiceSelectChange(voiceFemaleSelect, 'female');
       handleVoiceSelectChange(voiceMaleSelect,   'male');
+
+      function openReadingSettingsModal() {
+        syncSlidersFromState();
+        populateBrowserVoicePicker();
+        // PATCH(modal-visibility): style.display is the sole visibility authority.
+        // hidden-section class manipulation removed — it caused divergence when
+        // any code path set only one of the two systems.
+        try {
+          volumePanel.setAttribute('aria-hidden', 'false');
+          volumePanel.style.visibility = '';
+          volumePanel.style.display = 'flex';
+          volumePanel.style.top = '';
+          volumePanel.style.left = '';
+        } catch (_) {}
+        return true;
+      }
+
+      function closeReadingSettingsModal() {
+        // PATCH(modal-visibility): style.display only — no hidden-section toggle.
+        volumePanel.style.display = 'none';
+        volumePanel.setAttribute('aria-hidden', 'true');
+        return false;
+      }
+
+      function toggleReadingSettingsModal() {
+        const open = volumePanel.style.display === 'flex';
+        hideAllPanels();
+        if (open) return false;
+        return openReadingSettingsModal();
+      }
+
+      window.openReadingSettingsModal = openReadingSettingsModal;
+      window.closeReadingSettingsModal = closeReadingSettingsModal;
+      window.toggleReadingSettingsModal = toggleReadingSettingsModal;
+      window.isReadingSettingsModalOpen = () => volumePanel.style.display === 'flex';
 
       // Repopulate when voices load asynchronously (Chrome/Edge)
       if (typeof window !== 'undefined' && window.speechSynthesis) {
@@ -324,42 +360,30 @@
         el.addEventListener('input', () => setVolume(key, el.value));
       });
 
-      // Open the volume panel from the existing music button (no extra top-controls button).
-      musicToggleBtn.addEventListener('click', (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
+      // Open the volume panel from the existing music button or top-bar Settings button.
+      if (musicToggleBtn) {
+        musicToggleBtn.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          toggleReadingSettingsModal();
+        });
+      }
 
-        const isOpen = volumePanel.style.display === 'block';
-        hideAllPanels();
-        if (!isOpen) {
-          syncSlidersFromState();
-          populateBrowserVoicePicker();
-          // Position the panel just ABOVE the music toggle so it never drops below the fold.
-          // (iPad cursor can't reach off-page dropdowns.)
-          try {
-            // Temporarily show invisibly so we can measure height.
-            volumePanel.style.visibility = 'hidden';
-            volumePanel.style.display = 'block';
+      const topSettingsBtn = document.getElementById('openReadingSettings');
+      if (topSettingsBtn) {
+        topSettingsBtn.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          toggleReadingSettingsModal();
+        });
+      }
 
-            const rect = musicToggleBtn.getBoundingClientRect();
-            const panelW = volumePanel.offsetWidth;
-            const panelH = volumePanel.offsetHeight;
-
-            const gap = 10;
-            const top = Math.max(10, rect.top - panelH - gap);
-            const left = Math.min(
-              window.innerWidth - panelW - 10,
-              Math.max(10, rect.right - panelW)
-            );
-
-            volumePanel.style.top = `${top}px`;
-            volumePanel.style.left = `${left}px`;
-          } catch (_) {}
-          volumePanel.style.visibility = 'visible';
-        }
-      });
-
-      if (volumeCloseBtn) volumeCloseBtn.addEventListener('click', () => (volumePanel.style.display = 'none'));
+      if (volumeCloseBtn) volumeCloseBtn.addEventListener('click', () => closeReadingSettingsModal());
+      if (volumePanel) {
+        volumePanel.addEventListener('click', (ev) => {
+          if (ev.target === volumePanel) closeReadingSettingsModal();
+        });
+      }
       if (toggleMusicBtn) toggleMusicBtn.addEventListener('click', () => window.toggleMusic && window.toggleMusic());
     }
 
@@ -368,31 +392,20 @@
       if (!debugEnabled) return;
       if (diagBtn && diagPanel && diagText) return;
 
-      // Button: match the music button styling and sit beside it.
+      // Button: fixed top-left everywhere by request.
       diagBtn = document.createElement('button');
       diagBtn.id = 'diagnosticsToggle';
       diagBtn.type = 'button';
       diagBtn.className = 'music-button';
       diagBtn.title = 'Diagnostics';
       diagBtn.innerHTML = '<span id="diagIcon">🔧</span>';
-
-      // IMPORTANT: .music-button is fixed bottom-right.
-      // Place diagnostics to the LEFT of the music button (same bottom edge).
-      diagBtn.style.right = '88px';
-      diagBtn.style.bottom = '20px';
-      // Ensure it sits above other fixed UI.
+      document.body.appendChild(diagBtn);
+      diagBtn.style.position = 'fixed';
+      diagBtn.style.top = '16px';
+      diagBtn.style.left = '16px';
+      diagBtn.style.right = 'auto';
+      diagBtn.style.bottom = 'auto';
       diagBtn.style.zIndex = '1001';
-
-      if (musicToggleBtn && musicToggleBtn.parentElement) {
-        musicToggleBtn.parentElement.insertBefore(diagBtn, musicToggleBtn);
-      } else {
-        // fallback: fixed top-right (only if the DOM changes)
-        document.body.appendChild(diagBtn);
-        diagBtn.style.position = 'fixed';
-        diagBtn.style.top = '16px';
-        diagBtn.style.right = '64px';
-        diagBtn.style.zIndex = '1000';
-      }
 
       // Panel: same conventions as the Sound panel (fixed, above the button)
       diagPanel = document.createElement('div');
@@ -434,11 +447,8 @@
           const panelW = panel.offsetWidth;
           const panelH = panel.offsetHeight;
           const gap = 10;
-          const top = Math.max(10, rect.top - panelH - gap);
-          const left = Math.min(
-            window.innerWidth - panelW - 10,
-            Math.max(10, rect.right - panelW)
-          );
+          const top = Math.max(10, Math.min(window.innerHeight - panelH - 10, rect.bottom + gap));
+          const left = Math.max(10, Math.min(window.innerWidth - panelW - 10, rect.left));
           panel.style.top = `${top}px`;
           panel.style.left = `${left}px`;
         } catch (_) {}
@@ -460,9 +470,18 @@
             totalSpent,
             breakdown: sessionTokens?.spent || {},
           },
+          stored: {
+            persistenceMode: (window.__rcRuntimePersistenceStripped ? 'stripped-for-stabilization' : 'normal'),
+            tier: null,
+            voiceVariant: null,
+            voiceSelection: null,
+            ttsSpeed: null,
+            autoplay: null,
+          },
           tts: {
             variant: TTS_STATE?.voiceVariant || 'female',
             activeBrowserVoice: TTS_STATE?.activeBrowserVoiceName || null,
+            support: (typeof window.getTtsSupportStatus === 'function') ? window.getTtsSupportStatus() : null,
             allEnglishVoices: (() => {
               try {
                 return (window.speechSynthesis?.getVoices() || [])
@@ -471,6 +490,11 @@
               } catch(_) { return []; }
             })(),
           },
+          ttsRuntime: (typeof window.getTtsDiagnosticsSnapshot === 'function') ? window.getTtsDiagnosticsSnapshot() : null,
+          shell: (typeof window.getShellDiagnosticsSnapshot === 'function') ? window.getShellDiagnosticsSnapshot() : null,
+          runtime: (typeof window.getRuntimeUiState === 'function') ? window.getRuntimeUiState() : null,
+          restore: (typeof window.getReadingRestoreStatus === 'function') ? window.getReadingRestoreStatus() : null,
+          importer: (typeof window.getImporterDiagnosticsSnapshot === 'function') ? window.getImporterDiagnosticsSnapshot() : null,
           ai: lastAIDiagnostics || null,
           anchors: lastAnchorsDiagnostics || null,
         };
@@ -480,6 +504,12 @@
         diagPanel.style.display = 'block';
         positionPanelAboveButton(diagBtn, diagPanel);
       }
+
+      window.updateDiagnostics = function updateDiagnostics() {
+        try {
+          if (diagPanel && diagPanel.style.display === 'block') setDiagVisible(true);
+        } catch (_) {}
+      };
 
       diagBtn.addEventListener('click', (ev) => {
         ev.preventDefault();
@@ -563,9 +593,7 @@
 
   try {
     const saved = localStorage.getItem('rc_app_mode');
-    if (saved && ['reading','comprehension','research'].includes(saved)) {
-      appMode = saved;
-    }
+    if (saved && ['reading','comprehension','research','thesis'].includes(saved)) appMode = saved === 'thesis' ? 'research' : saved;
   } catch (_) {}
 
   select.value = appMode;
@@ -596,20 +624,12 @@
   const VALID_TIERS = ['free', 'paid', 'premium'];
 
   // Restore persisted tier
-  try {
-    const saved = localStorage.getItem('rc_app_tier');
-    if (saved && VALID_TIERS.includes(saved)) {
-      appTier = saved;
-    }
-  } catch (_) {}
-
   select.value = appTier;
 
   select.addEventListener('change', () => {
     const newTier = select.value;
     if (!VALID_TIERS.includes(newTier) || newTier === appTier) return;
     appTier = newTier;
-    try { localStorage.setItem('rc_app_tier', appTier); } catch (_) {}
     try { if (typeof tokenReset === 'function') tokenReset(); } catch(_) {}
     applyTierAccess();
   });
@@ -648,7 +668,6 @@
       if (isFree && appMode !== 'reading') {
         modeSelect.value = 'reading';
         appMode = 'reading';
-        try { localStorage.setItem('rc_app_mode', 'reading'); } catch (_) {}
         if (typeof applyModeVisibility === 'function') applyModeVisibility();
       }
     }
@@ -698,10 +717,12 @@
   try {
     checkbox.checked = localStorage.getItem('rc_autoplay') === '1';
     AUTOPLAY_STATE.enabled = checkbox.checked;
-  } catch (_) {}
+  } catch (_) {
+    checkbox.checked = !!AUTOPLAY_STATE.enabled;
+  }
   checkbox.addEventListener('change', () => {
     AUTOPLAY_STATE.enabled = checkbox.checked;
-    localStorage.setItem('rc_autoplay', checkbox.checked ? '1':'0');
+    try { localStorage.setItem('rc_autoplay', checkbox.checked ? '1':'0'); } catch (_) {}
     if (!AUTOPLAY_STATE.enabled) ttsAutoplayCancelCountdown();
   });
 })();
@@ -721,7 +742,6 @@ try {
 // ===================================
 (function () {
   const musicBtn = document.getElementById("musicToggle");
-  const diagBtn = document.getElementById("diagnosticsToggle");
   if (!musicBtn) return;
 
   const SNAP_THRESHOLD = 140; // px
@@ -738,9 +758,6 @@ try {
       ? `calc(var(--support-footer-height) + 20px)`
       : `20px`;
 
-    // Keep diagnostics button vertically aligned with the music button.
-    // (It sits to the left, but should share the same bottom offset logic.)
-    if (diagBtn) diagBtn.style.bottom = musicBtn.style.bottom;
   }
 
   // Throttle to one update per frame (prevents observer spam)
@@ -778,3 +795,5 @@ try {
     mo.observe(pagesEl, { childList: true, subtree: true, characterData: true });
   }
 })();
+
+window.updateDiagnostics = window.updateDiagnostics || function updateDiagnostics() {};
