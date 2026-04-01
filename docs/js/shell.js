@@ -388,6 +388,14 @@
             });
             bookSel.addEventListener('change', async () => {
                 if (document.getElementById('reading-mode')?.classList.contains('hidden-section')) return;
+                // PATCH(source-continuity): Clear page selects before polling so stale options
+                // from the previous book cannot satisfy waitForPages() prematurely.
+                // loadBook() in library.js is async — it starts on the same tick but has not
+                // cleared the selects yet when this handler runs. Without this guard,
+                // waitForPages() resolves with old-book options and loadBtn fires against
+                // the previous book's currentPages/currentBookRaw.
+                pageStart.options.length = 0;
+                pageEnd.options.length = 0;
                 const ready = await waitForPages();
                 if (ready) {
                     loadBtn.click();

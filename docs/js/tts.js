@@ -925,21 +925,22 @@ function setPlaybackRate(rate) {
 
   const changed = Math.abs(value - prev) > 0.001;
 
-  // Browser path: re-enter the current block so the new rate takes effect
-  // on the utterance that is currently being spoken. Without re-entry the
-  // rate on the already-dispatched SpeechSynthesisUtterance is immutable.
-  if (changed && TTS_STATE.activeKey && TTS_STATE.browserSpeakFromBlock && !TTS_STATE.browserPaused) {
-    const key = TTS_STATE.activeKey;
-    const blockIdx = TTS_STATE.activeBlockIndex >= 0 ? TTS_STATE.activeBlockIndex : 0;
-    ttsDiagPush('set-playback-rate', { rate: value, prev, action: 'browser-live-re-entry', key, blockIdx });
-    try { browserSpeakPageFromSentence(key, blockIdx, 'speed-change'); } catch (_) {}
-  } else {
-    ttsDiagPush('set-playback-rate', {
-      rate: value,
-      prev,
-      action: changed ? (TTS_STATE.browserPaused ? 'rate-stored-paused' : 'cloud-live-mutate') : 'no-change',
-    });
-  }
+  // Browser path: do NOT cancel/restart the current utterance on speed change.
+  // Restarting causes the current sentence to replay from its beginning, which
+  // the user experiences as repeated speech. TTS_STATE.rate is already updated
+  // above; speakFromBlock() reads utter.rate = Number(TTS_STATE.rate || 1) fresh
+  // for each sentence, so the new rate takes effect naturally at the next
+  // sentence boundary without any restart penalty.
+  // Cloud path: playbackRate was already mutated live on the audio element above.
+  ttsDiagPush('set-playback-rate', {
+    rate: value,
+    prev,
+    action: changed
+      ? (TTS_STATE.browserSpeakFromBlock && !TTS_STATE.browserPaused
+          ? 'browser-rate-deferred-next-sentence'
+          : (TTS_STATE.browserPaused ? 'rate-stored-paused' : 'cloud-live-mutate'))
+      : 'no-change',
+  });
   return value;
 }
 
