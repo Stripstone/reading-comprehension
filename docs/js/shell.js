@@ -302,51 +302,22 @@
     }
 
     function handlePausePlay() {
-        // Use runtime eligibility as the routing signal rather than raw status.active.
-        // eligibility.canResume encodes the correct intent (has active paused session)
-        // and is false in post-error states where activeKey=null even if browserPaused=true.
-        // This prevents the shell from making routing decisions based on ambiguous state.
-        let status = { active: false, paused: false };
-        let countdown = { active: false };
-        let eligibility = { canPlay: false, canPause: false, canResume: false };
-        try { if (typeof getPlaybackStatus === 'function') status = getPlaybackStatus() || status; } catch (_) {}
-        try { if (typeof getCountdownStatus === 'function') countdown = getCountdownStatus() || countdown; } catch (_) {}
-        try { if (typeof getPlaybackControlEligibility === 'function') eligibility = getPlaybackControlEligibility() || eligibility; } catch (_) {}
-        const before = { playback: status, countdown, eligibility };
-        let route = 'pause-or-resume';
+        // Shell is a pure delegate. All routing — resume, pause, countdown
+        // cancel+restart, and fresh-start — is owned by pauseOrResumeReading()
+        // in tts.js. Shell does not inspect eligibility or countdown here.
+        const before = {
+            playback: (typeof getPlaybackStatus === 'function') ? getPlaybackStatus() : null,
+            countdown: (typeof getCountdownStatus === 'function') ? getCountdownStatus() : null,
+        };
         let result = false;
-        try {
-            if (eligibility.canResume) {
-                // Active paused session exists — delegate Resume to runtime.
-                route = 'pause-or-resume-reading';
-                result = !!pauseOrResumeReading();
-                // Sync controls immediately so prev/next reflect resumed state.
-                setTimeout(syncShellPlaybackControls, 0);
-            } else if (eligibility.canPause) {
-                // Actively speaking — delegate Pause to runtime.
-                route = 'pause-or-resume-reading';
-                result = !!pauseOrResumeReading();
-                // Sync controls immediately after pause so prev/next remain enabled.
-                setTimeout(syncShellPlaybackControls, 0);
-            } else {
-                // No active session. Start from the current focused page.
-                // Countdown takes priority: user expects to restart the timed page.
-                if (countdown.active && typeof restartLastSpokenPageTts === 'function') {
-                    route = 'restart-last-spoken-page';
-                    result = !!restartLastSpokenPageTts();
-                } else if (typeof startFocusedPageTts === 'function') {
-                    route = 'start-focused-page';
-                    result = !!startFocusedPageTts();
-                }
-                if (result) {
-                    setTimeout(syncShellPlaybackControls, 0);
-                    shellDebugRemember('lastControlAction', { type: 'play-toggle', route, before, result: true, after: (typeof getPlaybackStatus === 'function') ? getPlaybackStatus() : null });
-                    return true;
-                }
-            }
-        } catch (_) {}
-        syncShellPlaybackControls();
-        shellDebugRemember('lastControlAction', { type: 'play-toggle', route, before, result: !!result, after: (typeof getPlaybackStatus === 'function') ? getPlaybackStatus() : null });
+        try { if (typeof pauseOrResumeReading === 'function') result = !!pauseOrResumeReading(); } catch (_) {}
+        setTimeout(syncShellPlaybackControls, 0);
+        shellDebugRemember('lastControlAction', {
+            type: 'play-toggle',
+            before,
+            result,
+            after: (typeof getPlaybackStatus === 'function') ? getPlaybackStatus() : null,
+        });
         return result;
     }
 

@@ -1901,6 +1901,7 @@
     if (typeof applyTierAccess === 'function') applyTierAccess();
     try { applyPendingReadingRestore(); } catch (_) {}
     try { if (typeof updateDiagnostics === 'function') updateDiagnostics(); } catch (_) {}
+    _installScrollPageTracker();
   }
 
   function applyModeVisibility() {
@@ -2109,6 +2110,46 @@
   })();
 
   // ===================================
+
+// ─── Scroll-based active-page tracker ────────────────────────────────────────
+//
+// lastFocusedPageIndex is the runtime truth for active page. It is already
+// written by all explicit navigation paths (pointer, focus, goToNext, TTS skip,
+// restore). The one gap: user scrolls without clicking. Without this tracker,
+// lastFocusedPageIndex becomes stale after restore or pointer interaction, and
+// startFocusedPageTts / progress bar both return the wrong page.
+//
+// This installs one passive scroll listener (idempotent — safe to call after
+// every render()). On each scroll frame it measures the current visible page
+// via inferCurrentPageIndex() and writes the result into lastFocusedPageIndex.
+// inferCurrentPageIndex() is the measurement tool; lastFocusedPageIndex stays
+// the runtime state; all existing consumers stay unchanged.
+//
+// Guards:
+//   pages.length > 0       — skip if no content is loaded
+//   rect.height > 0        — skip if pages are in a hidden section (rect = 0)
+function _installScrollPageTracker() {
+  if (window.__rcScrollPageTrackerInstalled) return;
+  window.__rcScrollPageTrackerInstalled = true;
+  var raf = 0;
+  window.addEventListener('scroll', function () {
+    if (raf) return;
+    raf = requestAnimationFrame(function () {
+      raf = 0;
+      try {
+        if (!Array.isArray(pages) || !pages.length) return;
+        const idx = inferCurrentPageIndex();
+        if (!Number.isFinite(idx) || idx < 0) return;
+        const pageEls = document.querySelectorAll('.page');
+        const target = pageEls[idx];
+        if (!target) return;
+        // Only update when the page is actually visible (guards hidden sections).
+        if (target.getBoundingClientRect().height <= 0) return;
+        lastFocusedPageIndex = idx;
+      } catch (_) {}
+    });
+  }, { passive: true });
+}
 
 
 window.focusReadingPage = function focusReadingPage(targetIndex, options = {}) {

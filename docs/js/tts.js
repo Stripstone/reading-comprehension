@@ -1237,6 +1237,25 @@ function pauseOrResumeReading() {
 
   if (!before.playback.active) {
     try { TTS_STATE.playbackBlockedReason = ''; } catch (_) {}
+    // Countdown active: runtime owns this routing decision.
+    // Cancel the countdown and restart the last spoken page rather than
+    // starting the currently focused page. Previously this branch lived in
+    // the shell's handlePausePlay; moved here so the shell can be a pure
+    // delegate for all playback actions.
+    try {
+      const countdown = getCountdownStatus();
+      if (countdown.active) {
+        const restarted = restartLastSpokenPageTts();
+        route = 'restart-last-spoken-page';
+        outcome = restarted ? 'restarted' : 'failed';
+        ttsDiagPush('pause-resume-action', {
+          action: 'play', route, outcome,
+          outcomeClass: restarted ? 'full-restart' : 'blocked',
+          before, after: ttsBlockSnapshot(),
+        });
+        return getPlaybackStatus();
+      }
+    } catch (_) {}
     try {
       if (typeof window.startFocusedPageTts === 'function') {
         const started = window.startFocusedPageTts();
