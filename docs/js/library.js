@@ -1624,6 +1624,13 @@
     document.getElementById("submitBtn").disabled = true;
     document.getElementById("verdictSection").style.display = "none";
     lastFocusedPageIndex = -1;
+    // PATCH(source-continuity): Clear the pending restore index so stale boot-time
+    // restore state from the previous session cannot leak into the next render().
+    // loadPersistedSessionIfAny() sets __rcPendingRestorePageIndex from the old
+    // session's page index. Without this clear, applyPendingReadingRestore() —
+    // called at the end of render() — can scroll to that stale index in the new
+    // source, placing TTS and lastFocusedPageIndex at the wrong page.
+    window.__rcPendingRestorePageIndex = -1;
     evaluationPhase = false;
     clearPersistedSession();
     return true;
