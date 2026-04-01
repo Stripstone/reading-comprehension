@@ -66,3 +66,10 @@ If it conflicts with the five core docs above, the five core docs win.
 
 ## Retired documents
 Older overlapping docs should be treated as archive/reference material, not active sources of truth, once this package is adopted.
+
+## Before a Claude pass
+Before handing a large objective to Claude:
+1. runtime-test enough to identify the real user failure
+2. write the Claude request using explicit runtime success and failure conditions
+
+Do not send Claude a large pass based only on code suspicion.

@@ -208,6 +208,28 @@ Controls should reflect what the app is actually doing, not what the shell guess
 
 ---
 
+## 10. Switching book or chapter must replace page state cleanly
+**Risk:** 🔴 Critical  
+**Status:** Open  
+**Owner:** `docs/js/library.js` + `docs/js/state.js`
+
+### User expectation
+Changing book or chapter should show only the pages for that selected source.
+
+### Edge cases
+- restored session then switching book
+- restored session then switching chapter
+- leaving reading and returning before changing chapter
+- preview entry versus in-reading chapter change
+
+### Done when
+- changing book or chapter never reuses stale page content
+- page order stays correct after source/chapter changes
+- session restore is replaced or cleared when the selected source no longer matches
+- no chapter can inherit pages from a previously loaded chapter
+
+---
+
 ## 10. TTS reliability under weak connection
 **Risk:** 🟡 High  
 **Status:** Open  
