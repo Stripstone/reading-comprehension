@@ -42,6 +42,26 @@ A pass should not start without this contract.
 5. Leave layout alone unless the issue is the layout.
 6. After patching, state what changed, what risk area was touched, and what should be runtime-tested.
 
+
+## Authority-first pass design
+For launch-critical issues, use this order:
+1. identify the upstream runtime authority or truth model first
+2. scan nearby regression paths that read, write, mirror, or infer that same truth
+3. patch downstream only after the authority model and nearby regression surface are explicit
+
+This is meant to prevent narrow local fixes from landing on the wrong layer.
+A pass should not solve one downstream symptom while leaving adjacent authority paths untouched.
+
+### What counts as nearby regression scan
+Before coding, Claude should name the adjacent paths that could regress if the authority model is incomplete, especially:
+- other entry paths that choose the same runtime target
+- restore, restart, autoplay, skip, or resume paths touching the same truth
+- source or chapter replacement paths touching the same truth
+- shell bridges or inference helpers that still mirror or guess that truth
+
+This is not a license for broad cleanup.
+It is a bounded scan to keep a high-yield pass from fixing one path while missing an adjacent regression path.
+
 ## What user feedback should look like
 The owner should report:
 - what felt wrong as a user
