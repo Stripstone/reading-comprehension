@@ -676,7 +676,9 @@
 @media (max-width: 640px) {
   .reading-top-bar,
   .reading-bottom-bar {
-    padding: 0 8px;
+    height: auto;
+    min-height: 60px;
+    padding: 0 12px calc(12px + env(safe-area-inset-bottom, 0px));
   }
 
   .reading-top-left {
