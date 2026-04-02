@@ -161,12 +161,23 @@ function persistSessionNow() {
       localStorage.setItem(getConsolidationCacheKey(h), JSON.stringify(record));
     }
 
+    const _rt = window.__rcReadingTarget || {};
+    const _pageIndex = (Number.isFinite(Number(_rt.pageIndex)) && Number(_rt.pageIndex) >= 0)
+      ? Number(_rt.pageIndex)
+      : (Number.isFinite(currentPageIndex) && currentPageIndex >= 0 ? currentPageIndex : 0);
     const payload = {
       v: 2,
       savedAt: Date.now(),
       pages: pages.slice(),
       pageHashes: pageData.map(p => p?.pageHash || ""),
-      consolidations: pageData.map(p => p?.consolidation || "")
+      consolidations: pageData.map(p => p?.consolidation || ""),
+      currentPageIndex: _pageIndex,
+      readingTarget: {
+        sourceType: String(_rt.sourceType || ''),
+        bookId: String(_rt.bookId || ''),
+        chapterIndex: Number.isFinite(Number(_rt.chapterIndex)) ? Number(_rt.chapterIndex) : -1,
+        pageIndex: _pageIndex,
+      },
     };
     localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(payload));
     localStorage.setItem(STORAGE_KEY_META, JSON.stringify({ savedAt: payload.savedAt }));
@@ -252,7 +263,28 @@ function loadPersistedSessionIfAny() {
       pageData = pageData.slice(0, n);
     }
 
-    currentPageIndex = Math.min(currentPageIndex, Math.max(0, pages.length - 1));
+    const _savedTarget = (parsed && typeof parsed.readingTarget === 'object' && parsed.readingTarget)
+      ? parsed.readingTarget
+      : null;
+    const _savedPageIndex = Number.isFinite(Number(parsed?.currentPageIndex))
+      ? Number(parsed.currentPageIndex)
+      : (Number.isFinite(Number(_savedTarget?.pageIndex)) ? Number(_savedTarget.pageIndex) : currentPageIndex);
+    currentPageIndex = Math.max(0, Math.min(_savedPageIndex, Math.max(0, pages.length - 1)));
+
+    // Rehydrate playback target context from the saved session payload.
+    // Older sessions may not have readingTarget yet; in that case seed a
+    // non-empty restored-session target so bottom-bar Play can still read the
+    // restored pages instead of blocking behind missing source context.
+    try {
+      if (typeof setReadingTarget === 'function') {
+        setReadingTarget({
+          sourceType: String(_savedTarget?.sourceType || 'restored-session'),
+          bookId: String(_savedTarget?.bookId || ''),
+          chapterIndex: Number.isFinite(Number(_savedTarget?.chapterIndex)) ? Number(_savedTarget.chapterIndex) : -1,
+          pageIndex: currentPageIndex,
+        });
+      }
+    } catch (_) {}
 
     // PATCH(restore-path): Write the clamped restore index so applyPendingReadingRestore()
     // called at the end of render() can scroll to the correct page.
@@ -390,12 +422,31 @@ async function stableHashText(text) {
 
 // Only write path for window.__rcReadingTarget.
 function setReadingTarget({ sourceType, bookId, chapterIndex, pageIndex }) {
-  window.__rcReadingTarget = {
+  const nextTarget = {
     sourceType:   String(sourceType   ?? ''),
     bookId:       String(bookId       ?? ''),
     chapterIndex: Number.isFinite(Number(chapterIndex)) ? Number(chapterIndex) : -1,
     pageIndex:    (Number.isFinite(Number(pageIndex)) && Number(pageIndex) >= 0) ? Number(pageIndex) : 0,
   };
+  const prevTarget = window.__rcReadingTarget || {};
+  const changed =
+    String(prevTarget.sourceType || '') !== nextTarget.sourceType ||
+    String(prevTarget.bookId || '') !== nextTarget.bookId ||
+    Number(prevTarget.chapterIndex ?? -1) !== nextTarget.chapterIndex ||
+    Number(prevTarget.pageIndex ?? 0) !== nextTarget.pageIndex;
+
+  window.__rcReadingTarget = nextTarget;
+  try { currentPageIndex = nextTarget.pageIndex; } catch (_) {}
+
+  // Persist the authoritative reading target as page truth changes so restore
+  // does not depend on blur-only saves or one special entry path.
+  if (changed) {
+    try {
+      if (Array.isArray(pages) && pages.length && typeof schedulePersistSession === 'function') {
+        schedulePersistSession();
+      }
+    } catch (_) {}
+  }
 }
 window.setReadingTarget = setReadingTarget;
 
