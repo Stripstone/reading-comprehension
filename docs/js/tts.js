@@ -544,7 +544,8 @@ function browserSpeakQueue(key, parts, opts = {}) {
   // Build highlight spans
   if (isPageRead) {
     try {
-      const pageIndex = parseInt(String(key).slice(5), 10);
+      const _parsed = (typeof readingTargetFromKey === 'function') ? readingTargetFromKey(key) : null;
+      const pageIndex = _parsed ? _parsed.pageIndex : -1;
       const pageEl = document.querySelectorAll('.page')[pageIndex];
       const textEl = pageEl?.querySelector('.page-text');
       if (textEl) {
