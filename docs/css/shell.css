@@ -217,8 +217,8 @@
         .reading-divider { width: 1px; height: 16px; background: #e2e8f0; flex-shrink: 0; }
         .tier-pill { font-size: 0.6rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 8px; border-radius: 999px; background: #f5f3ff; color: var(--jubly-purple); border: 1px solid #ddd6fe; white-space: nowrap; flex-shrink: 0; }
         .pb-icon-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 36px; padding: 7px 12px; border-radius: 8px; font-size: 0.82rem; font-weight: 700; color: #64748b; background: transparent; border: none; cursor: pointer; transition: background 0.15s, color 0.15s; white-space: nowrap; flex-shrink: 0; }
-        #shell-prev-btn, #shell-next-btn { min-width: 36px; padding-left: 10px; padding-right: 10px; }
-        #shell-play-btn { min-width: 98px; font-size: 0.84rem; }
+        #shell-prev-btn, #shell-next-btn { min-width: 38px; padding-left: 10px; padding-right: 10px; font-size: 0.95rem; }
+        #shell-play-btn { min-width: 104px; font-size: 0.94rem; }
         .pb-icon-btn:hover { background: #f1f5f9; color: #1e293b; }
         .pb-icon-btn.active { background: var(--theme-accent-soft); color: var(--theme-accent); }
         .page-progress { font-size: 0.7rem; font-weight: 700; color: #94a3b8; letter-spacing: 0.04em; white-space: nowrap; flex-shrink: 0; }
@@ -543,20 +543,79 @@
 }
 
 /* Bottom fixed controls */
+.reading-bottom-bar .pb-icon-btn,
 #shell-speed {
-  min-width: 96px;
+  min-height: 36px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #64748b;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
+}
+
+.reading-bottom-bar .pb-icon-btn:hover,
+#shell-speed:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #1e293b;
+}
+
+.reading-bottom-bar .pb-icon-btn:active,
+#shell-speed:active {
+  background: #f1f5f9;
+}
+
+.reading-bottom-bar .pb-icon-btn:focus-visible,
+#shell-speed:focus-visible {
+  outline: none;
+  border-color: #cbd5e1;
+  box-shadow: 0 0 0 3px rgba(99, 68, 245, 0.12);
+}
+
+.reading-bottom-bar .pb-icon-btn.active {
+  background: var(--theme-accent-soft);
+  border-color: #d9d1ff;
+  color: var(--theme-accent);
+}
+
+.reading-bottom-bar .pb-icon-btn:disabled,
+.reading-bottom-bar .pb-icon-btn[aria-disabled="true"] {
+  opacity: 0.6;
+  background: #ffffff;
+  border-color: #e2e8f0;
+  color: #94a3b8;
+}
+
+#shell-speed {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: none;
+  min-width: 58px;
   flex: 0 0 auto;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  text-align-last: center;
+  padding: 6px 10px;
+}
+
+#shell-speed::-ms-expand {
+  display: none;
 }
 
 #shell-prev-btn,
 #shell-next-btn {
-  min-width: 38px;
-  padding-left: 10px;
-  padding-right: 10px;
+  min-width: 60px;
+  padding-left: 16px;
+  padding-right: 16px;
+  font-size: 0.82rem;
 }
 
 #shell-play-btn {
-  min-width: 104px;
+  min-width: 90px;
+  padding-left: 14px;
+  padding-right: 14px;
 }
 
 .page-progress {
@@ -660,7 +719,9 @@
   }
 
   #shell-speed {
-    min-width: 88px;
+    min-width: 54px;
+    padding-left: 9px;
+    padding-right: 9px;
   }
 
   #shell-play-btn {
@@ -691,12 +752,14 @@
   }
 
   .reading-bottom-left {
-    gap: 4px;
+    transform: translateX(calc(-63% + 1px));
+    gap: 5px;
     max-width: calc(100vw - 134px);
   }
 
   .reading-bottom-left .reading-divider {
     display: none;
+    margin: 0 10px;
   }
 
   .reading-top-settings-btn .settings-label {
@@ -717,18 +780,25 @@
   }
 
   #shell-speed {
-    min-width: 78px;
+    width: auto;
+    min-width: 44px;
+    max-width: none;
+    padding: 5px 8px 5px 8px;
+    font-size: 0.84rem;
   }
 
   #shell-prev-btn,
   #shell-next-btn {
-    min-width: 34px;
-    padding-left: 8px;
-    padding-right: 8px;
+    min-width: 60px;
+    padding-left: 16px;
+    padding-right: 16px;
+    font-size: 0.88rem;
   }
 
   #shell-play-btn {
     min-width: 84px;
+    padding-left: 12px;
+    padding-right: 12px;
   }
 
   .page-progress {
