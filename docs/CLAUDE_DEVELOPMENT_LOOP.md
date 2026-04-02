@@ -5,6 +5,16 @@ This is a working-method note for Claude Code.
 It is useful to reference during development, but it is **not** an authority document.
 If it conflicts with the core package, the core package wins.
 
+## What this document is for
+Use this loop for **large bounded work**, not endless micro-correction.
+
+Recommended model:
+1. use Claude for the first bounded pass or passes to identify the owner layer and build the initial patch artifact
+2. usually after 1–2 bounded passes, or once the owner layer and patch artifact are stable, switch to **diff-driven runtime cleanup**
+3. keep revising the same diff artifact until the pass is cleared, unless runtime proves the owner layer was wrong
+
+Claude should not stay in broad implementation mode after a pass has narrowed into correction, feel, or cleanup inside an already confirmed scope.
+
 ## Before a Claude pass
 Before a large Claude pass is requested:
 1. confirm the current runtime behavior first
@@ -36,14 +46,13 @@ Before coding, Claude should state:
 
 A pass should not start without this contract.
 
-## Working loop
+## Working loop for a large Claude pass
 1. Take one high-yield vertical system only.
 2. State the user-visible target before changing code.
 3. Name the owner file before changing code.
 4. Patch narrowly within that system.
 5. Leave layout alone unless the issue is the layout.
 6. After patching, state what changed, what risk area was touched, and what should be runtime-tested.
-
 
 ## Authority-first pass design
 For launch-critical issues, use this order:
@@ -98,6 +107,54 @@ Diagnostics should be:
 Do not expand diagnostics into generalized tracing unless the pass specifically requires it.
 End-state diagnostics alone are not enough if they do not explain how the app got there.
 
+## When to stop using Claude for direct implementation
+Usually after 1–2 bounded implementation passes, stop using Claude for repeated broad rewrites if:
+- the owner layer is already confirmed
+- the active pass already has one patch artifact
+- runtime feedback is now about correction, refinement, or one remaining behavior
+- the pass is no longer discovering new architecture truth
+
+At that point, switch to **diff-driven runtime cleanup**.
+The real trigger is not pass count alone. It is that the owner layer is already known, the patch artifact is stable, and the remaining work is runtime-guided cleanup rather than discovery.
+
+## Diff-driven runtime cleanup loop
+Use this mode when:
+- the owner path is already known
+- the active pass is still the same pass
+- there is already one named diff artifact
+- runtime feedback is coming from the served app
+- the next move is to revise the patch, not reopen architecture
+
+Rules:
+1. keep one named diff artifact per active pass
+2. prefer pass-specific filenames when practical, and keep the filename stable while it remains the same pass
+3. revise that diff in place after runtime feedback
+4. keep file scope the same unless runtime proves another owner file is required
+5. describe runtime feedback in product terms first
+6. only give micro implementation direction when the behavior is already localized and the owner layer is confirmed
+7. do not convert a follow-up correction into a new broad Claude implementation pass
+8. run `git apply --check` on the revised diff before handing it off or runtime-testing it
+
+This mode is for cleanup, correction, and feel.
+It is not a substitute for authority-first investigation when the owner layer is still unclear.
+
+## When to leave diff-driven cleanup
+Leave diff-driven cleanup and reopen a larger pass if runtime shows:
+- the owner layer was wrong
+- multiple files outside current scope clearly own the remaining issue
+- the current diff is patching symptoms instead of authority
+- repeated revisions are no longer reducing the failure surface
+
+## What a diff handoff must include
+Every active diff handoff should say:
+- current objective
+- files in scope
+- passed areas
+- failed areas
+- exact diff filename in play
+- whether the diff is cumulative or follow-up
+- latest runtime caveat, if any
+
 ## Token-efficiency and handoff rules
 To reduce drift and wasted context:
 - keep the pass vertically bounded to one runtime-owned system
@@ -127,9 +184,13 @@ Validated work should not remain open in docs after acceptance.
 The owner should report:
 - what felt wrong as a user
 - what now feels right or still wrong
-- macro behavior only
+- macro behavior first
 
-Avoid micro implementation suggestions unless the docs are clearly wrong.
+Micro implementation suggestions are acceptable only when:
+- the owner layer is already known
+- the issue is already localized
+- the suggestion stays inside the confirmed scope
+- the suggestion does not move runtime truth into shell or widen the pass
 
 ## When Claude should push back
 Claude should say the docs and the request do not align when:

@@ -8,10 +8,15 @@ Use it as a quick reference during the patch loop.
 
 ## 1. Go to the repo
 
+```bat
 cd C:\Users\Triston Barker\Documents\GitHub\reading-comprehension\
- - go to folder
-git diff > claude-code.diff
- - Export a diff of all uncommitted changes
+```
+
+What it does:
+- enters the repo root before diff export, review, apply-check, or commit
+
+---
+
 ## 2. Check what changed
 
 ```bat
@@ -25,34 +30,138 @@ What it does:
 
 ---
 
-## 3. 
-## 4. Export a diff for only specific files
+## 3. Patch artifact standards
+
+For diff-driven cleanup, use **one named diff file per active pass**.
+
+Recommended default:
+- `quick_patch.diff`
+
+Rules:
+- keep one named diff artifact per active pass
+- prefer pass-specific names when practical
+- keep the filename stable while it remains the same pass
+- overwrite that file as the pass evolves
+- keep the file list scoped to the active pass
+- say whether the diff is:
+  - a cumulative patch against current repo state, or
+  - a follow-up patch against a previously patched base
+- do not mix those two without saying so
+- always run `git apply --check` before handing the diff off or runtime-testing it
+
+---
+
+## 4. Export a scoped diff for the active pass
+
+Use this when the pass is limited to known files.
+The file list below is an example only. Replace it with the files in the current pass.
 
 ```bat
-git diff -- docs/js/library.js docs/js/tts.js docs/js/shell.js > claude-code.diff
+git diff -- <file1> <file2> <file3> > quick_patch.diff
+```
+
+Example:
+
+```bat
+git diff -- docs/index.html docs/css/shell.css docs/js/evaluation.js docs/js/shell.js > quick_patch.diff
 ```
 
 What it does:
 - writes a smaller diff file containing only the listed files
-- useful when a pass is limited to a few runtime files
-- easier to review than exporting the whole repo diff
+- keeps the patch tied to the active pass
+- matches the diff-driven runtime cleanup workflow used for iterative patch revision
+- is easier to review and re-export than a whole-repo diff
 
 ---
 
-## 5. Export as a text file instead of .diff
+## 5. Validate the diff before handoff or runtime testing
 
 ```bat
-git diff > claude-code.txt
+git apply --check quick_patch.diff
 ```
 
 What it does:
-- same diff content as above, but saved as `.txt`
-- easier to open on Windows with Notepad or similar tools
-- good default if you do not want to deal with `.diff` extensions
+- verifies that the diff parses and applies cleanly against the intended base
+- catches malformed hunks or base-state mismatch before runtime testing
+
+If this fails, fix the diff before continuing.
 
 ---
 
-## 6. See the diff directly in terminal
+## 6. Open the diff locally for inspection
+
+```bat
+notepad quick_patch.diff
+```
+
+What it does:
+- opens the active patch artifact immediately
+- useful for checking hunk accuracy, file scope, and whether the latest correction really landed in the diff
+
+---
+
+## 7. Standard diff-driven review block
+
+This is the block to reuse once a pass has an active patch artifact:
+
+```bat
+cd C:\Users\Triston Barker\Documents\GitHub\reading-comprehension\
+git status
+git diff -- <file1> <file2> <file3> > quick_patch.diff
+git apply --check quick_patch.diff
+notepad quick_patch.diff
+```
+
+Example:
+
+```bat
+cd C:\Users\Triston Barker\Documents\GitHub\reading-comprehension\
+git status
+git diff -- docs/index.html docs/css/shell.css docs/js/evaluation.js docs/js/shell.js > quick_patch.diff
+git apply --check quick_patch.diff
+notepad quick_patch.diff
+```
+
+What it does:
+- enters the repo
+- confirms current change state
+- exports the active pass diff
+- verifies the patch applies cleanly
+- opens the exact artifact that will be handed off or runtime-tested
+
+---
+
+## 8. Revise the same diff after runtime feedback
+
+Use this when runtime feedback is correcting one remaining behavior inside the same pass.
+
+Rules:
+- keep one named diff artifact per active pass
+- keep the filename stable while it remains the same pass
+- keep the same file scope unless runtime proves a new owner file is needed
+- regenerate the same diff after each correction
+- run `git apply --check` again after each revision
+
+This is the preferred loop once the owner layer and patch artifact are stable.
+Often that is after the first 1–2 Claude implementation passes, but treat that as a heuristic rather than a hard threshold.
+
+---
+
+## 9. Export a whole-repo diff only when the whole repo is truly in scope
+
+```bat
+git diff > repo-pass.diff
+```
+
+What it does:
+- writes a diff of all current unstaged changes
+- useful only when the entire active pass is intentionally broad
+
+Do not use this by default for a narrow runtime pass.
+
+---
+
+## 10. See the diff directly in terminal
 
 ```bat
 git diff
@@ -64,7 +173,7 @@ What it does:
 
 ---
 
-## 7. See the names of changed files only
+## 11. See the names of changed files only
 
 ```bat
 git diff --name-only
@@ -76,32 +185,29 @@ What it does:
 
 ---
 
-## 8. Stage everything for commit
+## 12. Stage only the files in the pass
 
 ```bat
-git add .
+git add <file1> <file2> <file3>
 ```
 
-What it does:
-- stages all current changes in the repo
-- useful when the whole pass is intentional and review is complete
-
-Safer alternative:
+Example:
 
 ```bat
-git add docs/js/library.js docs/js/tts.js docs/js/shell.js
+git add docs/index.html docs/css/shell.css docs/js/evaluation.js docs/js/shell.js
 ```
 
 What it does:
 - stages only the files you name
-- better when you want tighter control
+- keeps commit scope aligned with the active pass
+- is safer than staging the whole repo during a narrow cleanup loop
 
 ---
 
-## 9. Commit the staged changes
+## 13. Commit the staged changes
 
 ```bat
-git commit -m "Stabilize reading playback routing"
+git commit -m "Polish reading playback follow-up"
 ```
 
 What it does:
@@ -110,7 +216,7 @@ What it does:
 
 ---
 
-## 10. Show the most recent commit
+## 14. Show the most recent commit
 
 ```bat
 git log --oneline -1
@@ -118,11 +224,11 @@ git log --oneline -1
 
 What it does:
 - shows the latest commit hash and message
-- useful when you need the hash for cherry-pick or review
+- useful when you need the hash for review or rollback
 
 ---
 
-## 11. Export the last commit as a patch-style file
+## 15. Export the last commit as a patch-style file
 
 ```bat
 git show --stat --patch HEAD > last-commit.txt
@@ -134,7 +240,7 @@ What it does:
 
 ---
 
-## 12. Compare current branch against main
+## 16. Compare current branch against main
 
 ```bat
 git diff main...HEAD > branch-vs-main.diff
@@ -146,7 +252,7 @@ What it does:
 
 ---
 
-## 13. Check which branch you are on
+## 17. Check which branch you are on
 
 ```bat
 git branch --show-current
@@ -158,58 +264,13 @@ What it does:
 
 ---
 
-## 14. Open the exported diff file quickly in Notepad
-
-```bat
-notepad claude-code.txt
-```
-
-What it does:
-- opens the exported text diff immediately
-- useful for quick local inspection before sending it here
-
----
-
-## 15. Simple reusable review block
-
-This is probably the block you will reuse most often:
+## 18. Safe sequence before commit
 
 ```bat
 cd C:\Users\Triston Barker\Documents\GitHub\reading-comprehension\
 git status
-git diff > claude-code.txt
-notepad claude-code.txt
-```
-
-What it does:
-- enters the repo
-- confirms current changes
-- exports the diff
-- opens it locally for quick review
-
----
-
-## 16. Runtime-pass review block for only key playback files
-
-```bat
-cd C:\Users\Triston Barker\Documents\GitHub\reading-comprehension\
-git status
-git diff -- docs/js/library.js docs/js/tts.js docs/js/shell.js > claude-playback-pass.txt
-notepad claude-playback-pass.txt
-```
-
-What it does:
-- narrows the review to the playback pass files
-- keeps the export smaller and easier to inspect
-
----
-
-## 17. Safe sequence before commit
-
-```bat
-cd C:\Users\Triston Barker\Documents\GitHub\reading-comprehension\
-git status
-git diff > claude-code.txt
+git diff -- <file1> <file2> <file3> > quick_patch.diff
+git apply --check quick_patch.diff
 ```
 
 Then:
@@ -219,34 +280,11 @@ Then:
 
 ---
 
-## 18. Rule of thumb
+## 19. Rule of thumb
 
 Use:
 - `git status` to know the state
-- `git diff` to know the actual patch
+- `git diff -- <files> > quick_patch.diff` to keep the patch scoped
+- `git apply --check quick_patch.diff` to verify the artifact before handoff or runtime testing
 - `git add` only after review
 - `git commit` only after runtime testing when the pass is important
-
----
-
-## 19. Docs-closure workflow
-
-```bat
-cd C:\Users\Triston Barker\Documents\GitHub\reading-comprehension\
-git status
-git diff -- docs/*.md > docs-closure.txt
-notepad docs-closure.txt
-```
-
-What it does:
-- narrows review to documentation-only closure work
-- makes backlog/project-state/process-note review lighter
-- helps keep documentation closure separate from code patches when useful
-
-Suggested docs-closure order:
-1. update `04_EXECUTION_BACKLOG.md`
-2. update `01_PROJECT_STATE.md`
-3. update `CLAUDE_DEVELOPMENT_LOOP.md` if the working method changed
-4. review docs diff separately from runtime/code diff
-5. commit docs closure separately when possible
-
