@@ -1085,6 +1085,36 @@
     let currentPages = []; // [{title, text}]
     let currentChapterIndex = null;
 
+    function getReadingTargetContext() {
+      const _cur = window.__rcReadingTarget || {};
+      let sourceType = String(_cur.sourceType || '');
+      let bookId = String(_cur.bookId || '');
+      let chapterIndex = Number.isFinite(Number(_cur.chapterIndex)) ? Number(_cur.chapterIndex) : -1;
+
+      try {
+        if (sourceSel && sourceSel.value) sourceType = String(sourceSel.value || '');
+      } catch (_) {}
+      try {
+        if (bookSelect && bookSelect.value) bookId = String(bookSelect.value || '');
+      } catch (_) {}
+      try {
+        if (typeof currentChapterIndex === 'number' && currentChapterIndex !== null) chapterIndex = currentChapterIndex;
+        else if (chapterSelect && chapterSelect.value !== '') {
+          const _ch = parseInt(chapterSelect.value || '', 10);
+          if (Number.isFinite(_ch)) chapterIndex = _ch;
+        }
+      } catch (_) {}
+
+      // Reading mode can still have valid book context even if the source select
+      // is blank/hidden on this path. Normalize that case instead of leaving
+      // bottom-bar Play blocked behind an empty sourceType.
+      if (!sourceType && (bookId || currentBookRaw || (Array.isArray(chapterList) && chapterList.length))) {
+        sourceType = 'book';
+      }
+
+      return { sourceType, bookId, chapterIndex };
+    }
+
     function setSourceUI() {
       const isBook = sourceSel.value === "book";
       bookControls.style.display = isBook ? "flex" : "none";
@@ -1653,10 +1683,8 @@
     // pageIndex starts at 0; applyPendingReadingRestore() overrides it if a
     // restore is pending for this source.
     try {
-      const _st  = sourceSel  ? (sourceSel.value  || '') : '';
-      const _bid = bookSelect ? (bookSelect.value || '') : '';
-      const _ch  = (typeof currentChapterIndex === 'number' && currentChapterIndex !== null) ? currentChapterIndex : -1;
-      if (typeof setReadingTarget === 'function') setReadingTarget({ sourceType: _st, bookId: _bid, chapterIndex: _ch, pageIndex: 0 });
+      const _ctx = getReadingTargetContext();
+      if (typeof setReadingTarget === 'function') setReadingTarget({ sourceType: _ctx.sourceType, bookId: _ctx.bookId, chapterIndex: _ctx.chapterIndex, pageIndex: 0 });
     } catch (_) {}
 
     const container = document.getElementById("pages");
@@ -1748,8 +1776,8 @@
           lastFocusedPageIndex = i;
           // Update authoritative reading target to this page before speaking.
           try {
-            const _cur = window.__rcReadingTarget || {};
-            if (typeof setReadingTarget === 'function') setReadingTarget({ sourceType: _cur.sourceType || '', bookId: _cur.bookId || '', chapterIndex: _cur.chapterIndex != null ? _cur.chapterIndex : -1, pageIndex: i });
+            const _ctx = getReadingTargetContext();
+            if (typeof setReadingTarget === 'function') setReadingTarget({ sourceType: _ctx.sourceType, bookId: _ctx.bookId, chapterIndex: _ctx.chapterIndex, pageIndex: i });
           } catch (_) {}
           ttsSpeakQueue(
             (typeof readingTargetToKey === 'function') ? readingTargetToKey(window.__rcReadingTarget) : `page-${i}`,
@@ -2181,8 +2209,8 @@ function _installScrollPageTracker() {
         lastFocusedPageIndex = idx;
         // Keep reading target in sync so bottom-bar Play speaks the scrolled-to page.
         try {
-          const _cur = window.__rcReadingTarget || {};
-          if (typeof setReadingTarget === 'function') setReadingTarget({ sourceType: _cur.sourceType || '', bookId: _cur.bookId || '', chapterIndex: _cur.chapterIndex != null ? _cur.chapterIndex : -1, pageIndex: idx });
+          const _ctx = getReadingTargetContext();
+          if (typeof setReadingTarget === 'function') setReadingTarget({ sourceType: _ctx.sourceType, bookId: _ctx.bookId, chapterIndex: _ctx.chapterIndex, pageIndex: idx });
         } catch (_) {}
       } catch (_) {}
     });
@@ -2207,8 +2235,8 @@ window.focusReadingPage = function focusReadingPage(targetIndex, options = {}) {
   try { currentPageIndex = idx; } catch (_) {}
   // Keep reading target in sync so bottom-bar Play speaks the navigated-to page.
   try {
-    const _cur = window.__rcReadingTarget || {};
-    if (typeof setReadingTarget === 'function') setReadingTarget({ sourceType: _cur.sourceType || '', bookId: _cur.bookId || '', chapterIndex: _cur.chapterIndex != null ? _cur.chapterIndex : -1, pageIndex: idx });
+    const _ctx = getReadingTargetContext();
+    if (typeof setReadingTarget === 'function') setReadingTarget({ sourceType: _ctx.sourceType, bookId: _ctx.bookId, chapterIndex: _ctx.chapterIndex, pageIndex: idx });
   } catch (_) {}
   try { if (window.TTS_STATE) window.TTS_STATE.playbackBlockedReason = ''; } catch (_) {}
   try { if (typeof updateDiagnostics === 'function') updateDiagnostics(); } catch (_) {}
@@ -2224,18 +2252,18 @@ window.stepReadingPage = function stepReadingPage(delta, options = {}) {
 };
 
 window.startFocusedPageTts = function startFocusedPageTts() {
-  const target = window.__rcReadingTarget;
+  const baseTarget = getReadingTargetContext();
   // Refuse to infer target from DOM focus or scroll. If no authoritative
   // reading target exists, block and emit diagnostics rather than guessing.
-  if (!target || !target.sourceType) {
+  if (!baseTarget || !baseTarget.sourceType) {
     try { if (typeof ttsDiagPush === 'function') ttsDiagPush('start-focused-blocked', { reason: 'no-reading-target', pageCount: Array.isArray(pages) ? pages.length : 0 }); } catch (_) {}
     return false;
   }
-  const idx = Math.max(0, Math.min(Number(target.pageIndex) || 0, (Array.isArray(pages) ? pages.length : 1) - 1));
+  const idx = Math.max(0, Math.min(Number((window.__rcReadingTarget || {}).pageIndex) || 0, (Array.isArray(pages) ? pages.length : 1) - 1));
   const text = (Array.isArray(pages) && pages[idx]) ? pages[idx] : '';
   if (!text) return false;
   // Normalize clamped index back into target before deriving key.
-  if (typeof setReadingTarget === 'function') setReadingTarget({ sourceType: target.sourceType, bookId: target.bookId, chapterIndex: target.chapterIndex, pageIndex: idx });
+  if (typeof setReadingTarget === 'function') setReadingTarget({ sourceType: baseTarget.sourceType, bookId: baseTarget.bookId, chapterIndex: baseTarget.chapterIndex, pageIndex: idx });
   try { currentPageIndex = idx; } catch (_) {}
   lastFocusedPageIndex = idx;
   try { if (window.TTS_STATE) window.TTS_STATE.playbackBlockedReason = ''; } catch (_) {}
