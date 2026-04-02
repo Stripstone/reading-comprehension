@@ -194,6 +194,69 @@
         return rate;
     }
 
+    function getActivePlaybackPageIndex(playbackStatus) {
+        const status = playbackStatus || null;
+        try {
+            const parsed = (typeof readingTargetFromKey === 'function' && status?.key)
+                ? readingTargetFromKey(String(status.key))
+                : null;
+            const idx = Number(parsed?.pageIndex);
+            if (Number.isFinite(idx) && idx >= 0) return idx;
+        } catch (_) {}
+        try {
+            const idx = Number((window.__rcReadingTarget || {}).pageIndex);
+            if (Number.isFinite(idx) && idx >= 0) return idx;
+        } catch (_) {}
+        return -1;
+    }
+
+    function getVisibleReadingPageIndex() {
+        try {
+            const pageEls = Array.from(document.querySelectorAll('.page'));
+            if (pageEls.length) {
+                let bestIdx = -1;
+                let bestDist = Infinity;
+                for (const el of pageEls) {
+                    const rect = el.getBoundingClientRect();
+                    if (rect.height <= 0) continue;
+                    const idx = parseInt(el.dataset.pageIndex || '-1', 10);
+                    if (Number.isNaN(idx) || idx < 0) continue;
+                    const dist = Math.abs(rect.top);
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        bestIdx = idx;
+                    }
+                }
+                if (Number.isFinite(bestIdx) && bestIdx >= 0) return bestIdx;
+            }
+        } catch (_) {}
+        try {
+            if (typeof lastFocusedPageIndex === 'number' && lastFocusedPageIndex >= 0) return lastFocusedPageIndex;
+        } catch (_) {}
+        return 0;
+    }
+
+    function syncVisiblePageAsPlayTarget() {
+        const idx = getVisibleReadingPageIndex();
+        if (!Number.isFinite(idx) || idx < 0) return false;
+        try {
+            if (typeof window.focusReadingPage === 'function') {
+                const result = window.focusReadingPage(idx, { behavior: 'smooth' });
+                return !!(result && result.ok !== false);
+            }
+        } catch (_) {}
+        return false;
+    }
+
+    function bringPlaybackPageIntoView(playbackStatus) {
+        const idx = getActivePlaybackPageIndex(playbackStatus);
+        if (!Number.isFinite(idx) || idx < 0) return false;
+        const pageEl = document.querySelector(`.page[data-page-index="${idx}"]`) || document.querySelectorAll('.page')[idx];
+        if (!pageEl) return false;
+        try { pageEl.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) { return false; }
+        return true;
+    }
+
     function hasActiveReadingCards() {
         const reading = document.getElementById('reading-mode');
         const pagesEl = document.getElementById('pages');
@@ -309,14 +372,24 @@
             playback: (typeof getPlaybackStatus === 'function') ? getPlaybackStatus() : null,
             countdown: (typeof getCountdownStatus === 'function') ? getCountdownStatus() : null,
         };
+        // Fresh Play should follow the page currently in view when playback is
+        // not active. This releases the prior Read Page / Next target once the
+        // user has stopped playback and scrolled elsewhere.
+        if (!before.playback?.active && !before.countdown?.active) {
+            syncVisiblePageAsPlayTarget();
+        }
         let result = false;
         try { if (typeof pauseOrResumeReading === 'function') result = !!pauseOrResumeReading(); } catch (_) {}
         setTimeout(syncShellPlaybackControls, 0);
+        const afterPlayback = (typeof getPlaybackStatus === 'function') ? getPlaybackStatus() : null;
+        if (afterPlayback?.active && !afterPlayback.paused && (!before.playback?.active || before.playback?.paused || before.countdown?.active)) {
+            bringPlaybackPageIntoView(afterPlayback);
+        }
         shellDebugRemember('lastControlAction', {
             type: 'play-toggle',
             before,
             result,
-            after: (typeof getPlaybackStatus === 'function') ? getPlaybackStatus() : null,
+            after: afterPlayback,
         });
         return result;
     }
@@ -351,6 +424,10 @@
             try { if (typeof ttsJumpPage === 'function') { moved = !!ttsJumpPage(delta); if (moved) route = 'page-jump'; } } catch (_) {}
         }
         syncShellPlaybackControls();
+        const afterPlayback = (typeof getPlaybackStatus === 'function') ? getPlaybackStatus() : null;
+        if (moved && afterPlayback?.active && !afterPlayback.paused) {
+            bringPlaybackPageIntoView(afterPlayback);
+        }
         shellDebugRemember('lastSkipAction', {
             type: 'skip',
             delta,
@@ -358,7 +435,7 @@
             moved,
             before,
             after: {
-                playback: (typeof getPlaybackStatus === 'function') ? getPlaybackStatus() : null,
+                playback: afterPlayback,
                 countdown: (typeof getCountdownStatus === 'function') ? getCountdownStatus() : null,
                 runtime: (typeof getRuntimeUiState === 'function') ? getRuntimeUiState() : null,
                 tts: (typeof getTtsDiagnosticsSnapshot === 'function') ? getTtsDiagnosticsSnapshot() : null
@@ -548,8 +625,11 @@
         if (!prog) return;
         if (!hasActiveReadingCards()) { prog.textContent = '—'; shellDebugRemember('lastProgressSnapshot', { type: 'progress', visible: false, label: '—' }); return; }
         const total = (typeof pages !== 'undefined' && Array.isArray(pages)) ? pages.length : 0;
-        const cur   = (typeof lastFocusedPageIndex === 'number' && lastFocusedPageIndex >= 0)
-                        ? lastFocusedPageIndex : 0;
+        let playback = { active: false, paused: false, key: null };
+        try { if (typeof getPlaybackStatus === 'function') playback = getPlaybackStatus() || playback; } catch (_) {}
+        const cur   = (playback.active && !playback.paused)
+                        ? Math.max(0, getActivePlaybackPageIndex(playback))
+                        : Math.max(0, getVisibleReadingPageIndex());
         prog.textContent = total > 0 ? `Page ${cur + 1} / ${total}` : '—';
         shellDebugRemember('lastProgressSnapshot', { type: 'progress', visible: true, label: prog.textContent, current: cur, total });
     }

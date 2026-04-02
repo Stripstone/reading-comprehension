@@ -464,6 +464,29 @@
   justify-content: flex-end;
 }
 
+/* Large viewports: center the top cluster to the same approximate width as
+   the reading cards, while keeping Exit pinned on the far right. */
+@media (min-width: 901px) {
+  .reading-top-bar {
+    justify-content: flex-end;
+  }
+
+  .reading-top-left {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(900px, calc(100vw - 200px));
+    max-width: calc(100vw - 200px);
+    flex: 0 1 auto;
+  }
+
+  .reading-top-actions {
+    position: relative;
+    z-index: 1;
+    margin-left: auto;
+  }
+}
+
 /* Bottom bar layout */
 .reading-bottom-left {
   position: absolute;

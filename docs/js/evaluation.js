@@ -84,7 +84,19 @@
   function activatePageCard(pageEl, pageIndex) {
     if (!pageEl) return;
     pageEl.classList.add('page-active');
+
+    // Reading-mode Next/advance is explicit page-change intent. When narration
+    // has just been stopped, make the navigated-to page the new runtime-active
+    // page immediately so Play resumes from this card instead of snapping back
+    // to the previously spoken page.
     lastFocusedPageIndex = pageIndex;
+    try { currentPageIndex = pageIndex; } catch (_) {}
+    try {
+      if (typeof setReadingTarget === 'function' && typeof window.getReadingTargetContext === 'function') {
+        const ctx = window.getReadingTargetContext();
+        setReadingTarget({ sourceType: ctx.sourceType, bookId: ctx.bookId, chapterIndex: ctx.chapterIndex, pageIndex });
+      }
+    } catch (_) {}
     try {
       if (!allSoundsMuted) {
         pageTurnSound.currentTime = 0;
@@ -100,6 +112,19 @@
     // - Consolidation phase: focus the next editable textarea.
     // - Evaluation phase: DO NOT focus the textarea; scroll to the next page block instead.
     // currentIndex is the page index the user is "on" (0-based). Use -1 to start from the beginning.
+
+    // Reading-mode navigation is explicit intent to leave the current spoken page.
+    // Stop active narration/countdown before advancing so the next page action
+    // does not keep speaking from the previous page in the background.
+    if (appMode === 'reading') {
+      try {
+        const playback = (typeof getPlaybackStatus === 'function') ? getPlaybackStatus() : null;
+        const countdown = (typeof getCountdownStatus === 'function') ? getCountdownStatus() : null;
+        if ((playback && playback.active) || (countdown && countdown.active)) {
+          if (typeof ttsStop === 'function') ttsStop();
+        }
+      } catch (_) {}
+    }
 
     // If no explicit index was provided, try to advance from the page the user was interacting with.
     if (typeof currentIndex !== "number") {
