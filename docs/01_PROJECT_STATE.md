@@ -86,6 +86,12 @@ Current role:
 - some shell behavior still competes with runtime authority
 - some older documents describe target state more strongly than current code supports
 
+### Recent validated change
+- The chapter-change continuity bug is resolved in the runtime layer.
+- Selecting a chapter now replaces rendered page-card content immediately through the runtime-owned replacement path.
+- The accepted fix stayed in `docs/js/library.js` and did not move reading truth into shell.
+- This repo still requires careful handling because shell/runtime overlap remains transitional, especially during launch-critical continuity passes.
+
 ## What a new engineer should assume
 - Preserve the current UI direction unless the bug is caused by it.
 - Prefer runtime-owned fixes over new shell logic.
@@ -94,7 +100,7 @@ Current role:
 - Validate important behavior in a served environment.
 
 ## Current priority areas
-1. reading continuity
+1. restore continuity
 2. TTS continuity
 3. importer lifecycle
 4. exit cleanup

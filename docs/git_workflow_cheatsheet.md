@@ -227,3 +227,26 @@ Use:
 - `git add` only after review
 - `git commit` only after runtime testing when the pass is important
 
+---
+
+## 19. Docs-closure workflow
+
+```bat
+cd C:\Users\Triston Barker\Documents\GitHub\reading-comprehension\
+git status
+git diff -- docs/*.md > docs-closure.txt
+notepad docs-closure.txt
+```
+
+What it does:
+- narrows review to documentation-only closure work
+- makes backlog/project-state/process-note review lighter
+- helps keep documentation closure separate from code patches when useful
+
+Suggested docs-closure order:
+1. update `04_EXECUTION_BACKLOG.md`
+2. update `01_PROJECT_STATE.md`
+3. update `CLAUDE_DEVELOPMENT_LOOP.md` if the working method changed
+4. review docs diff separately from runtime/code diff
+5. commit docs closure separately when possible
+

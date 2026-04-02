@@ -8,6 +8,9 @@ Each item should answer:
 - who owns the fix
 - what “done” means
 
+Backlog items should stay behavior-first and objective.
+Each launch-critical item should make user expectation, edge cases, owner, and done-when criteria obvious enough that an engineer does not have to infer the intended behavior.
+
 ## Status
 - Open
 - In Progress
@@ -210,8 +213,8 @@ Controls should reflect what the app is actually doing, not what the shell guess
 
 ## 10. Switching book or chapter must replace page state cleanly
 **Risk:** 🔴 Critical  
-**Status:** Open  
-**Owner:** `docs/js/library.js` + `docs/js/state.js`
+**Status:** Validated  
+**Owner:** `docs/js/library.js`
 
 ### User expectation
 Changing book or chapter should show only the pages for that selected source.
@@ -222,6 +225,18 @@ Changing book or chapter should show only the pages for that selected source.
 - leaving reading and returning before changing chapter
 - preview entry versus in-reading chapter change
 
+### Resolution note
+The accepted fix stayed in the runtime path.
+Chapter change now routes through the authoritative rendered-replacement path, so selecting a new chapter immediately replaces rendered page cards without requiring a later Load click.
+
+### Validation note
+Validated in the served app.
+Confirmed:
+- chapter changes replace rendered cards immediately
+- stale previous-chapter cards are not left visible
+- fast repeated chapter changes do not inherit stale chapter content
+- normal Load flow still works after the fix
+
 ### Done when
 - changing book or chapter never reuses stale page content
 - page order stays correct after source/chapter changes
@@ -230,7 +245,7 @@ Changing book or chapter should show only the pages for that selected source.
 
 ---
 
-## 10. TTS reliability under weak connection
+## 11. TTS reliability under weak connection
 **Risk:** 🟡 High  
 **Status:** Open  
 **Owner:** `docs/js/tts.js`
@@ -245,7 +260,7 @@ Weak connectivity should degrade gracefully, not feel random.
 
 ---
 
-## 11. Background music and reading audio resilience
+## 12. Background music and reading audio resilience
 **Risk:** 🟡 High  
 **Status:** Open  
 **Owner:** `docs/js/audio.js`
