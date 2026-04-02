@@ -1396,9 +1396,22 @@
     chapterSelect.addEventListener("change", () => {
       const idx = parseInt(chapterSelect.value || "", 10);
       if (!Number.isFinite(idx)) return;
-      currentChapterIndex = idx;
-      const pages = parsePagesWithTitles(getCurrentChapterRaw());
-      populatePagesSelect(pages);
+
+      // Snapshot the selected index into a local const before any async boundary
+      // so a rapid second change cannot corrupt this handler's chapter resolution.
+      const selectedIdx = idx;
+      currentChapterIndex = selectedIdx;
+
+      const chapterPages = parsePagesWithTitles(getCurrentChapterRaw());
+      populatePagesSelect(chapterPages);
+
+      // Immediately replace rendered page cards with the new chapter's content.
+      // Routing through applySelectionToBulkInput → addPages() → render() is the
+      // single authoritative card-replacement path. Calling it synchronously here
+      // closes the race window between chapter assignment and card DOM update —
+      // no Load button click required, no timing assumption.
+      const chapterText = chapterPages.map(p => p.text).filter(Boolean).join("\n---\n");
+      applySelectionToBulkInput(chapterText, { append: false });
     });
 
     // Keep end >= start
@@ -1677,7 +1690,6 @@
   }
 
   function render() {
-
         // Stop any active TTS and autoplay countdown before rebuilding the DOM
     try { ttsStop(); } catch (_) {}
 
