@@ -85,7 +85,7 @@ function ttsDiagPush(event, data = {}) {
 
 function ttsBlockSnapshot() {
   const key = TTS_STATE.activeKey || null;
-  const pageIdx = key && /^page-(\d+)$/.test(key) ? parseInt(key.slice(5), 10) : -1;
+  const pageIdx = key ? ((typeof readingTargetFromKey === 'function' ? readingTargetFromKey(key) : null)?.pageIndex ?? -1) : -1;
   return {
     sessionId: TTS_STATE.activeSessionId,
     pageKey: key,
@@ -161,8 +161,9 @@ function ttsKeepWarmForAutoplay() {
 
 function ttsSetButtonActive(key, active) {
   try {
-    if (typeof key !== 'string' || !key.startsWith('page-')) return;
-    const pageIndex = parseInt(key.slice(5), 10);
+    const _parsed = (typeof readingTargetFromKey === 'function') ? readingTargetFromKey(key) : null;
+    if (!_parsed) return;
+    const pageIndex = _parsed.pageIndex;
     if (!Number.isFinite(pageIndex)) return;
     const pageEl = document.querySelectorAll('.page')[pageIndex];
     if (!pageEl) return;
@@ -173,8 +174,9 @@ function ttsSetButtonActive(key, active) {
 
 function ttsSetHintButton(key, disabled) {
   try {
-    if (typeof key !== 'string' || !key.startsWith('page-')) return;
-    const pageIndex = parseInt(key.slice(5), 10);
+    const _parsed = (typeof readingTargetFromKey === 'function') ? readingTargetFromKey(key) : null;
+    if (!_parsed) return;
+    const pageIndex = _parsed.pageIndex;
     if (!Number.isFinite(pageIndex)) return;
     const pageEl = document.querySelectorAll('.page')[pageIndex];
     if (!pageEl) return;
@@ -220,7 +222,11 @@ function ttsAutoplayScheduleNext(pageIndex) {
       if (nextPageEl) nextPageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
       setTimeout(() => {
         const text = (typeof pages !== 'undefined' && pages[nextIndex]) ? pages[nextIndex] : '';
-        if (text) ttsSpeakQueue(`page-${nextIndex}`, [text]);
+        if (text) {
+          const _cur = window.__rcReadingTarget || {};
+          if (typeof setReadingTarget === 'function') setReadingTarget({ sourceType: _cur.sourceType || '', bookId: _cur.bookId || '', chapterIndex: _cur.chapterIndex != null ? _cur.chapterIndex : -1, pageIndex: nextIndex });
+          ttsSpeakQueue((typeof readingTargetToKey === 'function') ? readingTargetToKey(window.__rcReadingTarget) : `page-${nextIndex}`, [text]);
+        }
       }, 400);
     } else { updateBtn(); }
   }, 1000);
@@ -229,7 +235,10 @@ function ttsAutoplayScheduleNext(pageIndex) {
 // ─── Sentence / block utilities ───────────────────────────────────────────────
 
 function optsForKeySentenceMarks(key) {
-  return typeof key === 'string' && key.startsWith('page-');
+  if (typeof key !== 'string') return false;
+  if (key.startsWith('rt|')) return true;     // full-context reading target key (post-refactor)
+  if (key.startsWith('page-')) return true;   // legacy bare key (transient backward compat on load)
+  return false;
 }
 
 function utf8ByteOffsetToJsIndex(str, byteOffset) {
@@ -305,8 +314,9 @@ function ttsHighlightBlock(blockIdx) {
 
 function ttsMaybePrepareSentenceHighlight(key, rawText, marks) {
   if (!optsForKeySentenceMarks(key) || !Array.isArray(marks) || !marks.length) return;
-  const pageIndex = Number(String(key).slice(5));
-  if (!Number.isFinite(pageIndex)) return;
+  const _parsed = (typeof readingTargetFromKey === 'function') ? readingTargetFromKey(key) : null;
+  const pageIndex = _parsed ? _parsed.pageIndex : -1;
+  if (!Number.isFinite(pageIndex) || pageIndex < 0) return;
   const pageEl = document.querySelectorAll('.page')[pageIndex];
   if (!pageEl) return;
   const textEl = pageEl.querySelector('.page-text');
@@ -342,8 +352,9 @@ function ttsMaybePrepareSentenceHighlight(key, rawText, marks) {
 
 function ttsPrepareEstimatedHighlight(key, rawText, audio) {
   if (!optsForKeySentenceMarks(key) || !rawText || !audio) return;
-  const pageIndex = Number(String(key).slice(5));
-  if (!Number.isFinite(pageIndex)) return;
+  const _parsed = (typeof readingTargetFromKey === 'function') ? readingTargetFromKey(key) : null;
+  const pageIndex = _parsed ? _parsed.pageIndex : -1;
+  if (!Number.isFinite(pageIndex) || pageIndex < 0) return;
   const pageEl = document.querySelectorAll('.page')[pageIndex];
   if (!pageEl) return;
   const textEl = pageEl.querySelector('.page-text');
@@ -583,8 +594,9 @@ function browserSpeakQueue(key, parts, opts = {}) {
       ttsSetHintButton(key, false);
       ttsClearSentenceHighlight();
       if (isPageRead) {
-        const pageIndex = parseInt(String(key).slice(5), 10);
-        if (Number.isFinite(pageIndex)) ttsAutoplayScheduleNext(pageIndex);
+        const _pp = (typeof readingTargetFromKey === 'function') ? readingTargetFromKey(key) : null;
+        const pageIndex = _pp ? _pp.pageIndex : -1;
+        if (Number.isFinite(pageIndex) && pageIndex >= 0) ttsAutoplayScheduleNext(pageIndex);
       }
       ttsDiagPush('browser-speak-complete', { key, blockCount: ranges.length, sessionId });
       return;
@@ -759,7 +771,7 @@ function getPreferredTtsRouteInfo() {
 
 function ttsSessionSnapshot() {
   const key = TTS_STATE.activeKey || TTS_STATE.pausedPageKey || null;
-  const pageIdx = key && /^page-(\d+)$/.test(key) ? parseInt(key.slice(5), 10) : -1;
+  const pageIdx = key ? ((typeof readingTargetFromKey === 'function' ? readingTargetFromKey(key) : null)?.pageIndex ?? -1) : -1;
   return {
     sessionId: Number(TTS_STATE.activeSessionId || 0),
     activeKey: TTS_STATE.activeKey || null,
@@ -774,9 +786,9 @@ function ttsSessionSnapshot() {
 
 function getNavSessionContext() {
   const key = String(TTS_STATE.activeKey || TTS_STATE.pausedPageKey || '');
-  const m = key.match(/^page-(\d+)$/);
-  if (!m) return null;
-  const pageIndex = Number(m[1]);
+  const _parsed = (typeof readingTargetFromKey === 'function') ? readingTargetFromKey(key) : null;
+  if (!_parsed) return null;
+  const pageIndex = _parsed.pageIndex;
   if (!Number.isFinite(pageIndex) || pageIndex < 0) return null;
   const blockCountFromMarks = Array.isArray(TTS_STATE.highlightMarks) ? TTS_STATE.highlightMarks.length : 0;
   const blockCountFromRanges = Array.isArray(TTS_STATE.browserSentenceRanges) ? TTS_STATE.browserSentenceRanges.length : 0;
@@ -1420,8 +1432,9 @@ async function ttsSpeakQueue(key, parts) {
     ttsSetButtonActive(key, false);
     ttsSetHintButton(key, false);
     if (optsForKeySentenceMarks(key)) {
-      const pageIndex = parseInt(String(key).slice(5), 10);
-      if (Number.isFinite(pageIndex)) { ttsKeepWarmForAutoplay(); ttsAutoplayScheduleNext(pageIndex); }
+      const _cp = (typeof readingTargetFromKey === 'function') ? readingTargetFromKey(key) : null;
+      const pageIndex = _cp ? _cp.pageIndex : -1;
+      if (Number.isFinite(pageIndex) && pageIndex >= 0) { ttsKeepWarmForAutoplay(); ttsAutoplayScheduleNext(pageIndex); }
     }
     ttsDiagPush('speak-action', { action: 'completed', route: 'cloud', key, before, after: ttsBlockSnapshot() });
 
@@ -1462,16 +1475,18 @@ function isRuntimePausedForContract() {
 
 function ttsJumpPagePreserve(delta) {
   const key = String(TTS_STATE.activeKey || '');
-  const match = key.match(/^page-(\d+)$/);
-  if (!match) return false;
-  const currentIndex = Number(match[1]);
+  const parsedKey = (typeof readingTargetFromKey === 'function') ? readingTargetFromKey(key) : null;
+  if (!parsedKey) return false;
+  const currentIndex = parsedKey.pageIndex;
   const nextIndex = currentIndex + (delta < 0 ? -1 : 1);
   if (!Number.isFinite(nextIndex) || nextIndex < 0) return false;
   if (typeof pages === 'undefined' || !pages[nextIndex]) return false;
 
   try { if (typeof window.focusReadingPage === 'function') window.focusReadingPage(nextIndex, { behavior: 'smooth' }); } catch (_) {}
 
-  const nextKey = `page-${nextIndex}`;
+  // Advance reading target to next page (preserving source/chapter context).
+  if (typeof setReadingTarget === 'function') setReadingTarget({ sourceType: parsedKey.sourceType, bookId: parsedKey.bookId, chapterIndex: parsedKey.chapterIndex, pageIndex: nextIndex });
+  const nextKey = (typeof readingTargetToKey === 'function') ? readingTargetToKey(window.__rcReadingTarget) : `page-${nextIndex}`;
   const nextText = pages[nextIndex];
 
   // If we're on cloud (active audio exists), prepare next page audio in paused mode.
@@ -1485,7 +1500,12 @@ function ttsJumpPagePreserve(delta) {
 }
 
 async function ttsPreparePausedCloudPage(pageIndex) {
-  const key = `page-${pageIndex}`;
+  // Key derives from the authoritative reading target, which must already reflect
+  // this pageIndex (set by ttsJumpPagePreserve before calling this function).
+  const _cur = window.__rcReadingTarget || {};
+  const key = (typeof readingTargetToKey === 'function')
+    ? readingTargetToKey({ sourceType: _cur.sourceType || '', bookId: _cur.bookId || '', chapterIndex: _cur.chapterIndex != null ? _cur.chapterIndex : -1, pageIndex: Number(pageIndex) })
+    : `page-${pageIndex}`;
   if (typeof pages === 'undefined' || !pages[pageIndex]) return false;
   const text = pages[pageIndex];
   const sessionId = ++TTS_STATE.activeSessionId;
@@ -1550,8 +1570,8 @@ function ttsJumpSentence(delta) {
   }
 
   const key = TTS_STATE.activeKey;
-  const pageMatch = String(key).match(/^page-(\d+)$/);
-  const sourcePage = pageMatch ? parseInt(pageMatch[1], 10) : -1;
+  const _parsedJump = (typeof readingTargetFromKey === 'function') ? readingTargetFromKey(String(key)) : null;
+  const sourcePage = _parsedJump ? _parsedJump.pageIndex : -1;
   const sourceBlock = TTS_STATE.activeBlockIndex;
   const marks = TTS_STATE.highlightMarks;
   const blockCount = marks ? marks.length : 0;
@@ -1653,25 +1673,31 @@ function ttsJumpPage(delta) {
   }
 
   const key = String(TTS_STATE.activeKey || '');
-  const match = key.match(/^page-(\d+)$/);
-  if (!match) return false;
-  const currentIndex = Number(match[1]);
+  const _parsedJp = (typeof readingTargetFromKey === 'function') ? readingTargetFromKey(key) : null;
+  if (!_parsedJp) return false;
+  const currentIndex = _parsedJp.pageIndex;
   const nextIndex = currentIndex + (delta < 0 ? -1 : 1);
   if (!Number.isFinite(nextIndex) || nextIndex < 0) return false;
   if (typeof pages === 'undefined' || !pages[nextIndex]) return false;
   try { if (typeof window.focusReadingPage === 'function') window.focusReadingPage(nextIndex, { behavior: 'smooth' }); } catch (_) {}
-  ttsSpeakQueue(`page-${nextIndex}`, [pages[nextIndex]]);
+  // Advance reading target to next page before deriving key.
+  if (typeof setReadingTarget === 'function') setReadingTarget({ sourceType: _parsedJp.sourceType, bookId: _parsedJp.bookId, chapterIndex: _parsedJp.chapterIndex, pageIndex: nextIndex });
+  ttsSpeakQueue((typeof readingTargetToKey === 'function') ? readingTargetToKey(window.__rcReadingTarget) : `page-${nextIndex}`, [pages[nextIndex]]);
   TTS_DEBUG.lastSkip = { at: new Date().toISOString(), type: 'page', delta, resolved: 'page-jump', sourcePageIndex: currentIndex, targetPageIndex: nextIndex, activeKey: TTS_STATE.activeKey || null };
   ttsDiagPush('skip-page', TTS_DEBUG.lastSkip);
   return true;
 }
 
-function ttsRestartPage(pageIndex) {
+function ttsRestartPage(pageIndex, targetContext) {
   const idx = Number(pageIndex);
   if (!Number.isFinite(idx) || idx < 0) return false;
   if (typeof pages === 'undefined' || !pages[idx]) return false;
   try { if (typeof window.focusReadingPage === 'function') window.focusReadingPage(idx, { behavior: 'smooth' }); } catch (_) {}
-  ttsSpeakQueue(`page-${idx}`, [pages[idx]]);
+  // Set reading target from provided context (preserves source/chapter) or
+  // fall back to current __rcReadingTarget if no context was passed.
+  const _ctx = targetContext || window.__rcReadingTarget || {};
+  if (typeof setReadingTarget === 'function') setReadingTarget({ sourceType: _ctx.sourceType || '', bookId: _ctx.bookId || '', chapterIndex: _ctx.chapterIndex != null ? _ctx.chapterIndex : -1, pageIndex: idx });
+  ttsSpeakQueue((typeof readingTargetToKey === 'function') ? readingTargetToKey(window.__rcReadingTarget) : `page-${idx}`, [pages[idx]]);
   ttsDiagPush('restart-page', { pageIndex: idx });
   return true;
 }
@@ -1682,11 +1708,11 @@ function restartLastSpokenPageTts() {
     ttsAutoplayCancelCountdown();
     return ttsRestartPage(countdown.pageIndex);
   }
-  // lastPageKey is now reliably set whenever a page key is activated.
+  // lastPageKey is set from key in ttsSpeakQueue — carries full source context.
   const key = String(TTS_STATE.lastPageKey || TTS_STATE.activeKey || '');
-  const match = key.match(/^page-(\d+)$/);
-  if (!match) return false;
-  return ttsRestartPage(Number(match[1]));
+  const parsed = (typeof readingTargetFromKey === 'function') ? readingTargetFromKey(key) : null;
+  if (!parsed) return false;
+  return ttsRestartPage(parsed.pageIndex, parsed);
 }
 
 // ─── Diagnostics snapshot ─────────────────────────────────────────────────────

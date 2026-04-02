@@ -29,6 +29,11 @@
       target.scrollIntoView({ behavior: 'auto', block: 'start' });
       lastFocusedPageIndex = idx;
       try { currentPageIndex = idx; } catch (_) {}
+      // Advance reading target to the restored page; preserve source context set by render().
+      try {
+        const _cur = window.__rcReadingTarget || {};
+        if (typeof setReadingTarget === 'function') setReadingTarget({ sourceType: _cur.sourceType || '', bookId: _cur.bookId || '', chapterIndex: _cur.chapterIndex != null ? _cur.chapterIndex : -1, pageIndex: idx });
+      } catch (_) {}
       window.__rcPendingRestorePageIndex = -1;
       return true;
     } catch (_) {
@@ -1632,6 +1637,8 @@
     // source, placing TTS and lastFocusedPageIndex at the wrong page.
     window.__rcPendingRestorePageIndex = -1;
     evaluationPhase = false;
+    // Clear reading target — no source is active after a reset.
+    try { if (typeof setReadingTarget === 'function') setReadingTarget({ sourceType: '', bookId: '', chapterIndex: -1, pageIndex: 0 }); } catch (_) {}
     clearPersistedSession();
     return true;
   }
@@ -1640,6 +1647,17 @@
 
         // Stop any active TTS and autoplay countdown before rebuilding the DOM
     try { ttsStop(); } catch (_) {}
+
+    // Establish authoritative reading target for this source load.
+    // chapterIndex comes from closure-local currentChapterIndex (in scope here).
+    // pageIndex starts at 0; applyPendingReadingRestore() overrides it if a
+    // restore is pending for this source.
+    try {
+      const _st  = sourceSel  ? (sourceSel.value  || '') : '';
+      const _bid = bookSelect ? (bookSelect.value || '') : '';
+      const _ch  = (typeof currentChapterIndex === 'number' && currentChapterIndex !== null) ? currentChapterIndex : -1;
+      if (typeof setReadingTarget === 'function') setReadingTarget({ sourceType: _st, bookId: _bid, chapterIndex: _ch, pageIndex: 0 });
+    } catch (_) {}
 
     const container = document.getElementById("pages");
     container.innerHTML = "";
@@ -1728,7 +1746,15 @@
           }
           try { currentPageIndex = i; } catch (_) {}
           lastFocusedPageIndex = i;
-          ttsSpeakQueue(`page-${i}`, [text]);
+          // Update authoritative reading target to this page before speaking.
+          try {
+            const _cur = window.__rcReadingTarget || {};
+            if (typeof setReadingTarget === 'function') setReadingTarget({ sourceType: _cur.sourceType || '', bookId: _cur.bookId || '', chapterIndex: _cur.chapterIndex != null ? _cur.chapterIndex : -1, pageIndex: i });
+          } catch (_) {}
+          ttsSpeakQueue(
+            (typeof readingTargetToKey === 'function') ? readingTargetToKey(window.__rcReadingTarget) : `page-${i}`,
+            [text]
+          );
         });
       }
 
@@ -2153,6 +2179,11 @@ function _installScrollPageTracker() {
         // Only update when the page is actually visible (guards hidden sections).
         if (target.getBoundingClientRect().height <= 0) return;
         lastFocusedPageIndex = idx;
+        // Keep reading target in sync so bottom-bar Play speaks the scrolled-to page.
+        try {
+          const _cur = window.__rcReadingTarget || {};
+          if (typeof setReadingTarget === 'function') setReadingTarget({ sourceType: _cur.sourceType || '', bookId: _cur.bookId || '', chapterIndex: _cur.chapterIndex != null ? _cur.chapterIndex : -1, pageIndex: idx });
+        } catch (_) {}
       } catch (_) {}
     });
   }, { passive: true });
@@ -2174,6 +2205,11 @@ window.focusReadingPage = function focusReadingPage(targetIndex, options = {}) {
   target.scrollIntoView({ behavior: options.behavior || 'smooth', block: 'start' });
   lastFocusedPageIndex = idx;
   try { currentPageIndex = idx; } catch (_) {}
+  // Keep reading target in sync so bottom-bar Play speaks the navigated-to page.
+  try {
+    const _cur = window.__rcReadingTarget || {};
+    if (typeof setReadingTarget === 'function') setReadingTarget({ sourceType: _cur.sourceType || '', bookId: _cur.bookId || '', chapterIndex: _cur.chapterIndex != null ? _cur.chapterIndex : -1, pageIndex: idx });
+  } catch (_) {}
   try { if (window.TTS_STATE) window.TTS_STATE.playbackBlockedReason = ''; } catch (_) {}
   try { if (typeof updateDiagnostics === 'function') updateDiagnostics(); } catch (_) {}
   return { ok: true, index: idx, total };
@@ -2188,14 +2224,26 @@ window.stepReadingPage = function stepReadingPage(delta, options = {}) {
 };
 
 window.startFocusedPageTts = function startFocusedPageTts() {
-  const idx = getFocusedOrInferredReadingPageIndex();
+  const target = window.__rcReadingTarget;
+  // Refuse to infer target from DOM focus or scroll. If no authoritative
+  // reading target exists, block and emit diagnostics rather than guessing.
+  if (!target || !target.sourceType) {
+    try { if (typeof ttsDiagPush === 'function') ttsDiagPush('start-focused-blocked', { reason: 'no-reading-target', pageCount: Array.isArray(pages) ? pages.length : 0 }); } catch (_) {}
+    return false;
+  }
+  const idx = Math.max(0, Math.min(Number(target.pageIndex) || 0, (Array.isArray(pages) ? pages.length : 1) - 1));
   const text = (Array.isArray(pages) && pages[idx]) ? pages[idx] : '';
   if (!text) return false;
+  // Normalize clamped index back into target before deriving key.
+  if (typeof setReadingTarget === 'function') setReadingTarget({ sourceType: target.sourceType, bookId: target.bookId, chapterIndex: target.chapterIndex, pageIndex: idx });
   try { currentPageIndex = idx; } catch (_) {}
   lastFocusedPageIndex = idx;
   try { if (window.TTS_STATE) window.TTS_STATE.playbackBlockedReason = ''; } catch (_) {}
   try { if (typeof updateDiagnostics === 'function') updateDiagnostics(); } catch (_) {}
-  ttsSpeakQueue(`page-${idx}`, [text]);
+  ttsSpeakQueue(
+    (typeof readingTargetToKey === 'function') ? readingTargetToKey(window.__rcReadingTarget) : `page-${idx}`,
+    [text]
+  );
   return true;
 };
 

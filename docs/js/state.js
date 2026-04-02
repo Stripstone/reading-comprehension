@@ -22,6 +22,18 @@
   let pageData = [];
   let currentPageIndex = 0;
   window.__rcPendingRestorePageIndex = -1;
+
+// ─── Runtime reading target ───────────────────────────────────────────────────
+// One authoritative object that all TTS entry paths must read.
+// Never inferred from DOM or focus state. Set only via setReadingTarget().
+//
+//   sourceType:   importSource select value ('book' | 'text' | …)
+//   bookId:       bookSelect value ('local:foo' | embedded ID | '' for text mode)
+//   chapterIndex: chapter index within book; -1 if no chapters or text mode
+//   pageIndex:    0-based index into currently loaded pages[]
+//
+// Chapter A page 0 and chapter B page 0 of the same book are distinct targets.
+window.__rcReadingTarget = { sourceType: '', bookId: '', chapterIndex: -1, pageIndex: 0 };
   
   // Current mode: 'reading', 'comprehension', 'research'
   let appMode = 'reading';   // default mode
@@ -373,6 +385,52 @@ async function stableHashText(text) {
   // -----------------------------------
 // ==============================
 // TEXT TO SPEECH
+
+// ─── Reading target helpers ────────────────────────────────────────────────────
+
+// Only write path for window.__rcReadingTarget.
+function setReadingTarget({ sourceType, bookId, chapterIndex, pageIndex }) {
+  window.__rcReadingTarget = {
+    sourceType:   String(sourceType   ?? ''),
+    bookId:       String(bookId       ?? ''),
+    chapterIndex: Number.isFinite(Number(chapterIndex)) ? Number(chapterIndex) : -1,
+    pageIndex:    (Number.isFinite(Number(pageIndex)) && Number(pageIndex) >= 0) ? Number(pageIndex) : 0,
+  };
+}
+window.setReadingTarget = setReadingTarget;
+
+// Key shape: rt|sourceType|bookId|chapterIndex|pageIndex
+// Used as TTS_STATE.activeKey / lastPageKey so all key-bearing state carries
+// full source context, not just a bare page index.
+function readingTargetToKey(target) {
+  const t = target || window.__rcReadingTarget || {};
+  return `rt|${t.sourceType ?? ''}|${t.bookId ?? ''}|${t.chapterIndex ?? -1}|${t.pageIndex ?? 0}`;
+}
+window.readingTargetToKey = readingTargetToKey;
+
+// Reverse: parse a key produced by readingTargetToKey back to a target object.
+// Also handles legacy bare 'page-${idx}' keys so transient state on load degrades
+// gracefully rather than silently breaking restart/skip.
+function readingTargetFromKey(key) {
+  if (typeof key !== 'string') return null;
+  const parts = key.split('|');
+  if (parts[0] === 'rt' && parts.length >= 5) {
+    const pageIndex    = Number(parts[4]);
+    const chapterIndex = Number(parts[3]);
+    if (!Number.isFinite(pageIndex) || pageIndex < 0) return null;
+    return {
+      sourceType:   parts[1],
+      bookId:       parts[2],
+      chapterIndex: Number.isFinite(chapterIndex) ? chapterIndex : -1,
+      pageIndex,
+    };
+  }
+  // Legacy fallback: bare page-${idx} from state written before this patch.
+  const m = key.match(/^page-(\d+)$/);
+  if (m) return { sourceType: '', bookId: '', chapterIndex: -1, pageIndex: Number(m[1]) };
+  return null;
+}
+window.readingTargetFromKey = readingTargetFromKey;
 
 function getReadingRestoreStatus() {
   return {
