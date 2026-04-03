@@ -41,6 +41,33 @@ What must be true:
 - reading controls stay reachable on narrow widths
 - the reading layout stays stable across themes
 - page flow is understandable and not game-like
+- themes change appearance and ambience only, not reading flow truth
+
+### Reading settings
+What must be true:
+- reading settings are organized into General, Sound & Music, and Themes
+- tabs stack on mobile
+- tabs use a left-side vertical rail on larger viewports
+- Themes always exists, even when the active theme has no extra customization yet
+
+### Explorer theme
+What must be true:
+- Explorer visuals are scoped to reading content only
+- bars stay governed by global Light/Dark appearance
+- Explorer offers Plain, Texture, and Wallpaper reading-background modes
+- Wallpaper is the default Explorer background mode
+- embers appear only in reading and remain visually contained there
+- Explorer customization persists when switching away and back
+- reset restores Explorer defaults cleanly
+
+### Music in Themes
+What must be true:
+- music selection lives in the Themes tab
+- the picker opens in a child modal above reading settings
+- built-in default music remains available
+- one Custom row supports upload and delete
+- deleting custom falls back to built-in default
+- custom file persistence is device-local only
 
 ### Page navigation
 What must be true:
@@ -107,3 +134,4 @@ A build is acceptable only if all of the following are true:
 - exit cleanup is complete
 - restore lands on the correct page
 - footer never covers content
+- theme changes do not change reading layout or runtime reading truth

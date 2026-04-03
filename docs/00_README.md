@@ -44,11 +44,27 @@ The shell layer is not only `docs/index.html`.
 For the current codebase, the shell layer includes:
 - `docs/index.html`
 - `docs/js/shell.js`
-- shell-facing CSS in `docs/css/`
+- live shell-facing CSS in `docs/css/`
 
 That does **not** change ownership.
 It only clarifies where current shell behavior lives.
-Runtime still owns reading entry, active page truth, TTS, restore, importer state, countdown truth, and reading exit cleanup.
+Runtime still owns reading entry, active page truth, TTS, restore, importer state, countdown truth, theme truth, appearance truth, and reading exit cleanup.
+
+## Current documentation note
+The theme enhancement is now implemented.
+
+That means the docs now treat these as current reality:
+- runtime-owned theme state exists
+- runtime-owned appearance state exists
+- Explorer customization lives in Reading Settings → Themes
+- Profile Appearance is global Light/Dark only
+- custom music is device-local and separate from durable preferences
+
+The CSS surface is still slightly transitional:
+- `docs/css/shell.css` is the live shell CSS patch surface today
+- `docs/css/components.css` and `docs/css/theme.css` still describe the intended split, but they are not the live implementation surface yet
+
+Treat that as logged debt, not as a reason to patch against dormant CSS files by default.
 
 ## Optional companion for Claude work
 `CLAUDE_DEVELOPMENT_LOOP.md` is a working-method note.

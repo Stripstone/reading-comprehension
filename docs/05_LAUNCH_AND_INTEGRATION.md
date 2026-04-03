@@ -22,6 +22,7 @@ These must be true in code and runtime behavior:
 - importer reset is runtime-owned
 - exit cleanup is runtime-owned
 - tier/mode enforcement is runtime-owned
+- theme and appearance truth are runtime-owned
 
 ### Shell-owned requirements
 These must be true in presentation:
@@ -30,6 +31,7 @@ These must be true in presentation:
 - library/profile are centered and not clipped
 - footer behaves correctly
 - theme/tier visuals match actual runtime state
+- theme controls stay as presentation surfaces, not policy owners
 
 ## Current launch priorities
 1. runtime continuity first
@@ -51,6 +53,30 @@ It should not:
 - replace runtime state logic
 - become a shell-side state model
 - define restore behavior by itself
+
+## Current settings/persistence direction
+The theme enhancement now uses a runtime-owned persistence seam.
+
+That means:
+- runtime owns theme truth
+- runtime owns appearance truth
+- runtime owns Explorer settings truth
+- durable prefs are routed through adapter functions
+- local-only heavy assets remain device-local
+
+This keeps later Supabase work additive rather than forcing a theme ownership rewrite.
+
+### Durable sync-safe preference examples
+- `theme_id`
+- `appearance`
+- Explorer options
+- ambience toggles
+- diagnostics preference
+
+### Local-only heavy assets for now
+- uploaded custom music blobs
+- user-provided binary assets
+- caches
 
 ## Current Supabase scope
 
@@ -104,12 +130,21 @@ Rules:
 - library/profile do not clip or overlay
 - reading controls remain reachable at narrow widths
 
+### Themes / appearance
+- switching theme preserves reading layout stability
+- Explorer customization stays scoped to reading content only
+- bars remain governed by global Light/Dark appearance
+- theme gating follows runtime-owned entitlement checks
+- child modals in reading stack above parent reading settings correctly
+
 ### Signed-in persistence later
 - settings restore after sign-in
 - progress restores to correct source/page across devices
 - session history does not overwrite restore truth
+- durable prefs restore without trying to sync heavy local-only assets blindly
 
 ## Open integration questions
 - when should signed-in users bypass landing friction?
 - what is the exact runtime API surface for reading entry/exit after cleanup?
 - what should be synced immediately versus deferred until after launch?
+- when should theme/appearance persistence adapters start reading from Supabase-backed records rather than local-only durable prefs?

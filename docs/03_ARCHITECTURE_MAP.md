@@ -19,8 +19,8 @@ The shell must not own, mirror, infer, or compete with runtime truth in launch-c
 - modal framing
 - library/profile presentation
 - footer/layout behavior
-- theme/tier visual surfaces
-- shell-safe bridge calls into runtime
+- theme and appearance control surfaces
+- shell-safe bridge calls into runtime APIs
 
 ### Runtime owns
 - reading entry
@@ -33,6 +33,11 @@ The shell must not own, mirror, infer, or compete with runtime truth in launch-c
 - restore and reading continuity
 - reading exit cleanup
 - mode/tier gating logic
+- selected theme state
+- appearance state
+- Explorer settings state
+- theme/music entitlement decisions
+- applying theme/appearance values to the app
 
 ### Backend owns
 - anchors
@@ -57,8 +62,7 @@ It stores durable records that runtime interprets.
 ### Shell files
 - `docs/index.html`
 - `docs/js/shell.js`
-- `docs/css/components.css`
-- `docs/css/theme.css`
+- `docs/css/shell.css`
 
 ### Runtime files
 - `docs/js/app.js`
@@ -73,6 +77,7 @@ It stores durable records that runtime interprets.
 - `docs/js/utils.js`
 - `docs/js/config.js`
 - `docs/js/embers.js`
+- `docs/js/music.js`
 
 ### Backend files
 - `api/*`
@@ -96,6 +101,12 @@ It stores durable records that runtime interprets.
 - `evaluation.js`
 - `ui.js`
 
+Supporting JS loaded before the scaffold includes:
+- `config.js`
+- `audio.js`
+- `embers.js`
+- `music.js`
+
 This order is part of the runtime contract.
 
 ## Decision rules
@@ -116,15 +127,35 @@ This order is part of the runtime contract.
 - restore
 - progress or completion truth
 - mode or tier enforcement
+- selected theme or appearance truth
+- theme gating or custom music permission
 
 ## Theme rule
 Themes are a presentation layer over one locked reading layout.
 
 That means:
-- structure belongs in `components.css`
-- appearance belongs in `theme.css`
-- selected theme state belongs in runtime
-- shell may surface swatches or settings, but not theme truth
+- theme truth belongs in runtime
+- appearance truth belongs in runtime
+- shell may surface swatches, tabs, and controls, but not theme truth
+- themes may change decorative surfaces and ambience, not reading flow truth
+- heavy local assets stay separate from durable sync-safe preferences
+
+### Current persistence seam
+Runtime should persist theme/appearance through adapter functions rather than hardcoded backend assumptions.
+
+For now, local storage-backed adapters are acceptable.
+That seam exists so Supabase can later wrap or replace durable persistence without changing runtime ownership.
+
+## Current CSS note
+The intended long-term split is still:
+- structure in `components.css`
+- appearance in `theme.css`
+
+But the live implementation surface today is:
+- `docs/css/shell.css`
+
+Treat this as logged transitional debt.
+Do not wake up dormant CSS files during unrelated passes unless the pass is explicitly a CSS-surface redistribution pass.
 
 ## Redistribution rule
 When shell behavior and scaffold behavior overlap, the scaffold wins by default unless the concern is purely presentational.

@@ -238,41 +238,76 @@ Confirmed:
 - normal Load flow still works after the fix
 
 ### Done when
-- changing book or chapter never reuses stale page content
-- page order stays correct after source/chapter changes
-- session restore is replaced or cleared when the selected source no longer matches
-- no chapter can inherit pages from a previously loaded chapter
+- switching book or chapter fully replaces rendered page state
+- stale prior-source cards do not remain visible
+- restore and later reading still behave normally after the switch
 
 ---
 
-## 11. TTS reliability under weak connection
+## 11. Isolated theme system is implemented and runtime-owned
 **Risk:** 🟡 High  
-**Status:** Open  
-**Owner:** `docs/js/tts.js`
+**Status:** Validated  
+**Owner:** `docs/js/state.js` + `docs/js/shell.js` + live shell CSS
 
 ### User expectation
-Weak connectivity should degrade gracefully, not feel random.
+Theme choice, Explorer customization, and global appearance should feel coherent without changing reading flow truth.
+
+### Confirmed implementation
+- runtime owns theme truth
+- runtime owns appearance truth
+- shell controls route through runtime APIs
+- Explorer customization lives in Reading Settings → Themes
+- Profile Appearance is global Light/Dark only
+- Explorer visuals are reading-only
+- Explorer supports Plain, Texture, and Wallpaper background modes
+- custom music is bounded, local-only, and separate from durable preferences
+- runtime owns Explorer/custom-music access checks
+
+### Validation note
+Validated to the point of implementation-safe acceptance.
+Small cleanup may still occur later, but this is now a stable implemented system rather than backlog-planning work.
 
 ### Done when
-- stall recovery is defined and bounded
-- buffering does not create false-start behavior as easily
-- diagnostics explain retry and route decisions
+- keep documentation aligned with the implemented theme surface
+- future work treats this as current reality rather than unbuilt design
 
 ---
 
-## 12. Background music and reading audio resilience
-**Risk:** 🟡 High  
-**Status:** Open  
-**Owner:** `docs/js/audio.js`
+## 12. CSS surface alignment for themes remains deferred debt
+**Risk:** 🟢 Normal  
+**Status:** Deferred  
+**Owner:** future scaffold/CSS redistribution pass
 
 ### User expectation
-Reading-owned audio should recover intentionally where designed, and stop intentionally on exit.
+Theme changes should continue to work; users do not care which CSS file the rule lives in.
+
+### Current debt
+The intended CSS split is still:
+- structure in `components.css`
+- appearance in `theme.css`
+
+But the live implementation surface today is:
+- `docs/css/shell.css`
+
+### Why deferred
+Reactivating dormant CSS files during the bounded theme pass would have turned the work into a broader scaffold redistribution/refactor.
 
 ### Done when
-- reading exit cleanup still works
-- recovery behavior is explicit rather than accidental
+- decide whether `components.css` and `theme.css` will become live again
+- migrate structure and appearance deliberately in one contained pass
+- update docs at the same time so file map and live runtime match
 
 ---
 
-## Validation rule
-Do not mark a critical item Validated until it passes in the served app.
+## 13. Theme asset and local-asset subsystem cleanup remains deferred
+**Risk:** 🟢 Normal  
+**Status:** Deferred  
+**Owner:** future theme/supporting-assets pass
+
+### Current debt
+- wallpaper/local asset placement still needs a cleaner final home in the live scaffold
+- `music.js` is acceptable but still a narrow single-purpose local-asset path
+
+### Done when
+- wallpaper/assets are localized cleanly in the live scaffold
+- supporting local asset handling is reviewed as a system rather than as one-off theme utilities
