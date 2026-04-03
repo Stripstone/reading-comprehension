@@ -70,12 +70,18 @@
                 shellDebugRemember('lastControlAction', { type: 'exit-reading', exitResult });
             } catch(_) {}
         }
+        document.body.classList.toggle('reading-active', id === 'reading-mode');
         if (id === 'reading-mode') {
             initFocusMode();
             updateTierPill();
             updateExplorerSwatchState();
             updateProgressBar();
+            try { if (window.rcTheme) window.rcTheme.applySettings(); } catch (_) {}
+            try { if (window.rcEmbers && typeof window.rcEmbers.refreshBounds === 'function') window.rcEmbers.refreshBounds(true); } catch (_) {}
+            try { syncExplorerMusicSource(); } catch (_) {}
             // (label mutation removed — layout handled purely in CSS)
+        } else {
+            try { syncExplorerMusicSource(); } catch (_) {}
         }
         if (id === 'dashboard') refreshLibrary();
         try { if (typeof window.syncDiagnosticsVisibility === 'function') window.syncDiagnosticsVisibility(); } catch (_) {}
@@ -136,6 +142,8 @@
         const pill = document.getElementById('reading-tier-pill');
         if (pill) pill.textContent = btn.textContent.trim();
         updateExplorerSwatchState();
+        try { if (window.rcTheme && typeof window.rcTheme.enforceAccess === 'function') window.rcTheme.enforceAccess(); } catch (_) {}
+        try { syncExplorerMusicSource(); } catch (_) {}
     }
 
     function updateTierPill() {
@@ -153,36 +161,240 @@
     }
 
     // ── Theme ────────────────────────────────────────────────────
-    function setTheme(theme, btn) {
-        document.body.classList.remove('theme-green', 'theme-purple', 'theme-explorer');
-        if (theme !== 'default') document.body.classList.add('theme-' + theme);
-        document.querySelectorAll('#theme-swatches .theme-swatch').forEach(s => s.classList.remove('selected'));
-        btn.querySelector('.theme-swatch').classList.add('selected');
+    const BUILTIN_MUSIC_SRC = 'assets/song.mp3';
+    let _customMusicUrl = null;
+    let _customMusicRecord = null;
+
+    function revokeCustomMusicUrl() {
+        if (_customMusicUrl) {
+            try { URL.revokeObjectURL(_customMusicUrl); } catch (_) {}
+            _customMusicUrl = null;
+        }
     }
 
-    // Explorer swatch: unlock for paid/premium, gate for free
-    function handleExplorerSwatch() {
-        const tier = getCurrentTier();
-        if (tier === 'free') {
-            openModal('pricing-modal');
-        } else {
-            setTheme('explorer', document.getElementById('explorer-swatch-btn'));
+    function syncMusicRowSelection(source, hasCustom) {
+        document.querySelectorAll('#musicPickerList .music-picker-row').forEach((row) => {
+            const rowSource = row.dataset.musicSource;
+            const selected = rowSource === source && (rowSource !== 'custom' || hasCustom);
+            row.classList.toggle('selected', selected);
+            row.classList.toggle('unavailable', rowSource === 'custom' && !hasCustom);
+        });
+    }
+
+    async function loadCustomMusicRecord(forceReload) {
+        if (!forceReload && _customMusicRecord) return _customMusicRecord;
+        if (!(window.rcMusicDb && typeof window.rcMusicDb.customMusicGet === 'function')) return null;
+        try { _customMusicRecord = await window.rcMusicDb.customMusicGet(); } catch (_) { _customMusicRecord = null; }
+        return _customMusicRecord;
+    }
+
+    function setBgMusicSource(src, sourceKey) {
+        const audio = document.getElementById('bgMusic');
+        if (!audio || !src) return false;
+        if (audio.dataset.rcSourceKey === sourceKey && audio.src) return true;
+        audio.dataset.rcSourceKey = sourceKey;
+        try { audio.src = src; audio.load(); } catch (_) { return false; }
+        return true;
+    }
+
+    async function syncExplorerMusicSource(forceReload) {
+        const themeState = (window.rcTheme && typeof window.rcTheme.get === 'function') ? window.rcTheme.get() : { themeId: 'default', settings: { music: 'default' } };
+        const settings = (themeState && themeState.settings) || { music: 'default' };
+        const isExplorer = themeState && themeState.themeId === 'explorer';
+        if (!isExplorer || settings.music !== 'custom') {
+            revokeCustomMusicUrl();
+            return setBgMusicSource(BUILTIN_MUSIC_SRC, 'default');
         }
+        const record = await loadCustomMusicRecord(forceReload);
+        if (!record || !record.blob) {
+            try { if (window.rcTheme && typeof window.rcTheme.patchSettings === 'function') window.rcTheme.patchSettings({ music: 'default' }); } catch (_) {}
+            revokeCustomMusicUrl();
+            return setBgMusicSource(BUILTIN_MUSIC_SRC, 'default');
+        }
+        revokeCustomMusicUrl();
+        _customMusicUrl = URL.createObjectURL(record.blob);
+        return setBgMusicSource(_customMusicUrl, `custom:${record.name || 'track'}:${record.savedAt || 0}`);
+    }
+
+    function setTheme(theme) {
+        try {
+            if (window.rcTheme && typeof window.rcTheme.set === 'function') {
+                window.rcTheme.set(theme);
+                window.rcTheme.syncShellState();
+            }
+        } catch (_) {}
+        refreshExplorerPanel();
+        try { syncExplorerMusicSource(); } catch (_) {}
+    }
+
+    function handleExplorerSwatch() {
+        const canUse = !!(window.rcTheme && typeof window.rcTheme.canUseTheme === 'function' && window.rcTheme.canUseTheme('explorer'));
+        if (!canUse) openModal('pricing-modal');
+        else setTheme('explorer');
     }
 
     function updateExplorerSwatchState() {
-        const btn  = document.getElementById('explorer-swatch-btn');
-        const tier = getCurrentTier();
+        const btn = document.getElementById('explorer-swatch-btn');
         if (!btn) return;
-        if (tier === 'free') {
+        const swatch = btn.querySelector('.theme-swatch');
+        const canUse = !!(window.rcTheme && typeof window.rcTheme.canUseTheme === 'function' && window.rcTheme.canUseTheme('explorer'));
+        if (!canUse) {
             btn.classList.add('explorer-locked');
             btn.title = 'Upgrade to Pro+ to unlock Explorer theme';
-            btn.querySelector('.theme-swatch').style.opacity = '0.6';
+            if (swatch) swatch.style.opacity = '0.6';
         } else {
             btn.classList.remove('explorer-locked');
             btn.title = 'Explorer theme';
-            btn.querySelector('.theme-swatch').style.opacity = '1';
+            if (swatch) swatch.style.opacity = '1';
         }
+    }
+
+    function switchReadingSettingsTab(tabName) {
+        document.querySelectorAll('.rs-tab').forEach((tab) => {
+            const active = tab.dataset.rsTab === tabName;
+            tab.classList.toggle('active', active);
+            tab.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        document.querySelectorAll('.rs-panel').forEach((panel) => {
+            panel.style.display = panel.id === `rs-panel-${tabName}` ? '' : 'none';
+        });
+        if (tabName === 'themes') refreshExplorerPanel();
+    }
+
+    function setAppAppearance(mode) {
+        try { if (window.rcAppearance && typeof window.rcAppearance.set === 'function') window.rcAppearance.set(mode); } catch (_) {}
+    }
+
+    function refreshExplorerPanel() {
+        const explorerPanel = document.getElementById('rs-explorer-panel');
+        const emptyState = document.getElementById('rs-themes-empty');
+        if (!explorerPanel || !emptyState) return;
+        const themeState = (window.rcTheme && typeof window.rcTheme.get === 'function') ? window.rcTheme.get() : { themeId: 'default' };
+        const isExplorer = themeState.themeId === 'explorer';
+        explorerPanel.style.display = isExplorer ? '' : 'none';
+        emptyState.style.display = isExplorer ? 'none' : '';
+        try { if (window.rcTheme) window.rcTheme.syncShellState(); } catch (_) {}
+        if (isExplorer) populateExplorerPanel();
+    }
+
+    function populateExplorerPanel() {
+        const settings = (window.rcTheme && typeof window.rcTheme.getSettings === 'function') ? window.rcTheme.getSettings() : null;
+        if (!settings) return;
+        const fontSelect = document.getElementById('explorer-font-select');
+        const embersToggle = document.getElementById('explorer-embers-toggle');
+        const bgSelect = document.getElementById('explorer-bg-select');
+        const musicSub = document.getElementById('explorer-music-sub');
+        if (fontSelect) fontSelect.value = settings.font || 'Lora';
+        if (embersToggle) embersToggle.checked = settings.embersOn !== false;
+        if (bgSelect) bgSelect.value = settings.backgroundMode || 'wallpaper';
+        document.querySelectorAll('.explorer-accent-swatch').forEach((btn) => btn.classList.toggle('selected', btn.dataset.accentSwatch === settings.accentSwatch));
+        document.querySelectorAll('.explorer-ember-swatch').forEach((btn) => btn.classList.toggle('selected', btn.dataset.emberPreset === settings.emberPreset));
+        if (musicSub) musicSub.textContent = settings.music === 'custom' ? ((_customMusicRecord && _customMusicRecord.name) || 'Custom loaded') : 'Built-in default';
+    }
+
+    function explorerSettingChanged() {
+        if (!(window.rcTheme && typeof window.rcTheme.patchSettings === 'function')) return;
+        const fontSelect = document.getElementById('explorer-font-select');
+        const embersToggle = document.getElementById('explorer-embers-toggle');
+        const bgSelect = document.getElementById('explorer-bg-select');
+        window.rcTheme.patchSettings({
+            font: fontSelect ? fontSelect.value : 'Lora',
+            embersOn: !!(embersToggle && embersToggle.checked),
+            backgroundMode: bgSelect ? bgSelect.value : 'wallpaper'
+        });
+        populateExplorerPanel();
+    }
+
+    function explorerAccentSwatchPick(name) {
+        if (!(window.rcTheme && typeof window.rcTheme.patchSettings === 'function')) return;
+        window.rcTheme.patchSettings({ accentSwatch: name });
+        populateExplorerPanel();
+    }
+
+    function explorerEmberPresetPick(name) {
+        if (!(window.rcTheme && typeof window.rcTheme.patchSettings === 'function')) return;
+        window.rcTheme.patchSettings({ emberPreset: name });
+        populateExplorerPanel();
+    }
+
+    function explorerResetDefaults() {
+        if (!(window.rcTheme && typeof window.rcTheme.resetSettings === 'function')) return;
+        window.rcTheme.resetSettings();
+        try { syncExplorerMusicSource(); } catch (_) {}
+        populateExplorerPanel();
+    }
+
+    async function initMusicPickerState(forceReload) {
+        const record = await loadCustomMusicRecord(forceReload);
+        const deleteBtn = document.getElementById('musicCustomDeleteBtn');
+        const status = document.getElementById('musicCustomStatus');
+        const uploadBtn = document.querySelector('#musicPickerList .music-upload-btn');
+        const settings = (window.rcTheme && typeof window.rcTheme.getSettings === 'function') ? window.rcTheme.getSettings() : { music: 'default' };
+        const hasCustom = !!(record && record.blob);
+        if (status) status.textContent = hasCustom ? `Loaded: ${record.name || 'Custom track'}` : 'No custom file loaded';
+        if (deleteBtn) deleteBtn.style.display = hasCustom ? '' : 'none';
+        if (uploadBtn) uploadBtn.textContent = hasCustom ? 'Replace' : 'Upload';
+        syncMusicRowSelection(hasCustom && settings.music === 'custom' ? 'custom' : 'default', hasCustom);
+        populateExplorerPanel();
+        return hasCustom;
+    }
+
+    function openMusicPicker() { initMusicPickerState(false); openModal('musicPickerModal'); }
+    function closeMusicPicker() { closeModal('musicPickerModal'); }
+
+    function triggerMusicUpload() {
+        if (!(window.rcTheme && typeof window.rcTheme.canUseCustomMusic === 'function' && window.rcTheme.canUseCustomMusic())) { openModal('pricing-modal'); return; }
+        const input = document.getElementById('musicCustomInput');
+        if (input) input.click();
+    }
+
+    async function handleMusicUpload(input) {
+        const file = input && input.files && input.files[0];
+        if (!file) return;
+        if (!(window.rcTheme && typeof window.rcTheme.canUseCustomMusic === 'function' && window.rcTheme.canUseCustomMusic())) {
+            openModal('pricing-modal');
+            input.value = '';
+            return;
+        }
+        try {
+            if (window.rcMusicDb && typeof window.rcMusicDb.customMusicPut === 'function') {
+                await window.rcMusicDb.customMusicPut(file, file.name, file.type);
+            }
+            _customMusicRecord = null;
+            await initMusicPickerState(true);
+            if (window.rcTheme && typeof window.rcTheme.patchSettings === 'function') window.rcTheme.patchSettings({ music: 'custom' });
+            await syncExplorerMusicSource(true);
+            populateExplorerPanel();
+        } catch (_) {}
+        if (input) input.value = '';
+    }
+
+    async function deleteCustomMusic() {
+        try {
+            if (window.rcMusicDb && typeof window.rcMusicDb.customMusicDelete === 'function') {
+                await window.rcMusicDb.customMusicDelete();
+            }
+            _customMusicRecord = null;
+            revokeCustomMusicUrl();
+            if (window.rcTheme && typeof window.rcTheme.patchSettings === 'function') window.rcTheme.patchSettings({ music: 'default' });
+            await initMusicPickerState(true);
+            await syncExplorerMusicSource(true);
+            populateExplorerPanel();
+        } catch (_) {}
+    }
+
+    async function selectMusicRow(source) {
+        const hasCustom = await initMusicPickerState(false);
+        if (source === 'custom' && !(window.rcTheme && typeof window.rcTheme.canUseCustomMusic === 'function' && window.rcTheme.canUseCustomMusic())) {
+            openModal('pricing-modal');
+            return false;
+        }
+        if (source === 'custom' && !hasCustom) return false;
+        if (window.rcTheme && typeof window.rcTheme.patchSettings === 'function') window.rcTheme.patchSettings({ music: source === 'custom' ? 'custom' : 'default' });
+        syncMusicRowSelection(source === 'custom' ? 'custom' : 'default', hasCustom);
+        await syncExplorerMusicSource(source === 'custom');
+        populateExplorerPanel();
+        return true;
     }
 
     function promptExplorerUpgrade() { openModal('pricing-modal'); }
@@ -445,8 +657,13 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
-        // Sync tier pill and explorer swatch once app has loaded
-        setTimeout(() => { updateTierPill(); updateExplorerSwatchState(); }, 500);
+        setTimeout(() => {
+            updateTierPill();
+            updateExplorerSwatchState();
+            try { if (window.rcTheme) window.rcTheme.syncShellState(); } catch (_) {}
+            try { if (window.rcAppearance) window.rcAppearance.syncButtons(); } catch (_) {}
+            try { refreshExplorerPanel(); } catch (_) {}
+        }, 500);
         patchRefreshHook();
 
         const bookSel = document.getElementById('bookSelect');
@@ -659,8 +876,15 @@
     document.addEventListener('DOMContentLoaded', () => {
         const tierSel = document.getElementById('tierSelect');
         if (tierSel) {
-            tierSel.addEventListener('change', () => { updateTierPill(); updateExplorerSwatchState(); });
+            tierSel.addEventListener('change', () => {
+                updateTierPill();
+                updateExplorerSwatchState();
+                try { if (window.rcTheme && typeof window.rcTheme.enforceAccess === 'function') window.rcTheme.enforceAccess(); } catch (_) {}
+                try { syncExplorerMusicSource(); } catch (_) {}
+                refreshExplorerPanel();
+            });
         }
+        try { switchReadingSettingsTab('general'); } catch (_) {}
 
         // After a successful import the engine fires Done; refresh shell library explicitly.
         const importDoneBtn = document.getElementById('importDoneBtn');
@@ -673,6 +897,15 @@
         const importCloseBtn = document.getElementById('importBookClose');
         if (importCloseBtn) {
             importCloseBtn.addEventListener('click', () => setTimeout(() => { try { if (typeof resetImporterState === 'function') resetImporterState({ keepModalOpen: false }); } catch(_) {} }, 0));
+        }
+
+        const topSettingsBtn = document.getElementById('openReadingSettings');
+        if (topSettingsBtn) {
+            topSettingsBtn.addEventListener('click', () => { try { refreshExplorerPanel(); } catch (_) {} });
+        }
+        const musicPickerModal = document.getElementById('musicPickerModal');
+        if (musicPickerModal) {
+            musicPickerModal.addEventListener('click', (ev) => { if (ev.target === musicPickerModal) closeMusicPicker(); });
         }
 
         // Keep progress bar in sync as the user scrolls or focuses pages.

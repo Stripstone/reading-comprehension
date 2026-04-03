@@ -442,3 +442,377 @@ function getReadingRestoreStatus() {
 }
 
 window.getReadingRestoreStatus = getReadingRestoreStatus;
+
+
+// ===================================
+// THEME + APPEARANCE PERSISTENCE
+// ===================================
+
+const RC_THEME_PREFS_KEY = 'rc_theme_prefs';
+const RC_APPEARANCE_PREFS_KEY = 'rc_appearance_prefs';
+const RC_DIAGNOSTICS_PREFS_KEY = 'rc_diagnostics_prefs';
+
+let appTheme = 'default';
+let appThemeSettings = {};
+let appAppearance = 'light';
+let diagnosticsPrefs = { enabled: false, mode: 'off' };
+
+const EXPLORER_PRESET = {
+  accentSwatch: 'rust',
+  font: 'Lora',
+  embersOn: true,
+  emberPreset: 'fire',
+  backgroundMode: 'wallpaper',
+  music: 'default'
+};
+
+const EXPLORER_ACCENTS = {
+  rust: { accent: '#c17d4a', deep: '#8B2500', soft: '#f5ede4', rmSoft: '#f5ede0', btnBg: 'rgba(193,125,74,0.10)', btnHover: 'rgba(193,125,74,0.18)' },
+  moss: { accent: '#5e8d63', deep: '#3f6947', soft: '#e4f0e6', rmSoft: '#e0eee3', btnBg: 'rgba(94,141,99,0.10)', btnHover: 'rgba(94,141,99,0.18)' },
+  ink:  { accent: '#475569', deep: '#334155', soft: '#e2e8f0', rmSoft: '#e2e8f0', btnBg: 'rgba(71,85,105,0.10)', btnHover: 'rgba(71,85,105,0.18)' },
+  plum: { accent: '#8b5cf6', deep: '#6d28d9', soft: '#efe7ff', rmSoft: '#ede9fe', btnBg: 'rgba(139,92,246,0.10)', btnHover: 'rgba(139,92,246,0.18)' }
+};
+
+const EXPLORER_FONTS = ['Lora', 'Crimson Pro', 'Inter'];
+const EXPLORER_EMBER_PRESETS = {
+  fire: ['#FF2200', '#FF6600', '#FFA500'],
+  ember: ['#7c2d12', '#d97706', '#ffcc80'],
+  golden: ['#b45309', '#f59e0b', '#fde68a'],
+  moonfire: ['#312e81', '#8b5cf6', '#c4b5fd']
+};
+
+const DEFAULT_PREFS_ADAPTER = {
+  loadThemePrefs() {
+    try {
+      return JSON.parse(localStorage.getItem(RC_THEME_PREFS_KEY) || '{}') || {};
+    } catch (_) {
+      return {};
+    }
+  },
+  saveThemePrefs(payload) {
+    const safePayload = (payload && typeof payload === 'object') ? payload : {};
+    try { localStorage.setItem(RC_THEME_PREFS_KEY, JSON.stringify(safePayload)); } catch (_) {}
+    return safePayload;
+  },
+  loadAppearancePrefs() {
+    try {
+      return JSON.parse(localStorage.getItem(RC_APPEARANCE_PREFS_KEY) || '{}') || {};
+    } catch (_) {
+      return {};
+    }
+  },
+  saveAppearancePrefs(payload) {
+    const safePayload = (payload && typeof payload === 'object') ? payload : {};
+    try { localStorage.setItem(RC_APPEARANCE_PREFS_KEY, JSON.stringify(safePayload)); } catch (_) {}
+    return safePayload;
+  },
+  loadDiagnosticsPrefs() {
+    try {
+      return JSON.parse(localStorage.getItem(RC_DIAGNOSTICS_PREFS_KEY) || '{}') || {};
+    } catch (_) {
+      return {};
+    }
+  },
+  saveDiagnosticsPrefs(payload) {
+    const safePayload = (payload && typeof payload === 'object') ? payload : {};
+    try { localStorage.setItem(RC_DIAGNOSTICS_PREFS_KEY, JSON.stringify(safePayload)); } catch (_) {}
+    return safePayload;
+  }
+};
+
+window.rcPrefsAdapter = window.rcPrefsAdapter || DEFAULT_PREFS_ADAPTER;
+
+function getPrefsAdapter() {
+  const adapter = window.rcPrefsAdapter || DEFAULT_PREFS_ADAPTER;
+  return {
+    loadThemePrefs: typeof adapter.loadThemePrefs === 'function' ? adapter.loadThemePrefs.bind(adapter) : DEFAULT_PREFS_ADAPTER.loadThemePrefs,
+    saveThemePrefs: typeof adapter.saveThemePrefs === 'function' ? adapter.saveThemePrefs.bind(adapter) : DEFAULT_PREFS_ADAPTER.saveThemePrefs,
+    loadAppearancePrefs: typeof adapter.loadAppearancePrefs === 'function' ? adapter.loadAppearancePrefs.bind(adapter) : DEFAULT_PREFS_ADAPTER.loadAppearancePrefs,
+    saveAppearancePrefs: typeof adapter.saveAppearancePrefs === 'function' ? adapter.saveAppearancePrefs.bind(adapter) : DEFAULT_PREFS_ADAPTER.saveAppearancePrefs,
+    loadDiagnosticsPrefs: typeof adapter.loadDiagnosticsPrefs === 'function' ? adapter.loadDiagnosticsPrefs.bind(adapter) : DEFAULT_PREFS_ADAPTER.loadDiagnosticsPrefs,
+    saveDiagnosticsPrefs: typeof adapter.saveDiagnosticsPrefs === 'function' ? adapter.saveDiagnosticsPrefs.bind(adapter) : DEFAULT_PREFS_ADAPTER.saveDiagnosticsPrefs,
+  };
+}
+
+function loadThemePrefs() {
+  return getPrefsAdapter().loadThemePrefs();
+}
+
+function saveThemePrefs(payload) {
+  return getPrefsAdapter().saveThemePrefs(payload);
+}
+
+function loadAppearancePrefs() {
+  return getPrefsAdapter().loadAppearancePrefs();
+}
+
+function saveAppearancePrefs(payload) {
+  return getPrefsAdapter().saveAppearancePrefs(payload);
+}
+
+function loadDiagnosticsPrefs() {
+  return getPrefsAdapter().loadDiagnosticsPrefs();
+}
+
+function saveDiagnosticsPrefs(payload) {
+  return getPrefsAdapter().saveDiagnosticsPrefs(payload);
+}
+
+function getRuntimeTier() {
+  try {
+    const sel = document.getElementById('tierSelect');
+    const tier = sel && sel.value ? String(sel.value) : String(appTier || 'free');
+    return ['free', 'paid', 'premium'].includes(tier) ? tier : 'free';
+  } catch (_) {
+    return 'free';
+  }
+}
+
+function canUseTheme(themeId) {
+  const theme = String(themeId || 'default');
+  if (theme === 'explorer') return getRuntimeTier() !== 'free';
+  return true;
+}
+
+function canUseCustomMusic() {
+  return canUseTheme('explorer');
+}
+
+function applyThemeClass(themeName) {
+  const theme = String(themeName || 'default');
+  document.body.classList.remove('theme-green', 'theme-purple', 'theme-explorer');
+  if (theme !== 'default') document.body.classList.add('theme-' + theme);
+}
+
+function getThemeSettings() {
+  return Object.assign({}, EXPLORER_PRESET, appThemeSettings || {});
+}
+
+function getThemeState() {
+  return {
+    themeId: appTheme,
+    settings: getThemeSettings()
+  };
+}
+
+function setExplorerInlineVars(accentDef, fontName) {
+  const body = document.body;
+  body.style.setProperty('--theme-accent', accentDef.accent);
+  body.style.setProperty('--theme-accent-deep', accentDef.deep);
+  body.style.setProperty('--theme-accent-soft', accentDef.soft);
+  body.style.setProperty('--accent', accentDef.accent);
+  body.style.setProperty('--rm-accent', accentDef.accent);
+  body.style.setProperty('--rm-accent-soft', accentDef.rmSoft);
+  body.style.setProperty('--rm-btn-bg', accentDef.btnBg);
+  body.style.setProperty('--rm-btn-hover', accentDef.btnHover);
+  body.style.setProperty('--rm-reading-font', fontName || 'Lora');
+}
+
+function clearExplorerInlineVars() {
+  const body = document.body;
+  ['--theme-accent', '--theme-accent-deep', '--theme-accent-soft', '--accent', '--rm-accent', '--rm-accent-soft', '--rm-btn-bg', '--rm-btn-hover', '--rm-reading-font']
+    .forEach((name) => body.style.removeProperty(name));
+}
+
+function applyThemeSettings() {
+  const settings = getThemeSettings();
+  const readingContent = document.querySelector('#reading-mode .reading-content');
+  if (appTheme !== 'explorer') {
+    clearExplorerInlineVars();
+    document.body.classList.remove('explorer-embers-off');
+    if (readingContent) readingContent.classList.remove('explorer-bg-plain', 'explorer-bg-texture', 'explorer-bg-wallpaper');
+    return settings;
+  }
+  const accentDef = EXPLORER_ACCENTS[settings.accentSwatch] || EXPLORER_ACCENTS.rust;
+  const fontName = EXPLORER_FONTS.includes(settings.font) ? settings.font : EXPLORER_PRESET.font;
+  const emberColors = EXPLORER_EMBER_PRESETS[settings.emberPreset] || EXPLORER_EMBER_PRESETS.fire;
+  setExplorerInlineVars(accentDef, fontName);
+  document.body.classList.toggle('explorer-embers-off', !settings.embersOn);
+  if (readingContent) {
+    const bgMode = ['plain', 'texture', 'wallpaper'].includes(settings.backgroundMode) ? settings.backgroundMode : 'wallpaper';
+    readingContent.classList.remove('explorer-bg-plain', 'explorer-bg-texture', 'explorer-bg-wallpaper');
+    readingContent.classList.add(`explorer-bg-${bgMode}`);
+  }
+  try { if (window.rcEmbers && typeof window.rcEmbers.setColors === 'function') window.rcEmbers.setColors(emberColors); } catch (_) {}
+  return settings;
+}
+
+function persistThemeState() {
+  return saveThemePrefs({
+    theme_id: appTheme,
+    theme_settings: Object.assign({}, appThemeSettings || {}),
+    diagnostics_mode: diagnosticsPrefs.mode || 'off',
+    diagnostics_enabled: !!diagnosticsPrefs.enabled
+  });
+}
+
+function setThemeRuntime(themeName) {
+  const requestedTheme = String(themeName || 'default');
+  const nextTheme = canUseTheme(requestedTheme) ? requestedTheme : 'default';
+  appTheme = nextTheme;
+  persistThemeState();
+  applyThemeClass(appTheme);
+  applyThemeSettings();
+  syncThemeShellState();
+  return appTheme;
+}
+
+function patchThemeSettings(settings) {
+  const next = Object.assign({}, appThemeSettings || {});
+  Object.entries(settings || {}).forEach(([key, value]) => {
+    if (typeof value !== 'undefined') next[key] = value;
+  });
+  appThemeSettings = next;
+  persistThemeState();
+  applyThemeSettings();
+  return getThemeSettings();
+}
+
+function resetThemeSettings() {
+  appThemeSettings = {};
+  persistThemeState();
+  applyThemeSettings();
+  return getThemeSettings();
+}
+
+function syncThemeSwatchUI() {
+  try {
+    document.querySelectorAll('#theme-swatches .theme-swatch').forEach((sw) => sw.classList.remove('selected'));
+    const activeBtn = document.querySelector(`#theme-swatches [data-theme="${appTheme}"]`);
+    const activeSwatch = activeBtn && activeBtn.querySelector('.theme-swatch');
+    if (activeSwatch) activeSwatch.classList.add('selected');
+  } catch (_) {}
+}
+
+function syncAppearanceButtons() {
+  try {
+    const lightBtn = document.getElementById('appearance-light-btn');
+    const darkBtn = document.getElementById('appearance-dark-btn');
+    if (lightBtn) lightBtn.classList.toggle('active', appAppearance !== 'dark');
+    if (darkBtn) darkBtn.classList.toggle('active', appAppearance === 'dark');
+  } catch (_) {}
+}
+
+function syncThemeShellState() {
+  syncThemeSwatchUI();
+  syncAppearanceButtons();
+}
+
+function loadTheme() {
+  const stored = loadThemePrefs() || {};
+  const storedDiagPrefs = loadDiagnosticsPrefs() || {};
+  const themeDiagPrefs = {};
+  appTheme = String(stored.theme_id || 'default');
+  appThemeSettings = (stored.theme_settings && typeof stored.theme_settings === 'object') ? stored.theme_settings : {};
+  if (typeof stored.diagnostics_enabled === 'boolean') themeDiagPrefs.enabled = stored.diagnostics_enabled;
+  if (typeof stored.diagnostics_mode === 'string') themeDiagPrefs.mode = stored.diagnostics_mode;
+  diagnosticsPrefs = Object.assign({ enabled: false, mode: 'off' }, storedDiagPrefs, themeDiagPrefs);
+  if (!canUseTheme(appTheme)) {
+    appTheme = 'default';
+    persistThemeState();
+  }
+  applyThemeClass(appTheme);
+  applyThemeSettings();
+  syncThemeShellState();
+  return appTheme;
+}
+
+function applyAppearance() {
+  document.body.classList.remove('app-light', 'app-dark');
+  document.body.classList.add(appAppearance === 'dark' ? 'app-dark' : 'app-light');
+  syncAppearanceButtons();
+  return appAppearance;
+}
+
+function setAppearance(mode) {
+  appAppearance = String(mode || 'light') === 'dark' ? 'dark' : 'light';
+  saveAppearancePrefs({ appearance: appAppearance });
+  return applyAppearance();
+}
+
+function loadAppearance() {
+  const stored = loadAppearancePrefs() || {};
+  appAppearance = stored.appearance === 'dark' ? 'dark' : 'light';
+  return applyAppearance();
+}
+
+function getDiagnosticsPreference() {
+  return Object.assign({}, diagnosticsPrefs || { enabled: false, mode: 'off' });
+}
+
+function setDiagnosticsPreference(partial) {
+  diagnosticsPrefs = Object.assign({ enabled: false, mode: 'off' }, diagnosticsPrefs || {}, partial || {});
+  saveDiagnosticsPrefs(diagnosticsPrefs);
+  persistThemeState();
+  return getDiagnosticsPreference();
+}
+
+function enforceThemeAccess() {
+  if (canUseTheme(appTheme)) return true;
+  setThemeRuntime('default');
+  return false;
+}
+
+window.rcPrefs = {
+  loadThemePrefs,
+  saveThemePrefs,
+  loadAppearancePrefs,
+  saveAppearancePrefs,
+  loadDiagnosticsPrefs,
+  saveDiagnosticsPrefs
+};
+
+window.rcTheme = {
+  get: getThemeState,
+  set: setThemeRuntime,
+  getSettings: getThemeSettings,
+  patchSettings: patchThemeSettings,
+  resetSettings: resetThemeSettings,
+  applySettings: applyThemeSettings,
+  canUseTheme,
+  canUseCustomMusic,
+  enforceAccess: enforceThemeAccess,
+  syncShellState: syncThemeShellState,
+  syncThemeSwatchUI,
+  load: loadTheme,
+  accents: EXPLORER_ACCENTS,
+  fonts: EXPLORER_FONTS,
+  emberPresets: EXPLORER_EMBER_PRESETS,
+  // Transitional aliases for existing shell hooks during bounded integration.
+  get active() { return appTheme; },
+  get settings() { return getThemeSettings(); },
+  save: setThemeRuntime,
+  saveExplorerSettings: patchThemeSettings,
+  getThemeSettings,
+  reset: resetThemeSettings
+};
+
+window.rcAppearance = {
+  get: () => appAppearance,
+  set: setAppearance,
+  load: loadAppearance,
+  apply: applyAppearance,
+  syncButtons: syncAppearanceButtons,
+  // Transitional alias for current shell button handlers.
+  save: setAppearance
+};
+
+window.rcDiagnosticsPrefs = {
+  get: getDiagnosticsPreference,
+  set: setDiagnosticsPreference,
+  load: function loadDiagnosticsPreference() {
+    diagnosticsPrefs = Object.assign({ enabled: false, mode: 'off' }, loadDiagnosticsPrefs() || {});
+    return getDiagnosticsPreference();
+  }
+};
+
+window.rcEntitlements = {
+  getTier: getRuntimeTier,
+  canUseTheme,
+  canUseCustomMusic,
+  enforceThemeAccess
+};
+
+loadAppearance();
+loadTheme();
+

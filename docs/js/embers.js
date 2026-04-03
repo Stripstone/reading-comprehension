@@ -14,9 +14,23 @@
   var ww = window.innerWidth;
   var wh = window.innerHeight;
   var canvas = document.getElementById("fireCanvas");
-  canvas.width = ww;
-  canvas.height = wh;
   var ctx = canvas.getContext('2d');
+
+  function refreshCanvasBounds(resetParticles) {
+    if (!canvas) return;
+    var parent = canvas.parentElement;
+    var rect = parent ? parent.getBoundingClientRect() : null;
+    var nextW = Math.max(1, Math.round((rect && rect.width) || canvas.clientWidth || window.innerWidth));
+    var nextH = Math.max(1, Math.round((rect && rect.height) || canvas.clientHeight || window.innerHeight));
+    ww = nextW;
+    wh = nextH;
+    canvas.width = ww;
+    canvas.height = wh;
+    if (resetParticles && particles && particles.length) {
+      for (var i = 0; i < particles.length; i++) particles[i].reset();
+    }
+  }
+  refreshCanvasBounds(false);
 
   function between(min, max) {
     return Math.random() * (max - min) + min;
@@ -27,6 +41,8 @@
     particles.push(new createP());
   }
 
+  var emberColorArray = ['#FF2200', '#FF6600', '#FFA500'];
+
   function createP() {
     this.x = between(ww * 0.1, ww * 0.9);
     this.y = between(wh * 0.9, wh * 1);
@@ -35,12 +51,7 @@
     this.vy = -between(EMBER_SPEED_MIN, EMBER_SPEED_MAX);
     this.g = -0.001 * Math.random() * 10;
     this.life = between(wh * EMBER_LIFE_MIN, wh * EMBER_LIFE_MAX);
-
-    var one = '#FF2200';    // Bright scarlet
-    var two = '#FF6600';    // Bright orange
-    var three = '#FFA500';  // Golden orange
-    var array = [one, two, three];
-    this.color = array[Math.floor(Math.random() * 3)];
+    this.color = emberColorArray[Math.floor(Math.random() * emberColorArray.length)];
 
     this.reset = function() {
       this.x = between(ww * 0.1, ww * 0.9);
@@ -50,8 +61,7 @@
       this.vy = -between(EMBER_SPEED_MIN, EMBER_SPEED_MAX);
       this.g = -0.001 * Math.random() * 10;
       this.life = between(wh * EMBER_LIFE_MIN, wh * EMBER_LIFE_MAX);
-      var array = [one, two, three];
-      this.color = array[Math.floor(Math.random() * 3)];
+      this.color = emberColorArray[Math.floor(Math.random() * emberColorArray.length)];
     }
   }
 
@@ -82,8 +92,17 @@
   setInterval(draw, 16);
 
   window.addEventListener('resize', function() {
-    ww = window.innerWidth;
-    wh = window.innerHeight;
-    canvas.width = ww;
-    canvas.height = wh;
+    refreshCanvasBounds(true);
   });
+
+
+  window.rcEmbers = {
+    setColors: function(colorArray) {
+      if (Array.isArray(colorArray) && colorArray.length) {
+        emberColorArray = colorArray.slice();
+      }
+    },
+    refreshBounds: function(resetParticles) {
+      refreshCanvasBounds(!!resetParticles);
+    }
+  };
