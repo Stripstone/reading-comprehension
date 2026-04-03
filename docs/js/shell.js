@@ -492,14 +492,30 @@
 
     // ── Library table — populated by __jublyLibraryRefresh hook called from library.js ──
     function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    let libraryRefreshRetryTimer = null;
+
     async function refreshLibrary() {
         const rowsEl  = document.getElementById('library-rows');
         const popEl   = document.getElementById('library-populated');
         const emptyEl = document.getElementById('library-empty');
         const sub     = document.getElementById('dashboard-subtitle');
         if (!rowsEl) return;
+
+        // Keep the library surface honest during boot. Until runtime book storage is
+        // actually available, do not imply an empty library by showing the empty/import CTA.
+        if (typeof localBooksGetAll !== 'function') {
+            if (popEl) popEl.classList.add('hidden-section');
+            if (emptyEl) emptyEl.classList.add('hidden-section');
+            if (libraryRefreshRetryTimer) clearTimeout(libraryRefreshRetryTimer);
+            libraryRefreshRetryTimer = setTimeout(() => {
+                libraryRefreshRetryTimer = null;
+                refreshLibrary();
+            }, 120);
+            return;
+        }
+
         let books = [];
-        try { if (typeof localBooksGetAll === 'function') books = await localBooksGetAll(); } catch(_) {}
+        try { books = await localBooksGetAll(); } catch(_) { books = []; }
         const has = books.length > 0;
         if (popEl)   popEl.classList.toggle('hidden-section', !has);
         if (emptyEl) emptyEl.classList.toggle('hidden-section', has);

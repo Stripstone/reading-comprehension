@@ -347,12 +347,12 @@
 
 <!-- DASHBOARD -->
 <main id="dashboard" class="hidden-section max-w-5xl mx-auto py-12 px-6 with-sidebar">
-    <header class="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-4">
+    <header class="library-header flex flex-col md:flex-row md:items-end justify-between mb-10 gap-4">
         <div>
             <h2 class="text-3xl font-extrabold text-slate-900 tracking-tight">Library</h2>
             <p id="dashboard-subtitle" class="text-slate-500 text-sm mt-1">You've completed <strong>2 sessions</strong> this week. Keep the momentum going.</p>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="library-toolbar flex items-center gap-2">
             <button id="manageLibraryBtn" class="px-4 py-2.5 rounded-lg font-bold text-sm border-2 border-slate-200 text-slate-500 hover:bg-slate-50 transition">🗂️ Manage</button>
             <button id="importBookBtn"    class="btn-jubly px-6 py-2.5 rounded-lg font-bold text-sm shadow-sm">+ Import Book</button>
         </div>
@@ -372,7 +372,7 @@
     </div>
 
     <!-- COLD-START EMPTY STATE -->
-    <div id="library-empty">
+    <div id="library-empty" class="hidden-section">
         <div id="empty-drop-zone"
              class="glass-card shadow-sm py-16 px-8 text-center transition-all"
              style="border:2px dashed transparent; cursor:pointer;"

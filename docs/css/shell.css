@@ -207,6 +207,78 @@
         /* ── Nav subscribe ── */
         .btn-subscribe { background: white; color: var(--jubly-purple); border: 2px solid var(--jubly-purple); padding: 6px 16px; border-radius: 8px; font-weight: 700; font-size: 0.8rem; cursor: pointer; transition: background 0.15s, transform 0.15s; }
         .btn-subscribe:hover { background: var(--jubly-light); transform: translateY(-1px); }
+
+        /* ── Landing page mobile fit ── */
+        @media (max-width: 640px) {
+            nav { padding-left: 1rem !important; padding-right: 1rem !important; }
+            nav .text-2xl { font-size: 1.7rem !important; line-height: 1; }
+            #nav-landing-controls { gap: 0.5rem !important; }
+            .btn-subscribe { padding: 6px 12px; font-size: 0.74rem; }
+
+            #landing-page {
+                min-height: calc(100svh - 118px) !important;
+                padding: 0.875rem 1rem 1rem !important;
+                gap: 0.875rem !important;
+                align-items: center !important;
+                justify-content: center !important;
+            }
+
+            #landing-page > :first-child {
+                width: 100%;
+                display: flex;
+                justify-content: center;
+            }
+
+            #landing-page .hero-float > :first-child {
+                width: 10.25rem !important;
+                height: 10.25rem !important;
+                border-radius: 1.6rem !important;
+            }
+
+            #landing-page .hero-float > :last-child {
+                width: 4.15rem !important;
+                height: 4.15rem !important;
+                font-size: 1.75rem !important;
+                right: -0.75rem !important;
+                bottom: -0.75rem !important;
+            }
+
+            #landing-page h1 {
+                font-size: clamp(2.35rem, 10vw, 2.9rem) !important;
+                line-height: 1.02 !important;
+                margin-bottom: 0.8rem !important;
+            }
+
+            #landing-page p {
+                max-width: 20rem;
+                margin: 0 auto 1rem !important;
+                font-size: 0.96rem !important;
+                line-height: 1.58 !important;
+            }
+
+            #landing-page .max-w-xs {
+                max-width: 18rem !important;
+                gap: 0.625rem !important;
+            }
+
+            #landing-page .btn-jubly,
+            #landing-page .btn-ghost {
+                padding: 0.9rem 1rem !important;
+                font-size: 0.95rem !important;
+                line-height: 1.1 !important;
+                letter-spacing: 0.08em !important;
+            }
+
+            #landing-footer { padding-top: 0.8rem !important; padding-bottom: 0.8rem !important; }
+            #landing-footer > div {
+                gap: 0.35rem 1rem !important;
+                padding-left: 1rem !important;
+                padding-right: 1rem !important;
+                font-size: 0.58rem !important;
+                line-height: 1.25 !important;
+            }
+            #landing-footer span { white-space: nowrap; }
+        }
         /* ── Focus Mode reading UI ── */
         #reading-mode { background: var(--theme-accent-soft); min-height: 100vh; padding: 0; }
         /* Reading bar layout — see consolidated system at end of file */
@@ -823,5 +895,63 @@
     width: 100%;
     padding-left: 1rem !important;
     padding-right: 1rem !important;
+  }
+}
+
+/* ── Library/import surface cleanup ─────────────────────────── */
+.library-toolbar {
+  margin-left: auto;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.import-footerbar > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
+@media (max-width: 767px) {
+  .library-header {
+    align-items: stretch;
+  }
+
+  .library-toolbar {
+    width: 100%;
+  }
+
+  .import-actions {
+    justify-content: flex-end;
+  }
+}
+
+/* ── Library/profile footer flow cleanup ───────────────────── */
+:root {
+  --shell-nav-height: 72px;
+  --support-footer-flow-height: 58px;
+}
+
+#supportFooter {
+  position: relative !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  z-index: 10;
+  margin-top: 0 !important;
+}
+
+#dashboard,
+#profile-page {
+  box-sizing: border-box;
+  min-height: calc(100dvh - var(--shell-nav-height) - var(--support-footer-flow-height));
+  padding-bottom: 20px !important;
+}
+
+@media (max-width: 640px) {
+  :root {
+    --shell-nav-height: 80px;
+    --support-footer-flow-height: 84px;
   }
 }
