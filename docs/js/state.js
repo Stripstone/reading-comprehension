@@ -634,6 +634,10 @@ function applyThemeSettings() {
     readingContent.classList.add(`explorer-bg-${bgMode}`);
   }
   try { if (window.rcEmbers && typeof window.rcEmbers.setColors === 'function') window.rcEmbers.setColors(emberColors); } catch (_) {}
+  try {
+    if (window.rcEmbers && typeof window.rcEmbers.refreshBounds === 'function') window.rcEmbers.refreshBounds(true);
+    if (window.rcEmbers && typeof window.rcEmbers.syncVisibility === 'function') window.rcEmbers.syncVisibility();
+  } catch (_) {}
   return settings;
 }
 

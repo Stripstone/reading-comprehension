@@ -77,7 +77,10 @@
             updateExplorerSwatchState();
             updateProgressBar();
             try { if (window.rcTheme) window.rcTheme.applySettings(); } catch (_) {}
-            try { if (window.rcEmbers && typeof window.rcEmbers.refreshBounds === 'function') window.rcEmbers.refreshBounds(true); } catch (_) {}
+            try {
+                if (window.rcEmbers && typeof window.rcEmbers.refreshBounds === 'function') window.rcEmbers.refreshBounds(true);
+                if (window.rcEmbers && typeof window.rcEmbers.syncVisibility === 'function') window.rcEmbers.syncVisibility();
+            } catch (_) {}
             try { syncExplorerMusicSource(); } catch (_) {}
             // (label mutation removed — layout handled purely in CSS)
         } else {

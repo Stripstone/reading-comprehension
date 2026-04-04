@@ -577,9 +577,10 @@
       const t = e.target;
       const inVol = volumePanel && volumePanel.contains(t);
       const inDiag = diagPanel && diagPanel.contains(t);
+      const inModalOverlay = !!(t && t.closest && t.closest('.modal-overlay'));
       const isVolBtn = musicToggleBtn && (t === musicToggleBtn || musicToggleBtn.contains(t));
       const isDiagBtn = diagBtn && (t === diagBtn || diagBtn.contains(t));
-      if (inVol || inDiag || isVolBtn || isDiagBtn) return;
+      if (inVol || inDiag || inModalOverlay || isVolBtn || isDiagBtn) return;
       hideAllPanels();
     });
   })();

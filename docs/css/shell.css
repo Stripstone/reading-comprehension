@@ -792,6 +792,11 @@
   z-index: 1000;
 }
 
+#musicPickerModal,
+#pricing-modal {
+  z-index: 1205;
+}
+
 .reading-settings-card {
   width: min(560px, calc(100vw - 2rem));
   max-width: 100%;
@@ -880,6 +885,7 @@
 @media (min-width: 760px) {
   .reading-settings-card {
     width: min(760px, calc(100vw - 2rem));
+    min-height: clamp(500px, 72vh, 600px);
     display: grid;
     grid-template-columns: 188px minmax(0, 1fr);
     grid-template-rows: auto 1fr;
