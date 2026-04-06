@@ -1,4 +1,3 @@
-// ===================================
 // FIRE EMBERS CANVAS ANIMATION
 // ===================================
 (function() {
@@ -104,9 +103,9 @@
     }
 
     if (!particles.length) reseedParticles();
+    var config = readConfig();
     ctx.clearRect(0, 0, ww, wh);
 
-    var config = readConfig();
     for (var i = 0; i < particles.length; i++) {
       var particle = particles[i];
 

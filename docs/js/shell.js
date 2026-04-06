@@ -14,8 +14,77 @@
     // ============================================================
 
     // ── Section routing ──────────────────────────────────────────
-    const ALL_SECTIONS     = ['landing-page', 'login-page', 'dashboard', 'profile-page', 'reading-mode'];
+    const ALL_SECTIONS     = ['landing-page', 'login-page', 'signup-page', 'dashboard', 'profile-page', 'reading-mode'];
     const SIDEBAR_SECTIONS = ['dashboard', 'profile-page'];
+    const PUBLIC_SAMPLE_BOOK_ID = 'BOOK_ReadingTraining';
+
+    const ROUTE_QUERY_KEY = 'view';
+    const SECTION_ROUTE_KEYS = {
+        'landing-page': 'home',
+        'login-page': 'login',
+        'signup-page': 'signup',
+        'dashboard': 'library',
+        'profile-page': 'profile',
+        'reading-mode': 'reading'
+    };
+    const ROUTE_KEY_TO_SECTION = {
+        home: 'landing-page',
+        login: 'login-page',
+        signup: 'signup-page',
+        library: 'dashboard',
+        profile: 'profile-page',
+        reading: 'reading-mode'
+    };
+
+    function getCurrentSectionId() {
+        return ALL_SECTIONS.find((sectionId) => {
+            const el = document.getElementById(sectionId);
+            return el && !el.classList.contains('hidden-section');
+        }) || 'landing-page';
+    }
+
+    function buildShellUrl(viewKey) {
+        const url = new URL(window.location.href);
+        if (!viewKey || viewKey === 'home') url.searchParams.delete(ROUTE_QUERY_KEY);
+        else url.searchParams.set(ROUTE_QUERY_KEY, viewKey);
+        return `${url.pathname}${url.search}${url.hash}`;
+    }
+
+    function syncHistoryForSection(id, mode) {
+        if (mode === 'none' || !window.history || !window.history.pushState) return;
+        const viewKey = SECTION_ROUTE_KEYS[id] || 'home';
+        const state = { rcShell: true, sectionId: id, modalId: null };
+        const url = buildShellUrl(viewKey);
+        if (mode === 'replace') window.history.replaceState(state, '', url);
+        else window.history.pushState(state, '', url);
+    }
+
+    function syncHistoryForModal(modalId, mode) {
+        if (mode === 'none' || !window.history || !window.history.pushState) return;
+        const currentSection = getCurrentSectionId();
+        const state = { rcShell: true, sectionId: currentSection, modalId: modalId || null };
+        const url = buildShellUrl(modalId === 'pricing-modal' ? 'pricing' : (SECTION_ROUTE_KEYS[currentSection] || 'home'));
+        if (mode === 'replace') window.history.replaceState(state, '', url);
+        else window.history.pushState(state, '', url);
+    }
+
+    function applyShellRouteState(routeState) {
+        const nextSection = ROUTE_KEY_TO_SECTION[(routeState && routeState.viewKey) || 'home'] || 'landing-page';
+        const isAuthed = isAuthedUser();
+        const resolvedSection = (!isAuthed && nextSection === 'profile-page') ? 'landing-page' : nextSection;
+        showSection(resolvedSection, { history: 'none' });
+        closeModal('pricing-modal', { history: 'none' });
+        if (routeState && routeState.modalId === 'pricing-modal') openModal('pricing-modal', { history: 'none' });
+    }
+
+    function readShellRouteFromLocation() {
+        const params = new URLSearchParams(window.location.search);
+        const viewKey = params.get(ROUTE_QUERY_KEY) || 'home';
+        if (viewKey === 'pricing') {
+            return { viewKey: 'home', modalId: 'pricing-modal' };
+        }
+        return { viewKey, modalId: null };
+    }
 
 
     let SHELL_DEBUG = {
@@ -32,33 +101,49 @@
         return entry;
     }
 
-    function showSection(id) {
+    function isAuthedUser() {
+        try { return !!(window.rcAuth && typeof window.rcAuth.getUser === 'function' && window.rcAuth.getUser()); } catch (_) { return false; }
+    }
+
+    function syncShellAuthPresentation() {
+        const currentId = getCurrentSectionId();
+        const isAuthed = isAuthedUser();
+        const isReading = currentId === 'reading-mode';
+        const isPublicLibrary = currentId === 'dashboard' && !isAuthed;
+        const showSidebar = isAuthed && SIDEBAR_SECTIONS.includes(currentId);
+        const userControls = document.getElementById('nav-user-controls');
+        const landingControls = document.getElementById('nav-landing-controls');
+        if (userControls) userControls.classList.toggle('hidden-section', !isAuthed || isReading || isPublicLibrary);
+        if (landingControls) landingControls.style.display = (!isAuthed && !isReading) ? 'flex' : 'none';
+        const sidebar = document.getElementById('app-sidebar');
+        if (sidebar) sidebar.style.display = showSidebar ? 'flex' : 'none';
+        const supportFooter = document.getElementById('supportFooter');
+        if (supportFooter) supportFooter.style.display = showSidebar ? 'block' : 'none';
+        const footer = document.getElementById('landing-footer');
+        if (footer) footer.classList.toggle('hidden-section', currentId !== 'landing-page');
+        const publicSample = document.getElementById('library-public-sample');
+        if (publicSample) publicSample.classList.toggle('hidden-section', !isPublicLibrary);
+        const libraryToolbar = document.getElementById('library-toolbar');
+        if (libraryToolbar) libraryToolbar.style.display = isPublicLibrary ? 'none' : 'flex';
+    }
+
+    function showSection(id, options) {
+        const opts = Object.assign({ history: 'push' }, options || {});
         const readingModeEl = document.getElementById('reading-mode');
         const wasReading = readingModeEl && !readingModeEl.classList.contains('hidden-section');
 
-        ALL_SECTIONS.forEach(s => document.getElementById(s).classList.add('hidden-section'));
-        document.getElementById(id).classList.remove('hidden-section');
+        closeModal('pricing-modal', { history: 'none' });
+        ALL_SECTIONS.forEach((s) => {
+            const el = document.getElementById(s);
+            if (el) el.classList.add('hidden-section');
+        });
+        const target = document.getElementById(id);
+        if (!target) return;
+        target.classList.remove('hidden-section');
 
-        const isPublic  = id === 'landing-page' || id === 'login-page';
-        const isLanding = id === 'landing-page';
-
-        document.getElementById('nav-user-controls').classList.toggle('hidden-section', isPublic);
-        const landingControls = document.getElementById('nav-landing-controls');
-        if (landingControls) landingControls.style.display = isLanding ? 'flex' : 'none';
-        const footer = document.getElementById('landing-footer');
-        if (footer) footer.classList.toggle('hidden-section', id !== 'landing-page');
-
-        // Sidebar
-        const sidebar = document.getElementById('app-sidebar');
-        if (sidebar) sidebar.style.display = SIDEBAR_SECTIONS.includes(id) ? 'flex' : 'none';
         const sbLibrary = document.getElementById('sb-library');
         if (sbLibrary) sbLibrary.classList.toggle('active', id === 'dashboard');
 
-        // Support footer: visible on logged-in non-reading pages only
-        const supportFooter = document.getElementById('supportFooter');
-        if (supportFooter) supportFooter.style.display = SIDEBAR_SECTIONS.includes(id) ? 'block' : 'none';
-
-        // Reading mode: hide nav for focus, restore on exit
         const mainNav = document.querySelector('nav');
         if (mainNav) mainNav.style.display = id === 'reading-mode' ? 'none' : '';
         if (wasReading && id !== 'reading-mode') {
@@ -66,7 +151,6 @@
                 let exitResult = null;
                 if (typeof exitReadingSession === 'function') exitResult = exitReadingSession();
                 else cleanupReadingTransientState();
-                // PATCH(diagnostics): record exit result in shell debug so it appears in getShellDiagnosticsSnapshot()
                 shellDebugRemember('lastControlAction', { type: 'exit-reading', exitResult });
             } catch(_) {}
         }
@@ -82,15 +166,18 @@
                 if (window.rcEmbers && typeof window.rcEmbers.syncVisibility === 'function') window.rcEmbers.syncVisibility();
             } catch (_) {}
             try { syncExplorerMusicSource(); } catch (_) {}
-            // (label mutation removed — layout handled purely in CSS)
         } else {
+            try { if (window.rcEmbers && typeof window.rcEmbers.syncVisibility === 'function') window.rcEmbers.syncVisibility(); } catch (_) {}
             try { syncExplorerMusicSource(); } catch (_) {}
         }
+        syncShellAuthPresentation();
         if (id === 'dashboard') refreshLibrary();
         try { if (typeof window.syncDiagnosticsVisibility === 'function') window.syncDiagnosticsVisibility(); } catch (_) {}
 
+        syncHistoryForSection(id, opts.history);
         window.scrollTo(0, 0);
     }
+
 
     // ── Focus mode fade ──────────────────────────────────────────
     let focusModeTimer   = null;
@@ -115,15 +202,62 @@
 
 
     // ── Modals ───────────────────────────────────────────────────
-    function openModal(id)  { const el = document.getElementById(id); if (!el) return; el.classList.remove('hidden-section'); if (el.classList.contains('modal-overlay')) el.style.display = 'flex'; }
-    function closeModal(id) { const el = document.getElementById(id); if (!el) return; el.classList.add('hidden-section'); if (el.classList.contains('modal-overlay')) el.style.display = 'none'; }
-
-    // ── Auth (SCAFFOLD) ──────────────────────────────────────────
-    // SCAFFOLD: replace login() with real Supabase auth flow
-    function login() {
-        showSection('dashboard');
-        try { refreshLibrary(); } catch(_) {}
+    function openModal(id, options)  {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const opts = Object.assign({ history: 'push' }, options || {});
+        el.classList.remove('hidden-section');
+        if (el.classList.contains('modal-overlay')) el.style.display = 'flex';
+        if (id === 'pricing-modal') syncHistoryForModal(id, opts.history);
     }
+    function closeModal(id, options) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const opts = Object.assign({ history: 'replace' }, options || {});
+        el.classList.add('hidden-section');
+        if (el.classList.contains('modal-overlay')) el.style.display = 'none';
+        if (id === 'pricing-modal') syncHistoryForSection(getCurrentSectionId(), opts.history);
+    }
+
+    // ── Auth helpers ─────────────────────────────────────────────
+    function login() {
+        showSection('login-page');
+    }
+
+    function promptOwnershipAction(kind) {
+        if (isAuthedUser()) return false;
+        const copyEl = document.getElementById('ownership-copy');
+        if (copyEl) {
+            copyEl.textContent = kind === 'manage'
+                ? 'You can keep exploring the sample book for free. Create an account when you want to save and manage your own library.'
+                : 'You can keep exploring the sample book for free. Create an account when you want to import, sync, and save your own library.';
+        }
+        openModal('ownership-modal');
+        return true;
+    }
+
+    function openSampleBookPreview() {
+        try { openPreview(PUBLIC_SAMPLE_BOOK_ID, 'Reading Training'); } catch (_) {}
+    }
+
+    window.promptOwnershipAction = promptOwnershipAction;
+    window.openSampleBookPreview = openSampleBookPreview;
+    window.openSampleBook = openSampleBookPreview;
+    window.syncShellAuthPresentation = syncShellAuthPresentation;
+
+    window.addEventListener('popstate', function(event) {
+        const routeState = event.state && event.state.rcShell
+            ? { viewKey: SECTION_ROUTE_KEYS[event.state.sectionId] || 'home', modalId: event.state.modalId || null }
+            : readShellRouteFromLocation();
+        applyShellRouteState(routeState);
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const initialRoute = readShellRouteFromLocation();
+        applyShellRouteState(initialRoute);
+        syncHistoryForModal(initialRoute.modalId, 'replace');
+        if (!initialRoute.modalId) syncHistoryForSection(getCurrentSectionId(), 'replace');
+    });
 
     // ── Profile tabs ─────────────────────────────────────────────
     function switchTab(tabId) {
@@ -136,6 +270,7 @@
 
     // ── Tier — drives #tierSelect so ui.js applyTierAccess() fires ──
     function setTier(btn) {
+        if (window.__rcTierLocked && !window.__rcTierSyncing) return;
         document.querySelectorAll('.tier-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         const map = { 'Basic': 'free', 'Pro': 'paid', 'Premium': 'premium' };
@@ -712,6 +847,7 @@
 
     // ── Library table — populated by __jublyLibraryRefresh hook called from library.js ──
     function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function escJsSingle(s) { return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
     let libraryRefreshRetryTimer = null;
 
     async function refreshLibrary() {
@@ -719,10 +855,24 @@
         const popEl   = document.getElementById('library-populated');
         const emptyEl = document.getElementById('library-empty');
         const sub     = document.getElementById('dashboard-subtitle');
+        const toolbar = document.getElementById('library-toolbar');
+        const guestMode = !isAuthedUser();
         if (!rowsEl) return;
 
-        // Keep the library surface honest during boot. Until runtime book storage is
-        // actually available, do not imply an empty library by showing the empty/import CTA.
+        if (guestMode) {
+            const publicEl = document.getElementById('library-public-sample');
+            if (toolbar) toolbar.style.display = 'none';
+            if (publicEl) publicEl.classList.remove('hidden-section');
+            if (popEl) popEl.classList.add('hidden-section');
+            if (emptyEl) emptyEl.classList.add('hidden-section');
+            if (sub) {
+                sub.style.display = '';
+                sub.innerHTML = 'Try the <strong>sample book</strong> or sign up when you want to import your own.';
+            }
+            rowsEl.innerHTML = '';
+            return;
+        }
+
         if (typeof localBooksGetAll !== 'function') {
             if (popEl) popEl.classList.add('hidden-section');
             if (emptyEl) emptyEl.classList.add('hidden-section');
@@ -733,6 +883,8 @@
             }, 120);
             return;
         }
+
+        if (toolbar) toolbar.style.display = 'flex';
 
         let books = [];
         try { books = await localBooksGetAll(); } catch(_) { books = []; }
@@ -746,9 +898,10 @@
             const pages   = (String(b.markdown||'').match(/^\s*##\s+/gm)||[]).length;
             const date    = new Date(b.createdAt||Date.now()).toLocaleDateString();
             const estMins = Math.max(1, Math.round(pages * 1.5));
-            const id      = ('local:' + String(b.id)).replace(/'/g,"\\'");
+            const id      = escJsSingle('local:' + String(b.id));
             const title   = escHtml(b.title||'Untitled');
-            return `<div onclick="openPreview('${id}','${title.replace(/'/g,"\\'")}')" class="px-6 py-4 flex items-center hover:bg-slate-50 cursor-pointer transition-colors border-b border-slate-100">
+            const titleJs = escJsSingle(b.title || 'Untitled');
+            return `<div onclick="openPreview('${id}','${titleJs}')" class="px-6 py-4 flex items-center hover:bg-slate-50 cursor-pointer transition-colors border-b border-slate-100">
                 <div class="flex-grow flex items-center gap-3"><div class="w-8 h-8 rounded flex items-center justify-center text-lg bg-accent-soft text-accent flex-shrink-0">📄</div><div><p class="font-semibold text-slate-800 text-sm">${title}</p><p class="text-xs text-slate-400">Added ${date}</p></div></div>
                 <div class="w-32 hidden md:block"><span class="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-bold">Unread</span></div>
                 <div class="w-32 hidden md:block text-sm text-slate-500 font-medium">${estMins} min left</div>
@@ -813,6 +966,29 @@
         if (!_previewBookId) return;
         try { if (typeof startReadingFromPreview === 'function') startReadingFromPreview(_previewBookId); } catch (_) {}
     }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const importBtn = document.getElementById('importBookBtn');
+        const manageBtn = document.getElementById('manageLibraryBtn');
+        if (importBtn && !importBtn.__rcGuestGuard) {
+            importBtn.addEventListener('click', function (event) {
+                if (promptOwnershipAction('import')) {
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                }
+            }, true);
+            importBtn.__rcGuestGuard = true;
+        }
+        if (manageBtn && !manageBtn.__rcGuestGuard) {
+            manageBtn.addEventListener('click', function (event) {
+                if (promptOwnershipAction('manage')) {
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                }
+            }, true);
+            manageBtn.__rcGuestGuard = true;
+        }
+    });
 
     // Empty state drag/drop
     function emptyStateDrop(e) {
