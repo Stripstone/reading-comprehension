@@ -79,11 +79,52 @@
     }
   }
 
+  // Activate a page card without a textarea focus — plays the page turn sound and
+  // applies the .page-active class. Used by goToNext in Reading mode.
+  function activatePageCard(pageEl, pageIndex) {
+    if (!pageEl) return;
+    pageEl.classList.add('page-active');
+
+    // Reading-mode Next/advance is explicit page-change intent. When narration
+    // has just been stopped, make the navigated-to page the new runtime-active
+    // page immediately so Play resumes from this card instead of snapping back
+    // to the previously spoken page.
+    lastFocusedPageIndex = pageIndex;
+    try { currentPageIndex = pageIndex; } catch (_) {}
+    try {
+      if (typeof setReadingTarget === 'function' && typeof window.getReadingTargetContext === 'function') {
+        const ctx = window.getReadingTargetContext();
+        setReadingTarget({ sourceType: ctx.sourceType, bookId: ctx.bookId, chapterIndex: ctx.chapterIndex, pageIndex });
+      }
+    } catch (_) {}
+    try {
+      if (!allSoundsMuted) {
+        pageTurnSound.currentTime = 0;
+        pageTurnSound.play();
+      }
+    } catch (_) {}
+    // Remove the active class after a short beat so it doesn't linger indefinitely.
+    setTimeout(() => pageEl.classList.remove('page-active'), 600);
+  }
+
   function goToNext(currentIndex) {
     // Navigation rules:
     // - Consolidation phase: focus the next editable textarea.
     // - Evaluation phase: DO NOT focus the textarea; scroll to the next page block instead.
     // currentIndex is the page index the user is "on" (0-based). Use -1 to start from the beginning.
+
+    // Reading-mode navigation is explicit intent to leave the current spoken page.
+    // Stop active narration/countdown before advancing so the next page action
+    // does not keep speaking from the previous page in the background.
+    if (appMode === 'reading') {
+      try {
+        const playback = (typeof getPlaybackStatus === 'function') ? getPlaybackStatus() : null;
+        const countdown = (typeof getCountdownStatus === 'function') ? getCountdownStatus() : null;
+        if ((playback && playback.active) || (countdown && countdown.active)) {
+          if (typeof ttsStop === 'function') ttsStop();
+        }
+      } catch (_) {}
+    }
 
     // If no explicit index was provided, try to advance from the page the user was interacting with.
     if (typeof currentIndex !== "number") {
@@ -121,6 +162,7 @@
       // In reading mode there is no textarea — advance to the next page regardless.
       if (appMode === 'reading' || isEditable) {
         pageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (appMode === 'reading') activatePageCard(pageEl, j);
         if (isEditable) ta.focus();
         return;
       }
@@ -167,8 +209,8 @@
     const feedbackDiv = document.querySelector(`.ai-feedback[data-page="${pageIndex}"]`);
     if (!aiBtn || !feedbackDiv) return;
 
-    if (appMode === 'thesis') {
-      alert('Thesis mode evaluation is coming soon!\n\nIn this mode, your consolidations will be evaluated for consistency with your thesis statement rather than general comprehension.');
+    if (appMode === 'research') {
+      alert('Research Mode evaluation is coming soon!\n\nIn this mode, your consolidations will be evaluated for consistency with your research thesis rather than general comprehension.');
       return;
     }
     // Toggle if already open
@@ -266,6 +308,8 @@
         };
         throw new Error(rawText);
       }
+      // Spend 2 tokens for AI evaluation
+      try { if (typeof tokenSpend === 'function') tokenSpend('evaluate'); } catch(_) {}
 
       const data = JSON.parse(rawText || "{}");
       lastAIDiagnostics = {
@@ -412,9 +456,16 @@
     }
 
     if (betterExample) {
+      const leadIns = [
+        "Here's another way to approach this…",
+        "Try phrasing it like this →",
+        "Let's take it a step further…",
+        "Here's how to sharpen it…",
+      ];
+      const leadIn = leadIns[pageIndex % leadIns.length];
       html += `<div class="better-example">
         <div class="better-header">
-          <div class="better-label">Better consolidation:</div>
+          <div class="better-label">${leadIn}</div>
           <button type="button" class="top-btn tts-btn tts-better" data-tts="better" data-page="${pageIndex}">🔊 Read</button>
         </div>
         <div class="better-text">"${betterExample}"</div>
@@ -429,13 +480,21 @@
     html += `</div>`;
     feedbackDiv.innerHTML = html;
 
-    // TTS: Read feedback statement (analysis) then better consolidation
+    // TTS: Read feedback statement (analysis), lead-in phrase, then better consolidation
     const ttsBetterBtn = feedbackDiv.querySelector('.tts-btn[data-tts="better"]');
     if (ttsBetterBtn) {
       ttsBetterBtn.addEventListener("click", () => {
         const a = pageData?.[pageIndex]?.aiAnalysisText || analysis || "";
+        const leadIns = [
+          "Here's another way to approach this.",
+          "Try phrasing it like this.",
+          "Let's take it a step further.",
+          "Here's how to sharpen it.",
+        ];
+        const leadIn = leadIns[pageIndex % leadIns.length];
         const b = pageData?.[pageIndex]?.aiBetterText || betterExample || "";
-        ttsSpeakQueue(`better-${pageIndex}`, [a, b]);
+        const parts = [a, leadIn, b].filter(Boolean);
+        ttsSpeakQueue(`better-${pageIndex}`, parts);
       });
     }
 
@@ -594,8 +653,8 @@
     const btn = document.getElementById("submitBtn");
     btn.disabled = true;
 
-    if (appMode === 'thesis') {
-      alert('Thesis mode scoring is coming soon!\n\nFull evaluation against your thesis will be available in an upcoming update.');
+    if (appMode === 'research') {
+      alert('Research Mode scoring is coming soon!\n\nFull evaluation against your research thesis will be available in an upcoming update.');
       return;
     }
     // Calculate scores

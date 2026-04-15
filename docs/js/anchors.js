@@ -404,6 +404,8 @@ function writeAnchorsToCache(pageHash, payload) {
       err.details = data;
       throw err;
     }
+    // Spend 1 token for anchor generation
+    try { if (typeof tokenSpend === 'function') tokenSpend('anchors'); } catch(_) {}
     // Basic schema check
     if (!Array.isArray(data?.anchors) || !data?.meta?.pageHash) {
       const err = new Error('Invalid /api/anchors response schema');
@@ -819,9 +821,9 @@ function writeAnchorsToCache(pageHash, payload) {
   // Voices (TTS) volume is handled separately from music/SFX.
   TTS_STATE.volume = typeof savedVol.voice === 'number' ? savedVol.voice : 1;
 
-  // Voice variant (male/female) for Polly. Default: female.
+  // Voice variant (male/female) is session-only during stabilization.
   try {
-    const v = String(localStorage.getItem('rc_voice_variant') || '').toLowerCase();
+    const v = String(localStorage.getItem('rc_voice_variant') || TTS_STATE.voiceVariant || window.__rcSessionVoiceVariant || '').toLowerCase();
     if (v === 'male' || v === 'female') TTS_STATE.voiceVariant = v;
   } catch (_) {}
   sandSound.volume = typeof savedVol.sand === 'number' ? savedVol.sand : SAND_VOLUME;

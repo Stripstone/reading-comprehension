@@ -2161,3 +2161,41 @@ body {
   background-color: rgba(255, 230, 120, var(--tts-alpha));
   transition: background-color 220ms ease;
 }
+
+/* Runtime stabilization patch: top-bar settings/exit visibility and diagnostics-friendly controls */
+#reading-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+#reading-top-bar .reading-top-left {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+#reading-top-bar .reading-top-left::-webkit-scrollbar { display: none; }
+#reading-top-bar .reading-top-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#reading-top-bar .reading-top-settings-btn {
+  min-height: 36px;
+  padding: 0 12px;
+}
+#reading-top-bar .reading-top-exit {
+  min-height: 36px;
+  white-space: nowrap;
+}
+@media (max-width: 720px) {
+  #reading-top-bar .reading-top-left { gap: 4px; }
+  #reading-top-bar .reading-top-settings-btn,
+  #reading-top-bar .reading-top-exit { min-height: 34px; }
+}
