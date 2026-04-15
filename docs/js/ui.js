@@ -144,7 +144,9 @@
     }
 
     // Volume panel wiring
-    if (volumePanel) {
+    if (musicToggleBtn && volumePanel) {
+      const voiceFemaleBtn = document.getElementById('voiceFemaleBtn');
+      const voiceMaleBtn = document.getElementById('voiceMaleBtn');
       const sliders = {
         voice: document.getElementById('vol_voice'),
         music: document.getElementById('vol_music'),
@@ -165,225 +167,68 @@
         if (sliders.compass) sliders.compass.value = String(compassSound.volume);
         if (sliders.pageTurn) sliders.pageTurn.value = String(pageTurnSound.volume);
         if (sliders.evaluate) sliders.evaluate.value = String(evaluateSound.volume);
+
+        // Sync voice variant toggle
+        const vv = String(TTS_STATE.voiceVariant || 'female').toLowerCase();
+        if (voiceFemaleBtn && voiceMaleBtn) {
+          const isFemale = vv !== 'male';
+          voiceFemaleBtn.setAttribute('aria-pressed', String(isFemale));
+          voiceMaleBtn.setAttribute('aria-pressed', String(!isFemale));
+          voiceFemaleBtn.classList.toggle('is-active', isFemale);
+          voiceMaleBtn.classList.toggle('is-active', !isFemale);
+        }
       }
 
       function setVoiceVariant(v) {
         const vv = String(v || '').toLowerCase() === 'male' ? 'male' : 'female';
         TTS_STATE.voiceVariant = vv;
         try { localStorage.setItem('rc_voice_variant', vv); } catch (_) {}
-        try { window.__rcSessionVoiceVariant = vv; } catch (_) {}
-      }
-
-      // Voice selects — two dropdowns, one per gender.
-      // Selecting from either dropdown sets both the active variant and specific voice.
-      // Free tier: browser voices only.
-      // Paid/Premium: Polly cloud voices at the top, browser voices below.
-      const voiceFemaleSelect = document.getElementById('voiceFemaleSelect');
-      const voiceMaleSelect   = document.getElementById('voiceMaleSelect');
-
-      const BAD_VOICES = [
-        'Albert','Bad News','Bells','Boing','Bubbles','Cellos',
-        'Deranged','Good News','Hysterical','Jester','Organ',
-        'Superstar','Whisper','Zarvox','Trinoids'
-      ];
-
-      const FEMALE_NAMES = ['Aria','Jenny','Samantha','Karen','Moira','Serena','Tessa','Zira','Eva','Susan','Victoria','Fiona','Allison','Ava','Nora'];
-      const MALE_NAMES   = ['Daniel','Rishi','Alex','Guy','Ryan','Fred','David','Mark','Tom','Bruce','James'];
-
-      function buildVoiceSelect(selectEl, gender) {
-        if (!selectEl) return;
-        const isFree      = typeof appTier !== 'undefined' && appTier === 'free';
-        const isActive    = String(TTS_STATE?.voiceVariant || 'female').toLowerCase() === gender;
-        const savedBrowser = (() => { try { return (typeof getStoredSelectedVoice === 'function' ? getStoredSelectedVoice() : (window.__rcSessionVoiceSelection || '')) || ''; } catch(_) { return ''; } })();
-        const savedVariant = (() => { try { return String(TTS_STATE?.voiceVariant || window.__rcSessionVoiceVariant || 'female'); } catch(_) { return 'female'; } })();
-        const isThisVoiceActive = isActive && (savedVariant === gender);
-
-        const allVoices = (window.speechSynthesis?.getVoices() || [])
-          .filter(v => !BAD_VOICES.some(b => v.name.includes(b)))
-          .filter(v => (v.lang || '').toLowerCase().startsWith('en'));
-
-        const nameList  = gender === 'female' ? FEMALE_NAMES : MALE_NAMES;
-        const quality   = allVoices.filter(v => nameList.some(n => v.name.toLowerCase().includes(n.toLowerCase())));
-
-        const hasAnyVoices = quality.length > 0 || (!isFree);
-        const bothListsEmpty = !allVoices.length;
-
-        selectEl.innerHTML = '';
-
-        // Placeholder option — uses 'hidden' not 'disabled' so Firefox/LibreWolf
-        // renders the text correctly as the visible selection label.
-        const placeholder = document.createElement('option');
-        placeholder.value = '';
-        placeholder.hidden = true;
-        if (bothListsEmpty) {
-          placeholder.textContent = gender === 'female' ? 'Female' : 'Male';
-        } else if (!hasAnyVoices) {
-          placeholder.textContent = gender === 'female' ? 'Female — none found' : 'Male — none found';
-        } else {
-          placeholder.textContent = gender === 'female' ? 'Female' : 'Male';
-        }
-        placeholder.selected = !isThisVoiceActive || (!savedBrowser && savedVariant !== gender && isFree);
-        selectEl.appendChild(placeholder);
-
-        // Cloud voices for Paid/Premium — Azure Neural voice catalogue
-        // Voices match what Edge browser exposes natively, so Edge users
-        // may get these for free via browserSpeakQueue (see tts.js Edge optimisation).
-        if (!isFree) {
-          const cloudGrp = document.createElement('optgroup');
-          cloudGrp.label = '☁️ Cloud (Neural)';
-
-          const AZURE_VOICES = gender === 'female'
-            ? [
-                { id: 'en-US-AriaNeural',     label: 'Aria (US)' },
-                { id: 'en-US-JennyNeural',    label: 'Jenny (US)' },
-                { id: 'en-US-SaraNeural',     label: 'Sara (US)' },
-                { id: 'en-GB-SoniaNeural',    label: 'Sonia (UK)' },
-                { id: 'en-AU-NatashaNeural',  label: 'Natasha (AU)' },
-              ]
-            : [
-                { id: 'en-US-RyanNeural',     label: 'Ryan (US)' },
-                { id: 'en-US-GuyNeural',      label: 'Guy (US)' },
-                { id: 'en-US-DavisNeural',    label: 'Davis (US)' },
-                { id: 'en-GB-RyanNeural',     label: 'Ryan (UK)' },
-                { id: 'en-AU-WilliamNeural',  label: 'William (AU)' },
-              ];
-
-          AZURE_VOICES.forEach(v => {
-            const opt = document.createElement('option');
-            opt.value = `cloud:${v.id}`;
-            opt.textContent = v.label;
-            if (savedVariant === gender && savedBrowser === `cloud:${v.id}`) opt.selected = true;
-            if (!savedBrowser && savedVariant === gender && v === AZURE_VOICES[0]) opt.selected = true;
-            cloudGrp.appendChild(opt);
-          });
-          selectEl.appendChild(cloudGrp);
-        }
-
-        // Browser voices — no group label on free tier
-        if (quality.length) {
-          if (isFree) {
-            // Free: no optgroup label, voices appear directly
-            quality.forEach(v => {
-              const opt = document.createElement('option');
-              opt.value = v.name;
-              opt.textContent = v.name.replace(/^com\.apple\.[^.]+\./, '').replace(/-compact$/, '');
-              if (v.name === savedBrowser && savedVariant === gender) opt.selected = true;
-              selectEl.appendChild(opt);
-            });
-          } else {
-            const grp = document.createElement('optgroup');
-            grp.label = '🖥️ Browser';
-            quality.forEach(v => {
-              const opt = document.createElement('option');
-              opt.value = v.name;
-              opt.textContent = v.name.replace(/^com\.apple\.[^.]+\./, '').replace(/-compact$/, '');
-              if (v.name === savedBrowser && savedVariant === gender) opt.selected = true;
-              grp.appendChild(opt);
-            });
-            selectEl.appendChild(grp);
-          }
-        }
-
-        // Accent border on the active dropdown
-        selectEl.style.borderColor = isThisVoiceActive
-          ? 'var(--accent, #c17d4a)'
-          : 'var(--border)';
-      }
-
-      function populateBrowserVoicePicker() {
-        buildVoiceSelect(voiceFemaleSelect, 'female');
-        buildVoiceSelect(voiceMaleSelect,   'male');
-      }
-
-      function handleVoiceSelectChange(selectEl, gender) {
-        if (!selectEl) return;
-        selectEl.addEventListener('change', () => {
-          const val = selectEl.value;
-          if (!val) return;
-          setVoiceVariant(gender);
-          if (val.startsWith('polly:') || val.startsWith('cloud:')) {
-            // Cloud voice — store the full value so pollyFetchUrl can forward the model id
-            try { window.__rcSessionVoiceSelection = val; } catch(_) {}
-          } else {
-            // Browser voice
-            try { window.__rcSessionVoiceSelection = val; } catch(_) {}
-          }
-          populateBrowserVoicePicker();
-        });
-      }
-
-      handleVoiceSelectChange(voiceFemaleSelect, 'female');
-      handleVoiceSelectChange(voiceMaleSelect,   'male');
-
-      function openReadingSettingsModal() {
         syncSlidersFromState();
-        populateBrowserVoicePicker();
-        // PATCH(modal-visibility): style.display is the sole visibility authority.
-        // hidden-section class manipulation removed — it caused divergence when
-        // any code path set only one of the two systems.
-        try {
-          volumePanel.setAttribute('aria-hidden', 'false');
-          volumePanel.style.visibility = '';
-          volumePanel.style.display = 'flex';
-          volumePanel.style.top = '';
-          volumePanel.style.left = '';
-        } catch (_) {}
-        return true;
       }
 
-      function closeReadingSettingsModal() {
-        // PATCH(modal-visibility): style.display only — no hidden-section toggle.
-        volumePanel.style.display = 'none';
-        volumePanel.setAttribute('aria-hidden', 'true');
-        return false;
-      }
-
-      function toggleReadingSettingsModal() {
-        const open = volumePanel.style.display === 'flex';
-        hideAllPanels();
-        if (open) return false;
-        return openReadingSettingsModal();
-      }
-
-      window.openReadingSettingsModal = openReadingSettingsModal;
-      window.closeReadingSettingsModal = closeReadingSettingsModal;
-      window.toggleReadingSettingsModal = toggleReadingSettingsModal;
-      window.isReadingSettingsModalOpen = () => volumePanel.style.display === 'flex';
-
-      // Repopulate when voices load asynchronously (Chrome/Edge)
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
-        window.speechSynthesis.addEventListener('voiceschanged', populateBrowserVoicePicker);
-      }
+      if (voiceFemaleBtn) voiceFemaleBtn.addEventListener('click', () => setVoiceVariant('female'));
+      if (voiceMaleBtn) voiceMaleBtn.addEventListener('click', () => setVoiceVariant('male'));
 
       Object.entries(sliders).forEach(([key, el]) => {
         if (!el) return;
         el.addEventListener('input', () => setVolume(key, el.value));
       });
 
-      // Open the volume panel from the existing music button or top-bar Settings button.
-      if (musicToggleBtn) {
-        musicToggleBtn.addEventListener('click', (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          toggleReadingSettingsModal();
-        });
-      }
+      // Open the volume panel from the existing music button (no extra top-controls button).
+      musicToggleBtn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
 
-      const topSettingsBtn = document.getElementById('openReadingSettings');
-      if (topSettingsBtn) {
-        topSettingsBtn.addEventListener('click', (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          toggleReadingSettingsModal();
-        });
-      }
+        const isOpen = volumePanel.style.display === 'block';
+        hideAllPanels();
+        if (!isOpen) {
+          syncSlidersFromState();
+          // Position the panel just ABOVE the music toggle so it never drops below the fold.
+          // (iPad cursor can't reach off-page dropdowns.)
+          try {
+            // Temporarily show invisibly so we can measure height.
+            volumePanel.style.visibility = 'hidden';
+            volumePanel.style.display = 'block';
 
-      if (volumeCloseBtn) volumeCloseBtn.addEventListener('click', () => closeReadingSettingsModal());
-      if (volumePanel) {
-        volumePanel.addEventListener('click', (ev) => {
-          if (ev.target === volumePanel) closeReadingSettingsModal();
-        });
-      }
+            const rect = musicToggleBtn.getBoundingClientRect();
+            const panelW = volumePanel.offsetWidth;
+            const panelH = volumePanel.offsetHeight;
+
+            const gap = 10;
+            const top = Math.max(10, rect.top - panelH - gap);
+            const left = Math.min(
+              window.innerWidth - panelW - 10,
+              Math.max(10, rect.right - panelW)
+            );
+
+            volumePanel.style.top = `${top}px`;
+            volumePanel.style.left = `${left}px`;
+          } catch (_) {}
+          volumePanel.style.visibility = 'visible';
+        }
+      });
+
+      if (volumeCloseBtn) volumeCloseBtn.addEventListener('click', () => (volumePanel.style.display = 'none'));
       if (toggleMusicBtn) toggleMusicBtn.addEventListener('click', () => window.toggleMusic && window.toggleMusic());
     }
 
@@ -392,20 +237,31 @@
       if (!debugEnabled) return;
       if (diagBtn && diagPanel && diagText) return;
 
-      // Button: fixed top-left everywhere by request.
+      // Button: match the music button styling and sit beside it.
       diagBtn = document.createElement('button');
       diagBtn.id = 'diagnosticsToggle';
       diagBtn.type = 'button';
       diagBtn.className = 'music-button';
       diagBtn.title = 'Diagnostics';
       diagBtn.innerHTML = '<span id="diagIcon">🔧</span>';
-      document.body.appendChild(diagBtn);
-      diagBtn.style.position = 'fixed';
-      diagBtn.style.top = '16px';
-      diagBtn.style.left = '16px';
-      diagBtn.style.right = 'auto';
-      diagBtn.style.bottom = 'auto';
+
+      // IMPORTANT: .music-button is fixed bottom-right.
+      // Place diagnostics to the LEFT of the music button (same bottom edge).
+      diagBtn.style.right = '88px';
+      diagBtn.style.bottom = '20px';
+      // Ensure it sits above other fixed UI.
       diagBtn.style.zIndex = '1001';
+
+      if (musicToggleBtn && musicToggleBtn.parentElement) {
+        musicToggleBtn.parentElement.insertBefore(diagBtn, musicToggleBtn);
+      } else {
+        // fallback: fixed top-right (only if the DOM changes)
+        document.body.appendChild(diagBtn);
+        diagBtn.style.position = 'fixed';
+        diagBtn.style.top = '16px';
+        diagBtn.style.right = '64px';
+        diagBtn.style.zIndex = '1000';
+      }
 
       // Panel: same conventions as the Sound panel (fixed, above the button)
       diagPanel = document.createElement('div');
@@ -447,8 +303,11 @@
           const panelW = panel.offsetWidth;
           const panelH = panel.offsetHeight;
           const gap = 10;
-          const top = Math.max(10, Math.min(window.innerHeight - panelH - 10, rect.bottom + gap));
-          const left = Math.max(10, Math.min(window.innerWidth - panelW - 10, rect.left));
+          const top = Math.max(10, rect.top - panelH - gap);
+          const left = Math.min(
+            window.innerWidth - panelW - 10,
+            Math.max(10, rect.right - panelW)
+          );
           panel.style.top = `${top}px`;
           panel.style.left = `${left}px`;
         } catch (_) {}
@@ -461,55 +320,18 @@
           diagPanel.style.display = 'none';
           return;
         }
-        const totalSpent = Object.values(sessionTokens?.spent || {}).reduce((a, b) => a + b, 0);
         const merged = {
-          tokens: {
-            tier: typeof appTier !== 'undefined' ? appTier : 'unknown',
-            remaining: sessionTokens?.remaining ?? '—',
-            allowance: (typeof TOKEN_ALLOWANCES !== 'undefined' && appTier) ? TOKEN_ALLOWANCES[appTier] : '—',
-            totalSpent,
-            breakdown: sessionTokens?.spent || {},
-          },
-          stored: {
-            persistenceMode: (window.__rcRuntimePersistenceStripped ? 'stripped-for-stabilization' : 'normal'),
-            tier: null,
-            voiceVariant: null,
-            voiceSelection: null,
-            ttsSpeed: null,
-            autoplay: null,
-          },
-          tts: {
-            variant: TTS_STATE?.voiceVariant || 'female',
-            activeBrowserVoice: TTS_STATE?.activeBrowserVoiceName || null,
-            support: (typeof window.getTtsSupportStatus === 'function') ? window.getTtsSupportStatus() : null,
-            allEnglishVoices: (() => {
-              try {
-                return (window.speechSynthesis?.getVoices() || [])
-                  .filter(v => (v.lang || '').toLowerCase().startsWith('en'))
-                  .map(v => v.name);
-              } catch(_) { return []; }
-            })(),
-          },
-          ttsRuntime: (typeof window.getTtsDiagnosticsSnapshot === 'function') ? window.getTtsDiagnosticsSnapshot() : null,
-          shell: (typeof window.getShellDiagnosticsSnapshot === 'function') ? window.getShellDiagnosticsSnapshot() : null,
-          runtime: (typeof window.getRuntimeUiState === 'function') ? window.getRuntimeUiState() : null,
-          restore: (typeof window.getReadingRestoreStatus === 'function') ? window.getReadingRestoreStatus() : null,
-          importer: (typeof window.getImporterDiagnosticsSnapshot === 'function') ? window.getImporterDiagnosticsSnapshot() : null,
           ai: lastAIDiagnostics || null,
           anchors: lastAnchorsDiagnostics || null,
         };
         const hasAny = Boolean(merged.ai || merged.anchors);
-        const dump = JSON.stringify(merged, null, 2);
+        const dump = hasAny
+          ? JSON.stringify(merged, null, 2)
+          : 'No diagnostics captured yet.\n\nTip: load pages with ?debug=1 (anchors) or run an AI eval.';
         diagText.value = dump;
         diagPanel.style.display = 'block';
         positionPanelAboveButton(diagBtn, diagPanel);
       }
-
-      window.updateDiagnostics = function updateDiagnostics() {
-        try {
-          if (diagPanel && diagPanel.style.display === 'block') setDiagVisible(true);
-        } catch (_) {}
-      };
 
       diagBtn.addEventListener('click', (ev) => {
         ev.preventDefault();
@@ -577,10 +399,9 @@
       const t = e.target;
       const inVol = volumePanel && volumePanel.contains(t);
       const inDiag = diagPanel && diagPanel.contains(t);
-      const inModalOverlay = !!(t && t.closest && t.closest('.modal-overlay'));
       const isVolBtn = musicToggleBtn && (t === musicToggleBtn || musicToggleBtn.contains(t));
       const isDiagBtn = diagBtn && (t === diagBtn || diagBtn.contains(t));
-      if (inVol || inDiag || inModalOverlay || isVolBtn || isDiagBtn) return;
+      if (inVol || inDiag || isVolBtn || isDiagBtn) return;
       hideAllPanels();
     });
   })();
@@ -594,7 +415,9 @@
 
   try {
     const saved = localStorage.getItem('rc_app_mode');
-    if (saved && ['reading','comprehension','research','thesis'].includes(saved)) appMode = saved === 'thesis' ? 'research' : saved;
+    if (saved && ['reading','comprehension','thesis'].includes(saved)) {
+      appMode = saved;
+    }
   } catch (_) {}
 
   select.value = appMode;
@@ -616,86 +439,7 @@
 })();
 
 // ===================================
-// 💳 Tier Selector
-// ===================================
-(function initTierSelector() {
-  const select = document.getElementById('tierSelect');
-  if (!select) return;
-
-  const VALID_TIERS = ['free', 'paid', 'premium'];
-
-  // Restore persisted tier
-  select.value = appTier;
-
-  select.addEventListener('change', () => {
-    const newTier = select.value;
-    if (!VALID_TIERS.includes(newTier) || newTier === appTier) return;
-    appTier = newTier;
-    try { if (typeof tokenReset === 'function') tokenReset(); } catch(_) {}
-    applyTierAccess();
-  });
-
-  // Apply on boot
-  applyTierAccess();
-
-  function applyTierAccess() {
-    // Tier access rules (prototype: feature gating active, usage unrestricted).
-    //
-    // free    — Reading mode only. Comprehension and Research disabled.
-    //           No AI Evaluate, no TTS voices beyond default.
-    // paid    — All modes accessible. AI Evaluate available. Standard voices.
-    // premium — Full access. All voices, all modes, all features.
-    //
-    // NOTE: These rules gate UI visibility only. No server-side enforcement yet.
-
-    const isFree    = appTier === 'free';
-    const isPaid    = appTier === 'paid';
-    const isPremium = appTier === 'premium';
-
-    // Mode options:
-    //   Free        — Reading only. Comprehension disabled.
-    //   Paid+       — Reading + Comprehension.
-    //   All tiers   — Research always disabled until implemented.
-    const modeSelect = document.getElementById('modeSelect');
-    if (modeSelect) {
-      const comprehensionOpt = modeSelect.querySelector('option[value="comprehension"]');
-      const researchOpt      = modeSelect.querySelector('option[value="research"]');
-      if (comprehensionOpt) comprehensionOpt.disabled = isFree;
-      // Research is selectable on Paid/Premium (evaluation.js shows coming-soon alert on use).
-      // Disabled only on Free alongside Comprehension.
-      if (researchOpt)      researchOpt.disabled = isFree;
-
-      // If currently on a gated mode, drop back to Reading
-      if (isFree && appMode !== 'reading') {
-        modeSelect.value = 'reading';
-        appMode = 'reading';
-        if (typeof applyModeVisibility === 'function') applyModeVisibility();
-      }
-    }
-
-    // Anchors row (counter + Hint button) — hidden on Free tier AND in reading mode.
-    // applyModeVisibility already hides these in reading mode; we must not override that.
-    const isReadingMode = appMode === 'reading';
-    document.querySelectorAll('.anchors-row').forEach(el => {
-      if (isFree || isReadingMode) {
-        el.style.display = 'none';
-      } else {
-        el.style.display = '';
-      }
-    });
-
-    // AI Evaluate buttons and Submit — hidden on Free and in reading mode
-    document.querySelectorAll('.ai-btn, #submitBtn').forEach(el => {
-      el.style.display = (isFree || isReadingMode) ? 'none' : '';
-    });
-
-    // Voice dropdowns are visible at all tiers — Free sees browser voices,
-    // Paid/Premium see cloud voices at the top. No hiding needed.
-  }
-})();
-
-// ===================================
-// 📝 Research Input
+// 📝 Thesis Input
 // ===================================
 (function initThesisInput() {
   const input = document.getElementById('thesisInput');
@@ -718,12 +462,10 @@
   try {
     checkbox.checked = localStorage.getItem('rc_autoplay') === '1';
     AUTOPLAY_STATE.enabled = checkbox.checked;
-  } catch (_) {
-    checkbox.checked = !!AUTOPLAY_STATE.enabled;
-  }
+  } catch (_) {}
   checkbox.addEventListener('change', () => {
     AUTOPLAY_STATE.enabled = checkbox.checked;
-    try { localStorage.setItem('rc_autoplay', checkbox.checked ? '1':'0'); } catch (_) {}
+    localStorage.setItem('rc_autoplay', checkbox.checked ? '1':'0');
     if (!AUTOPLAY_STATE.enabled) ttsAutoplayCancelCountdown();
   });
 })();
@@ -743,6 +485,7 @@ try {
 // ===================================
 (function () {
   const musicBtn = document.getElementById("musicToggle");
+  const diagBtn = document.getElementById("diagnosticsToggle");
   if (!musicBtn) return;
 
   const SNAP_THRESHOLD = 140; // px
@@ -759,6 +502,9 @@ try {
       ? `calc(var(--support-footer-height) + 20px)`
       : `20px`;
 
+    // Keep diagnostics button vertically aligned with the music button.
+    // (It sits to the left, but should share the same bottom offset logic.)
+    if (diagBtn) diagBtn.style.bottom = musicBtn.style.bottom;
   }
 
   // Throttle to one update per frame (prevents observer spam)
@@ -796,5 +542,3 @@ try {
     mo.observe(pagesEl, { childList: true, subtree: true, characterData: true });
   }
 })();
-
-window.updateDiagnostics = window.updateDiagnostics || function updateDiagnostics() {};
